@@ -16,8 +16,140 @@ const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim();
 const ARCHIVE_TAB            = 'Cosimo';
 /** Datenbereich (Spalten); bei vielen CRM-Spalten ggf. erweitern */
 const DATA_RANGE = `${SHEET_NAME}!A1:ZZ`;
-const HEADER_RANGE = `${SHEET_NAME}!A1:ZZ1`;
 const COL_A_RANGE = `${SHEET_NAME}!A:A`;
+
+function trimCell(v) {
+  return String(v ?? '').trim().replace(/\u00a0/g, ' ');
+}
+
+/** Erste sinnvolle Kopfzeile finden (viele Tabellen haben eine Titelzeile über den Spalten). */
+function scoreHeaderRow(row) {
+  if (!row || !row.length) return 0;
+  let s = 0;
+  for (const c of row) {
+    const t = trimCell(c).toLowerCase();
+    if (t === 'e-mail' || t === 'email' || t.endsWith(' e-mail')) s += 6;
+    else if (t.includes('e-mail') || t === 'mail') s += 4;
+    if (t.includes('nachname') || t.includes('vorname')) s += 3;
+    if (t === 'plz' || t.includes('postleitzahl')) s += 2;
+    if (t === 'ort' || t.includes('stadt')) s += 2;
+    if (t.includes('telefon') || t === 'tel' || t.includes('handy')) s += 2;
+    if (t.includes('straße') || t.includes('strasse')) s += 2;
+    if (t.includes('quelle')) s += 1;
+    if (t.includes('anfrage') && (t.includes('nr') || t.includes('zeit'))) s += 2;
+    if (t === 'status') s += 1;
+  }
+  return s;
+}
+
+function detectBestHeaderRowIndex(values) {
+  if (!values.length) return 0;
+  let best = 0;
+  let bestScore = scoreHeaderRow(values[0]);
+  for (let i = 1; i < Math.min(values.length, 30); i++) {
+    const sc = scoreHeaderRow(values[i]);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function findColIndex(headerCells, wantedLabel) {
+  const w = trimCell(wantedLabel).toLowerCase();
+  const cells = headerCells.map((h) => trimCell(h));
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i].toLowerCase() === w) return i;
+  }
+  if (w === 'e-mail' || w === 'email') {
+    for (let i = 0; i < cells.length; i++) {
+      const t = cells[i].toLowerCase();
+      if (t === 'e-mail' || t === 'email' || t === 'mail' || t === 'e mail') return i;
+    }
+  }
+  return -1;
+}
+
+/** Bekannte Abweichungen in Spaltennamen → erwartete CRM-Schlüssel */
+function applyCanonicalFieldAliases(lead) {
+  const keys = Object.keys(lead);
+  const normKey = (k) => trimCell(k).toLowerCase();
+  const firstMatch = (pred) => {
+    for (const k of keys) {
+      if (pred(normKey(k))) return lead[k];
+    }
+    return '';
+  };
+  const out = { ...lead };
+  const set = (canonical, val) => {
+    const v = val == null ? '' : String(val).trim();
+    if (v && !String(out[canonical] || '').trim()) out[canonical] = v;
+  };
+  set('E-Mail', out['E-Mail'] || firstMatch((t) => t === 'e-mail' || t === 'email' || t === 'mail'));
+  set('Nachname + Vorname', out['Nachname + Vorname'] || firstMatch((t) => (t.includes('nachname') && t.includes('vorname')) || t === 'name' || t === 'kunde'));
+  set('Telefon', out['Telefon'] || firstMatch((t) => t.includes('telefon') || t === 'tel' || t.includes('handy')));
+  set('Straße', out['Straße'] || firstMatch((t) => t.includes('straße') || t.includes('strasse') || t === 'adresse'));
+  set('PLZ', out['PLZ'] || firstMatch((t) => t === 'plz' || t.includes('postleitzahl')));
+  set('Ort', out['Ort'] || firstMatch((t) => t === 'ort' || t.includes('stadt')));
+  set('Land', out['Land'] || firstMatch((t) => t === 'land' || t === 'country'));
+  set('Quelle', out['Quelle'] || firstMatch((t) => t.includes('quelle')));
+  set('Anfragezeitpunkt', out['Anfragezeitpunkt'] || firstMatch((t) => t.includes('anfragezeit') || t === 'datum' || t.includes('datum anfrage')));
+  set('Info', out['Info'] || firstMatch((t) => t === 'info' || t.includes('bemerkung')));
+  set('Status', out['Status'] || firstMatch((t) => t === 'status'));
+  set('Betreut Durch', out['Betreut Durch'] || firstMatch((t) => t.includes('betreut')));
+  set('Notizen', out['Notizen'] || firstMatch((t) => t === 'notizen' || t.includes('notiz')));
+  set('Nachfass bis', out['Nachfass bis'] || firstMatch((t) => t.includes('nachfass')));
+  set('Termin', out['Termin'] || firstMatch((t) => t === 'termin'));
+  const nr = out['Anfrage NR'] || out['Anfrage NR '] || firstMatch((t) => t.replace(/\s/g, '').includes('anfrag') && t.includes('nr'));
+  if (nr) {
+    if (!String(out['Anfrage NR'] || '').trim()) out['Anfrage NR'] = String(nr).trim();
+  }
+  return out;
+}
+
+/** Tabellenkopf → FIELD_MAP-Schlüssel (für appendLead-Zeile) */
+function fieldForColumnTitle(colHeader) {
+  const t = trimCell(colHeader).toLowerCase().replace(/\s+/g, ' ');
+  for (const [field, colName] of Object.entries(FIELD_MAP)) {
+    if (trimCell(colName).toLowerCase() === t) return field;
+  }
+  if (t === 'email' || t === 'e-mail' || t === 'mail' || t === 'e mail') return 'email';
+  if (t.includes('nachname') && t.includes('vorname')) return 'name';
+  if (t === 'name' || t === 'kunde') return 'name';
+  if (t.includes('telefon') || t === 'tel' || t.includes('handy')) return 'phone';
+  if (t.includes('straße') || t.includes('strasse')) return 'street';
+  if (t === 'plz' || t.includes('postleitzahl')) return 'zip';
+  if (t === 'ort' || t.includes('stadt')) return 'city';
+  if (t === 'land' || t === 'country') return 'country';
+  if (t.includes('quelle')) return 'source';
+  if (t.includes('anfragezeit') || t === 'datum' || t.includes('datum')) return 'date';
+  if (t === 'info' || t.includes('bemerkung')) return 'info';
+  return null;
+}
+
+function matrixToLeadObjects(values) {
+  if (!values.length) return [];
+  const hi = detectBestHeaderRowIndex(values);
+  const header = (values[hi] || []).map((c) => trimCell(c));
+  const dataRows = values.slice(hi + 1);
+  return dataRows.map((row) => {
+    const obj = {};
+    header.forEach((col, i) => {
+      if (!col) return;
+      obj[col] = row[i] == null ? '' : String(row[i]);
+    });
+    return applyCanonicalFieldAliases(obj);
+  });
+}
+
+function splitMatrixRawRows(values) {
+  if (!values.length) return { headerRowIndex: 0, header: [], dataRows: [] };
+  const hi = detectBestHeaderRowIndex(values);
+  const header = (values[hi] || []).map((c) => trimCell(c));
+  const dataRows = values.slice(hi + 1);
+  return { headerRowIndex: hi, header, dataRows };
+}
 
 // Maps lead object fields → exact sheet column headers
 const FIELD_MAP = {
@@ -69,9 +201,11 @@ function columnIndexToLetter(index) {
 async function getHeader(sheets) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: HEADER_RANGE,
+    range: DATA_RANGE,
   });
-  return res.data.values?.[0] || [];
+  const values = res.data.values || [];
+  const { header } = splitMatrixRawRows(values);
+  return header;
 }
 
 async function fetchLeadsForTab(sheetTitle) {
@@ -80,13 +214,7 @@ async function fetchLeadsForTab(sheetTitle) {
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetTitle}!A1:ZZ`,
   });
-  const [header, ...rows] = res.data.values || [];
-  if (!header) return [];
-  return rows.map((row) => {
-    const obj = {};
-    header.forEach((col, i) => { obj[col] = row[i] || ''; });
-    return obj;
-  });
+  return matrixToLeadObjects(res.data.values || []);
 }
 
 async function appendLead(lead) {
@@ -99,13 +227,12 @@ async function appendLead(lead) {
   });
   const nextNr = Math.max(0, (countRes.data.values?.length || 1) - 1) + 1;
 
-  const headerToField = Object.fromEntries(
-    Object.entries(FIELD_MAP).map(([field, col]) => [col, field])
-  );
-
   const row = header.map((colHeader) => {
-    if (colHeader.trim() === 'Anfrage NR') return String(nextNr);
-    const field = headerToField[colHeader];
+    const ch = trimCell(colHeader);
+    if (/^anfrage\s*nr$/i.test(ch.replace(/\s/g, ' ')) || ch.replace(/\s/g, '').toLowerCase() === 'anfragennr') {
+      return String(nextNr);
+    }
+    const field = fieldForColumnTitle(ch);
     if (!field) return '';
     const val = lead[field];
     return val === null || val === undefined ? '' : String(val);
@@ -122,13 +249,14 @@ async function appendLead(lead) {
 
 /** Gleicher Lead (E-Mail, sonst Name+Tel+PLZ) nur einmal; bei mehreren Zeilen gewinnt der neueste Eintrag. */
 function dedupeLeadsKeepNewest(leads) {
-  function dedupeKey(lead) {
+  function dedupeKey(lead, rowIdx) {
     const e = String(lead['E-Mail'] || '').trim().toLowerCase();
     if (e) return `e:${e}`;
     const n = String(lead['Nachname + Vorname'] || '').trim().toLowerCase();
     const tel = String(lead['Telefon'] || '').replace(/\D/g, '');
     const plz = String(lead['PLZ'] || '').trim();
-    return `x:${n}|${tel}|${plz}`;
+    if (n || tel || plz) return `x:${n}|${tel}|${plz}`;
+    return `__row:${rowIdx}`;
   }
 
   function parseAnfragezeitpunktMs(lead) {
@@ -158,7 +286,7 @@ function dedupeLeadsKeepNewest(leads) {
   const best = new Map();
   for (let i = 0; i < leads.length; i += 1) {
     const lead = leads[i];
-    const k = dedupeKey(lead);
+    const k = dedupeKey(lead, i);
     const t = parseAnfragezeitpunktMs(lead);
     const nr = requestNr(lead);
     const cur = best.get(k);
@@ -221,19 +349,19 @@ async function updateLeadField(email, columnHeader, value) {
     spreadsheetId: SPREADSHEET_ID,
     range: DATA_RANGE,
   });
-  const [header, ...rows] = res.data.values || [];
-  if (!header) return;
+  const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
+  if (!header.length) return;
 
-  const emailColIdx  = header.indexOf('E-Mail');
-  const targetColIdx = header.indexOf(columnHeader);
+  const emailColIdx  = findColIndex(header, 'E-Mail');
+  const targetColIdx = findColIndex(header, columnHeader);
   if (emailColIdx < 0 || targetColIdx < 0) return;
 
   const rowIndex = rows.findIndex(
-    (r) => r[emailColIdx]?.toLowerCase() === email.toLowerCase()
+    (r) => String(r[emailColIdx] || '').trim().toLowerCase() === email.toLowerCase()
   );
   if (rowIndex < 0) return;
 
-  const sheetRow  = rowIndex + 2; // +1 header, +1 for 1-based
+  const sheetRow = headerRowIndex + rowIndex + 2;
   const colLetter = columnIndexToLetter(targetColIdx);
 
   await sheets.spreadsheets.values.update({
@@ -251,12 +379,13 @@ async function archiveLead(email) {
     spreadsheetId: SPREADSHEET_ID,
     range: DATA_RANGE,
   });
-  const [header, ...rows] = res.data.values || [];
-  if (!header) return;
+  const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
+  if (!header.length) return;
 
-  const emailColIdx = header.indexOf('E-Mail');
+  const emailColIdx = findColIndex(header, 'E-Mail');
+  if (emailColIdx < 0) return;
   const rowIndex = rows.findIndex(
-    (r) => r[emailColIdx]?.toLowerCase() === email.toLowerCase()
+    (r) => String(r[emailColIdx] || '').trim().toLowerCase() === email.toLowerCase()
   );
   if (rowIndex < 0) return;
 
@@ -277,8 +406,11 @@ async function archiveLead(email) {
   // Delete row from Leads sheet
   const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
   const leadsSheet = sheetInfo.data.sheets.find((s) => s.properties.title === SHEET_NAME);
+  if (!leadsSheet) return;
   const sheetId = leadsSheet.properties.sheetId;
 
+  const delStart = headerRowIndex + 1 + rowIndex;
+  const delEnd = delStart + 1;
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: SPREADSHEET_ID,
     requestBody: {
@@ -287,8 +419,8 @@ async function archiveLead(email) {
           range: {
             sheetId,
             dimension: 'ROWS',
-            startIndex: rowIndex + 1, // +1 for header (0-indexed)
-            endIndex:   rowIndex + 2,
+            startIndex: delStart,
+            endIndex:   delEnd,
           },
         },
       }],
@@ -330,8 +462,16 @@ async function getLeadsSheetDebug() {
       legacyC = (await fetchLeadsForTab(LEGACY_SHEET_NAME)).length;
     }
     const merged = await getAllLeads();
+    const sh = await getSheets();
+    const r = await sh.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_NAME}!A1:ZZ`,
+    });
+    const raw = splitMatrixRawRows(r.data.values || []);
     return {
       ...base,
+      headerRowIndex: raw.headerRowIndex,
+      rawRowCount: (raw.dataRows || []).length,
       primaryRowCount: p.length,
       legacyRowCount: legacyC,
       mergedCount: merged.length,

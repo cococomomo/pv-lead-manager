@@ -359,8 +359,8 @@
   function getSource(lead) { return isMesse(lead) ? 'Messe' : (lead[COL.source] || ''); }
 
   function isHiddenStatus(lead) {
-    const s = (lead[COL.status] || '').trim();
-    return s === 'Termin' || s === 'Verloren';
+    const s = (lead[COL.status] || '').trim().toLowerCase();
+    return s === 'termin' || s === 'verloren';
   }
 
   function mapLeadsSubset() {
