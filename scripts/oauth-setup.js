@@ -7,13 +7,14 @@
 
 'use strict';
 
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const http = require('http');
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
+const { resolveGoogleOAuthConfig } = require('../src/google-client');
 
-const CREDENTIALS_PATH = path.join(__dirname, '../auth/google-credentials.json');
 const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 const PORT = 3334;
 
@@ -23,13 +24,14 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
 ];
 
-if (!fs.existsSync(CREDENTIALS_PATH)) {
-  console.error('ERROR: auth/google-credentials.json not found.');
+let client_id;
+let client_secret;
+try {
+  ({ client_id, client_secret } = resolveGoogleOAuthConfig());
+} catch (e) {
+  console.error('ERROR:', e.message);
   process.exit(1);
 }
-
-const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
-const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
 
 // Muss 1:1 in Google Cloud → Client → „Autorisierte Weiterleitungs-URIs“ stehen (localhost ≠ 127.0.0.1).
 const redirectUri = `http://127.0.0.1:${PORT}/oauth2callback`;

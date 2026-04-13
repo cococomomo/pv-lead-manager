@@ -4,8 +4,8 @@ require('dotenv').config();
 const { google } = require('googleapis');
 const path = require('path');
 const { getMailSender } = require('./mail-transport');
+const { createGoogleOAuth2Client } = require('./google-client');
 
-const CREDENTIALS_PATH = path.join(__dirname, '../auth/google-credentials.json');
 const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 
 let _auth = null;
@@ -18,9 +18,7 @@ function leadAddressLine(lead) {
 async function getAuth() {
   if (_auth) return _auth;
 
-  const credentials = require(CREDENTIALS_PATH);
-  const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
-  const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+  const oAuth2Client = createGoogleOAuth2Client();
 
   const token = require(TOKEN_PATH);
   oAuth2Client.setCredentials(token);
