@@ -9,8 +9,8 @@ const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 
 const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
 const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
-/** Tab mit den Leads – muss exakt dem Blattnamen in Google Sheets entsprechen */
-const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Sheet1')
+/** Tab mit den Leads (Wunschname aus .env); wird gegen echte Tab-Titel gematcht (Groß/Klein egal). */
+const SHEET_TAB_REQUESTED = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Sheet1')
   .trim()
   .replace(/^\uFEFF/, '');
 /** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
@@ -43,14 +43,20 @@ async function throwIfRangeParseError(sheets, sheetTitle, err) {
     /* Meta-Lesen fehlgeschlagen — Originalfehler reicht */
   }
   const hint = tabs.length
-    ? `Vorhandene Blätter: ${tabs.join(', ')}. In .env GOOGLE_SHEET_NAME= exakt so setzen (wie unten in Google Sheets).`
+    ? `Vorhandene Blätter: ${tabs.join(', ')}. In .env GOOGLE_SHEET_NAME= setzen (Groß/Klein wie in Google Sheets oder nur nahe genug).`
     : 'Prüfe GOOGLE_SPREADSHEET_ID und GOOGLE_SHEET_NAME in der .env.';
   throw new Error(`${msg} — Blatt "${sheetTitle}"? ${hint}`);
 }
 
-/** Datenbereich (Spalten); bei vielen CRM-Spalten ggf. erweitern */
-const DATA_RANGE = sheetRange(SHEET_NAME, 'A1:ZZ');
-const COL_A_RANGE = sheetRange(SHEET_NAME, 'A:A');
+/** Ordnet .env-Blattnamen dem echten Tab-Titel zu (Google unterscheidet sonst z. B. sheet1 vs Sheet1). */
+function matchSheetTabTitle(requested, titles) {
+  const req = String(requested || '').trim();
+  if (!req || !titles || !titles.length) return req;
+  if (titles.includes(req)) return req;
+  const rl = req.toLowerCase();
+  const hit = titles.find((t) => String(t).toLowerCase() === rl);
+  return hit || req;
+}
 
 function trimCell(v) {
   return String(v ?? '').trim().replace(/\u00a0/g, ' ');
@@ -298,23 +304,28 @@ function columnIndexToLetter(index) {
   return result;
 }
 
-async function getHeader(sheets) {
+async function getHeaderAndTab(sheets) {
+  const titles = await listSheetTabTitles(sheets);
+  const tab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: DATA_RANGE,
+      range: sheetRange(tab, 'A1:ZZ'),
     });
   } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
   }
   const values = res.data.values || [];
   const { header } = splitMatrixRawRows(values);
-  return header;
+  return { header, tab };
 }
 
-async function fetchLeadsForTab(sheetTitle) {
-  const sheets = await getSheets();
+/** @param {string} sheetTitleRequested — aus .env o.ä.; optional sheets/titles um Meta-Calls zu sparen */
+async function fetchLeadsForTab(sheetTitleRequested, sheetsOpt = null, titlesOpt = null) {
+  const sheets = sheetsOpt || await getSheets();
+  const titles = titlesOpt || await listSheetTabTitles(sheets);
+  const sheetTitle = matchSheetTabTitle(sheetTitleRequested, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
@@ -322,23 +333,23 @@ async function fetchLeadsForTab(sheetTitle) {
       range: sheetRange(sheetTitle, 'A1:ZZ'),
     });
   } catch (e) {
-    await throwIfRangeParseError(sheets, sheetTitle, e);
+    await throwIfRangeParseError(sheets, sheetTitleRequested, e);
   }
   return matrixToLeadObjects(res.data.values || []);
 }
 
 async function appendLead(lead) {
   const sheets = await getSheets();
-  const header = await getHeader(sheets);
+  const { header, tab } = await getHeaderAndTab(sheets);
 
   let countRes;
   try {
     countRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: COL_A_RANGE,
+      range: sheetRange(tab, 'A:A'),
     });
   } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
   }
   const nextNr = Math.max(0, (countRes.data.values?.length || 1) - 1) + 1;
 
@@ -356,7 +367,7 @@ async function appendLead(lead) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: sheetRange(SHEET_NAME, 'A1'),
+    range: sheetRange(tab, 'A1'),
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
@@ -432,13 +443,18 @@ async function getAllLeads() {
   if (!SPREADSHEET_ID) {
     throw new Error('GOOGLE_SPREADSHEET_ID fehlt in der Konfiguration');
   }
-  const primaryRows = await fetchLeadsForTab(SHEET_NAME);
+  const sheets = await getSheets();
+  const titles = await listSheetTabTitles(sheets);
+  const primaryTab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
+  const primaryRows = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sheets, titles);
   const primary = primaryRows.map((o) => ({ ...o, __pvlLegacy: false }));
 
   const leg = LEGACY_SHEET_NAME;
-  if (!leg || leg === SHEET_NAME) return dedupeLeadsKeepNewest(primary);
+  if (!leg) return dedupeLeadsKeepNewest(primary);
+  const legacyTab = matchSheetTabTitle(leg, titles);
+  if (legacyTab === primaryTab) return dedupeLeadsKeepNewest(primary);
 
-  const legacyRows = await fetchLeadsForTab(leg);
+  const legacyRows = await fetchLeadsForTab(leg, sheets, titles);
   const primaryEmails = new Set(
     primary.map((l) => String(l['E-Mail'] || '').toLowerCase()).filter(Boolean)
   );
@@ -454,21 +470,23 @@ async function getAllLeads() {
 
 async function leadExists(email) {
   if (!email) return false;
-  const rows = await fetchLeadsForTab(SHEET_NAME);
+  const rows = await fetchLeadsForTab(SHEET_TAB_REQUESTED);
   return rows.some((l) => l['E-Mail']?.toLowerCase() === email.toLowerCase());
 }
 
 // Update a single cell by column header (e.g. 'Betreut Durch', 'Notizen')
 async function updateLeadField(email, columnHeader, value) {
   const sheets = await getSheets();
+  const titles = await listSheetTabTitles(sheets);
+  const tab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: DATA_RANGE,
+      range: sheetRange(tab, 'A1:ZZ'),
     });
   } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
   }
   const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
   if (!header.length) return;
@@ -487,7 +505,7 @@ async function updateLeadField(email, columnHeader, value) {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: sheetRange(SHEET_NAME, `${colLetter}${sheetRow}`),
+    range: sheetRange(tab, `${colLetter}${sheetRow}`),
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
   });
@@ -496,14 +514,16 @@ async function updateLeadField(email, columnHeader, value) {
 // Copy lead row to archive spreadsheet "Cosimo" tab, then delete from Leads
 async function archiveLead(email) {
   const sheets = await getSheets();
+  const titles = await listSheetTabTitles(sheets);
+  const tab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: DATA_RANGE,
+      range: sheetRange(tab, 'A1:ZZ'),
     });
   } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
   }
   const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
   if (!header.length) return;
@@ -531,7 +551,7 @@ async function archiveLead(email) {
 
   // Delete row from Leads sheet
   const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-  const leadsSheet = sheetInfo.data.sheets.find((s) => s.properties.title === SHEET_NAME);
+  const leadsSheet = sheetInfo.data.sheets.find((s) => s.properties.title === tab);
   if (!leadsSheet) return;
   const sheetId = leadsSheet.properties.sheetId;
 
@@ -576,7 +596,7 @@ async function ensureArchiveTab(sheets, header) {
 
 async function getLeadsSheetDebug() {
   const base = {
-    sheetTab: SHEET_NAME,
+    sheetTab: SHEET_TAB_REQUESTED,
     legacySheetTab: LEGACY_SHEET_NAME || null,
     spreadsheetConfigured: !!SPREADSHEET_ID,
     /** Konfigurierte Lead-Tabelle (ID = Segment aus docs.google.com/spreadsheets/d/…/edit) */
@@ -584,32 +604,37 @@ async function getLeadsSheetDebug() {
   };
   try {
     if (!SPREADSHEET_ID) return { ...base, primaryRowCount: 0, legacyRowCount: 0, mergedCount: 0 };
-    const p = await fetchLeadsForTab(SHEET_NAME);
-    let legacyC = 0;
-    if (LEGACY_SHEET_NAME && LEGACY_SHEET_NAME !== SHEET_NAME) {
-      legacyC = (await fetchLeadsForTab(LEGACY_SHEET_NAME)).length;
-    }
-    const merged = await getAllLeads();
     const sh = await getSheets();
-    let r;
-    try {
-      r = await sh.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID,
-        range: sheetRange(SHEET_NAME, 'A1:ZZ'),
-      });
-    } catch (e) {
-      await throwIfRangeParseError(sh, SHEET_NAME, e);
-    }
-    const raw = splitMatrixRawRows(r.data.values || []);
     const meta = await sh.spreadsheets.get({
       spreadsheetId: SPREADSHEET_ID,
       fields: 'sheets.properties.title',
     });
     const sheetTabs = (meta.data.sheets || []).map((s) => s.properties?.title).filter(Boolean);
+    const primaryResolved = matchSheetTabTitle(SHEET_TAB_REQUESTED, sheetTabs);
+    const p = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sh, sheetTabs);
+    let legacyC = 0;
+    if (LEGACY_SHEET_NAME) {
+      const legacyResolved = matchSheetTabTitle(LEGACY_SHEET_NAME, sheetTabs);
+      if (legacyResolved !== primaryResolved) {
+        legacyC = (await fetchLeadsForTab(LEGACY_SHEET_NAME, sh, sheetTabs)).length;
+      }
+    }
+    const merged = await getAllLeads();
+    let r;
+    try {
+      r = await sh.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: sheetRange(primaryResolved, 'A1:ZZ'),
+      });
+    } catch (e) {
+      await throwIfRangeParseError(sh, SHEET_TAB_REQUESTED, e);
+    }
+    const raw = splitMatrixRawRows(r.data.values || []);
     return {
       ...base,
+      sheetTabResolved: primaryResolved,
       sheetTabs,
-      sheetTabMatches: sheetTabs.includes(SHEET_NAME),
+      sheetTabMatches: sheetTabs.includes(primaryResolved),
       headerRowIndex: raw.headerRowIndex,
       rawRowCount: (raw.dataRows || []).length,
       primaryRowCount: p.length,

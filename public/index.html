@@ -550,7 +550,7 @@
       hideLoadError();
       allLeads = data;
       if (data.length === 0) {
-        showLoadError('Keine Leads geladen. Prüfen: GOOGLE_SHEET_NAME = exakter Tab-Name (Default Tabellenblatt1). Diagnose: /api/debug/leads-sheet');
+        showLoadError('Keine Leads geladen. Prüfen: GOOGLE_SPREADSHEET_ID, GOOGLE_SHEET_NAME (Tab-Name; Groß/Klein wird angeglichen). Diagnose: /api/debug/leads-sheet → sheetTabs, sheetTabResolved, sheetTabMatches.');
       }
       renderStats();
       renderList();
