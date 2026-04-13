@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PV Lead Manager</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a202c; }
+
+    header { background: #1a56db; color: #fff; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
+    header h1 { font-size: 1.15rem; }
+
+    .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 50px); }
+
+    /* Stats */
+    .stats { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; padding: 0.6rem 1.2rem; background: #fff; border-bottom: 1px solid #e2e8f0; align-items: center; }
+    .stat-card { background: #eef2ff; border-radius: 7px; padding: 0.35rem 0.8rem; text-align: center; min-width: 90px; }
+    .stat-card .num { font-size: 1.25rem; font-weight: 700; color: #1a56db; }
+    .stat-card .lbl { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+    .legend { margin-left: auto; display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; color: #64748b; flex-wrap: wrap; }
+    .legend b { margin-right: 2px; }
+    .leg { padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; white-space: nowrap; }
+
+    /* Map */
+    #map { background: #dde; }
+
+    /* Sidebar */
+    .sidebar { background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-header { padding: 0.6rem 0.9rem; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .sidebar-header h2 { font-size: 0.9rem; font-weight: 600; }
+    .filter-bar { padding: 0.45rem 0.9rem; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
+    .filter-bar input, .filter-bar select { width: 100%; padding: 0.35rem 0.55rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; margin-bottom: 0.35rem; }
+
+    /* Lead list */
+    #lead-list { overflow-y: auto; flex: 1; }
+    .lead-item { padding: 0.6rem 0.9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.12s; border-left: 4px solid transparent; }
+    .lead-item:hover { background: #f8fafc; }
+    .lead-item.active { background: #eef2ff; }
+    .lead-name { font-weight: 600; font-size: 0.87rem; }
+    .lead-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+    .lead-betreut { font-size: 0.7rem; color: #059669; font-weight: 500; margin-top: 1px; }
+
+    /* Sidebar detail panel (replaces list) */
+    #sidebar-detail { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    #sidebar-detail.open { display: flex; }
+    .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid #e2e8f0; font-size: 0.82rem; color: #1a56db; cursor: pointer; flex-shrink: 0; }
+    .detail-back:hover { background: #f0f4ff; }
+    .detail-body { overflow-y: auto; flex: 1; padding: 0.9rem; }
+    .detail-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.6rem; padding-left: 0.6rem; }
+    .detail-info { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 0.8rem; margin-bottom: 0.9rem; }
+    .detail-info b { color: #475569; white-space: nowrap; }
+    .detail-info span { color: #1a202c; word-break: break-word; }
+    .field-group { margin-bottom: 0.7rem; }
+    .field-group label { display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
+    .field-group input, .field-group textarea { width: 100%; padding: 0.35rem 0.55rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; }
+    .field-group textarea { resize: vertical; min-height: 60px; }
+    .detail-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+    .btn { padding: 0.4rem 0.9rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .btn-save { background: #1a56db; color: #fff; }
+    .btn-save:hover { background: #1e40af; }
+    .btn-archive { background: #059669; color: #fff; }
+    .btn-archive:hover { background: #047857; }
+    .btn-archive:disabled { background: #94a3b8; cursor: not-allowed; }
+    .save-hint { font-size: 0.73rem; color: #059669; display: none; align-self: center; }
+
+    .refresh-btn { background: #1a56db; color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem; font-size: 0.78rem; cursor: pointer; }
+    .refresh-btn:hover { background: #1e40af; }
+
+    /* Geocoding progress */
+    #geo-status { font-size: 0.7rem; color: #64748b; padding: 0.3rem 0.9rem; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; display: none; }
+
+    /* Building analysis */
+
+    /* Leaflet popup overrides */
+    .leaflet-popup-content { margin: 10px 14px; min-width: 220px; max-width: 300px; }
+    .leaflet-popup-content b { color: #1a202c; }
+    .popup-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+    .popup-row { font-size: 0.78rem; color: #334155; margin-bottom: 2px; }
+    .popup-open-btn { margin-top: 8px; background: #1a56db; color: #fff; border: none; border-radius: 5px; padding: 4px 12px; font-size: 0.78rem; cursor: pointer; width: 100%; }
+    .popup-open-btn:hover { background: #1e40af; }
+
+    .tel-link { color: #1a56db; text-decoration: none; font-weight: 600; }
+    .tel-link:hover { text-decoration: underline; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.15rem; }
+    .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.76rem; cursor: pointer; font-family: inherit; }
+    .chip:hover { background: #e0e7ff; border-color: #6366f1; }
+    .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
+    .btn-gcal:hover { background: #eef2ff; }
+    .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>☀️</span>
+  <h1>PV Lead Manager</h1>
+  <span style="margin-left:auto;font-size:0.78rem"><a href="/admin.html" style="color:#fff;text-decoration:underline">Vertriebler</a></span>
+</header>
+
+<div class="layout">
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card"><div class="num" id="stat-total">0</div><div class="lbl">Gesamt</div></div>
+    <div class="stat-card"><div class="num" id="stat-active">0</div><div class="lbl">Aktiv</div></div>
+    <div class="stat-card"><div class="num" id="stat-done">0</div><div class="lbl">Termin / Verl.</div></div>
+    <div class="stat-card"><div class="num" id="stat-new">0</div><div class="lbl">Neu</div></div>
+    <div class="stat-card"><div class="num" id="stat-betreut">0</div><div class="lbl">In Betreuung</div></div>
+    <div class="stat-card"><div class="num" id="stat-dp">0</div><div class="lbl">D&amp;P</div></div>
+    <div class="stat-card"><div class="num" id="stat-pvat">0</div><div class="lbl">PVanlage.at</div></div>
+    <div class="stat-card"><div class="num" id="stat-messe">0</div><div class="lbl">Messe</div></div>
+    <div class="legend">
+      <b>Alter:</b>
+      <span class="leg" style="background:#7f1d1d;color:#fff">&lt; 1 Mon</span>
+      <span class="leg" style="background:#dc2626;color:#fff">1–3 Mon</span>
+      <span class="leg" style="background:#f87171;color:#fff">3–6 Mon</span>
+      <span class="leg" style="background:#fca5a5;color:#111">6–12 Mon</span>
+      <span class="leg" style="background:#fee2e2;color:#111">&gt; 1 Jahr</span>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Leads (<span id="lead-count">0</span>)</h2>
+      <button class="refresh-btn" onclick="loadLeads()">↻</button>
+    </div>
+    <div class="filter-bar">
+      <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList()" />
+      <select id="source-filter" onchange="renderList()">
+        <option value="">Alle Quellen</option>
+        <option value="D&P">D&P</option>
+        <option value="Photovoltaikanlage.at">Photovoltaikanlage.at</option>
+        <option value="noortec.at">noortec.at</option>
+        <option value="Messe">Messe</option>
+      </select>
+      <label class="filter-check">
+        <input type="checkbox" id="show-completed" onchange="onToggleCompleted()" />
+        Abgeschlossene anzeigen (Termin / Verloren)
+      </label>
+    </div>
+    <div id="geo-status"></div>
+    <div id="lead-list"></div>
+
+    <!-- Detail panel inside sidebar -->
+    <div id="sidebar-detail">
+      <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste</div>
+      <div class="detail-body">
+        <div class="detail-title" id="sd-name"></div>
+        <div class="detail-info" id="sd-info"></div>
+        <div class="field-group">
+          <label>Betreut Durch</label>
+          <input type="text" id="sd-betreut" placeholder="Name des Vertrieblers" />
+        </div>
+        <div class="field-group">
+          <label>Notizen</label>
+          <textarea id="sd-notizen" placeholder="Notizen zum Lead…"></textarea>
+        </div>
+        <div class="field-group">
+          <label>Status</label>
+          <select id="sd-status" onchange="toggleNachfassField()">
+            <option value="">Neu</option>
+            <option value="Angerufen">Angerufen</option>
+            <option value="Nachfassen">Nachfassen</option>
+            <option value="Termin">Termin</option>
+            <option value="Verloren">Verloren</option>
+          </select>
+        </div>
+        <div class="field-group" id="sd-nachfass-wrap" style="display:none">
+          <label>Nachfass bis</label>
+          <input type="date" id="sd-nachfass" />
+        </div>
+        <div class="field-group" id="sd-termin-wrap" style="display:none">
+          <label>Termin (Datum &amp; Uhrzeit)</label>
+          <input type="datetime-local" id="sd-termin" />
+        </div>
+        <div class="field-group">
+          <label>Betreut durch (Klick)</label>
+          <div class="chip-row" id="sd-betreut-chips"></div>
+        </div>
+        <div class="detail-actions" style="flex-wrap:wrap">
+          <button type="button" class="btn btn-gcal" id="btn-gcal" onclick="openGoogleCalendar()">Google Kalender …</button>
+          <button class="btn btn-save" onclick="saveFields()">Speichern</button>
+          <button class="btn btn-archive" id="btn-archive" onclick="doArchive()">✓ Abgearbeitet</button>
+          <span class="save-hint" id="save-hint">Gespeichert!</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // ── Map ───────────────────────────────────────────────────────────────────
+  const map = L.map('map').setView([48.21, 16.37], 9);
+
+  const satellite = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Satellit &copy; Esri', maxZoom: 19 }
+  );
+  const streets = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', maxZoom: 19 }
+  );
+
+  // Transparente Overlay-Ebenen für Straßen, Ortsnamen und Grenzen
+  const roadsOverlay = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Straßen &copy; Esri', maxZoom: 19, opacity: 0.75 }
+  );
+  const labelsOverlay = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Orte &copy; Esri', maxZoom: 19, opacity: 0.9 }
+  );
+
+  satellite.addTo(map);
+  roadsOverlay.addTo(map);   // standardmäßig aktiv
+  labelsOverlay.addTo(map);  // standardmäßig aktiv
+
+  L.control.layers(
+    { 'Satellit': satellite, 'Straßenkarte': streets },
+    { 'Straßen': roadsOverlay, 'Orte & Grenzen': labelsOverlay },
+    { collapsed: false }
+  ).addTo(map);
+
+  const markerLayer = L.layerGroup().addTo(map);
+
+  // ── Column keys ───────────────────────────────────────────────────────────
+  const COL = {
+    nr: 'Anfrage NR ', name: 'Nachname + Vorname', phone: 'Telefon',
+    email: 'E-Mail', street: 'Straße', zip: 'PLZ', city: 'Ort',
+    country: 'Land', source: 'Quelle', date: 'Anfragezeitpunkt',
+    info: 'Info', betreut: 'Betreut Durch', notes: 'Notizen',
+    status: 'Status', nachfass: 'Nachfass bis', termin: 'Termin',
+  };
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let allLeads    = [];
+  let activeEmail = null;
+  let markerMap   = {}; // email → leaflet marker
+  let vertrieblerList = [];
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function esc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function isMesse(lead) { return parseInt(lead[COL.nr]?.trim(), 10) >= 9000; }
+
+  function getSource(lead) { return isMesse(lead) ? 'Messe' : (lead[COL.source] || ''); }
+
+  function isHiddenStatus(lead) {
+    const s = (lead[COL.status] || '').trim();
+    return s === 'Termin' || s === 'Verloren';
+  }
+
+  function mapLeadsSubset() {
+    return allLeads.filter((l) => !isHiddenStatus(l));
+  }
+
+  function onToggleCompleted() {
+    renderList();
+    renderStats();
+    renderMarkers();
+  }
+
+  function telHref(phone) {
+    const digits = String(phone || '').replace(/\s/g, '').replace(/^0043/, '+43');
+    return digits ? `tel:${digits}` : '';
+  }
+
+  function toggleNachfassField() {
+    const st = document.getElementById('sd-status').value;
+    document.getElementById('sd-nachfass-wrap').style.display = st === 'Nachfassen' ? 'block' : 'none';
+    document.getElementById('sd-termin-wrap').style.display = st === 'Termin' ? 'block' : 'none';
+  }
+
+  function normalizeLocalDatetime(v) {
+    if (!v) return '';
+    const s = String(v).trim();
+    if (s.includes('T') && s.length >= 16) return s.slice(0, 16);
+    if (/^\d{4}-\d{2}-\d{2} /.test(s)) return s.replace(' ', 'T').slice(0, 16);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T10:00`;
+    return '';
+  }
+
+  async function loadVertrieblerNames() {
+    try {
+      const r = await fetch('/api/vertriebler');
+      vertrieblerList = await r.json();
+      if (!Array.isArray(vertrieblerList)) vertrieblerList = [];
+    } catch {
+      vertrieblerList = [];
+    }
+  }
+
+  function renderBetreutChips() {
+    const el = document.getElementById('sd-betreut-chips');
+    if (!el) return;
+    el.innerHTML = vertrieblerList.map((name) =>
+      `<button type="button" class="chip" onclick="assignBetreut(${JSON.stringify(name)})">${esc(name)}</button>`
+    ).join('');
+  }
+
+  function assignBetreut(name) {
+    document.getElementById('sd-betreut').value = name;
+    saveFields();
+  }
+
+  function openGoogleCalendar() {
+    const lead = allLeads.find((l) => l[COL.email] === activeEmail);
+    if (!lead) return;
+    const startStr = document.getElementById('sd-termin').value;
+    if (!startStr) {
+      window.alert('Bitte unter „Termin“ Datum und Uhrzeit eintragen.');
+      return;
+    }
+    const start = new Date(startStr);
+    if (Number.isNaN(start.getTime())) {
+      window.alert('Ungültiges Datum.');
+      return;
+    }
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const fmt = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const title = `PV – ${lead[COL.name] || lead[COL.email]}`;
+    const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
+    const loc = addr ? `${addr}, Österreich` : '';
+    const mapsUrl = loc ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}` : '';
+    const parts = [
+      lead[COL.phone] ? `Tel: ${lead[COL.phone]}` : '',
+      lead[COL.email] ? `E-Mail: ${lead[COL.email]}` : '',
+      lead[COL.info] ? `Info: ${lead[COL.info]}` : '',
+      document.getElementById('sd-notizen').value ? `Notizen: ${document.getElementById('sd-notizen').value}` : '',
+      mapsUrl ? `Google Maps: ${mapsUrl}` : '',
+    ].filter(Boolean);
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: title,
+      details: parts.join('\n'),
+      location: loc,
+      dates: `${fmt(start)}/${fmt(end)}`,
+    });
+    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  }
+
+  function ageColor(lead) {
+    const raw = lead[COL.date];
+    if (!raw) return '#94a3b8';
+    const days = (Date.now() - new Date(raw).getTime()) / 86400000;
+    if (days <  30) return '#7f1d1d';
+    if (days <  90) return '#dc2626';
+    if (days < 180) return '#f87171';
+    if (days < 365) return '#fca5a5';
+    return '#fee2e2';
+  }
+
+  // ── Geocoding with cache + throttle ──────────────────────────────────────
+  let geoCache = {};
+  try { geoCache = JSON.parse(localStorage.getItem('pvgeo') || '{}'); } catch {}
+
+  let geoQueueRunning = false;
+  const geoQueue = [];
+
+  function enqueueGeocode(q, resolve) { geoQueue.push({ q, resolve }); processGeoQueue(); }
+
+  async function processGeoQueue() {
+    if (geoQueueRunning) return;
+    geoQueueRunning = true;
+    while (geoQueue.length) {
+      const { q, resolve } = geoQueue.shift();
+      if (q in geoCache) { resolve(geoCache[q]); continue; }
+      await new Promise(r => setTimeout(r, 1200)); // Nominatim: max 1 req/s
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=at`,
+          { headers: { 'Accept-Language': 'de' } }
+        );
+        const data = await res.json();
+        const coords = data[0] ? [parseFloat(data[0].lat), parseFloat(data[0].lon)] : null;
+        geoCache[q] = coords;
+        try { localStorage.setItem('pvgeo', JSON.stringify(geoCache)); } catch {}
+        resolve(coords);
+      } catch { resolve(null); }
+    }
+    geoQueueRunning = false;
+  }
+
+  function geocode(lead) {
+    const q = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
+    if (!q) return Promise.resolve(null);
+    if (q in geoCache) return Promise.resolve(geoCache[q]);
+    return new Promise(resolve => enqueueGeocode(q, resolve));
+  }
+
+  // ── Load leads ────────────────────────────────────────────────────────────
+  async function loadLeads() {
+    try {
+      const res = await fetch('/api/leads');
+      allLeads = await res.json();
+      renderStats();
+      renderList();
+      renderMarkers();
+    } catch (e) { console.error('Failed to load leads:', e); }
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  function renderStats() {
+    const done = allLeads.filter(isHiddenStatus).length;
+    document.getElementById('stat-total').textContent   = allLeads.length;
+    document.getElementById('stat-active').textContent  = allLeads.length - done;
+    document.getElementById('stat-done').textContent    = done;
+    document.getElementById('stat-new').textContent     = allLeads.filter(l => !l[COL.betreut]).length;
+    document.getElementById('stat-betreut').textContent = allLeads.filter(l =>  l[COL.betreut]).length;
+    document.getElementById('stat-dp').textContent      = allLeads.filter(l => getSource(l) === 'D&P').length;
+    document.getElementById('stat-pvat').textContent    = allLeads.filter(l => getSource(l) === 'Photovoltaikanlage.at').length;
+    document.getElementById('stat-messe').textContent   = allLeads.filter(l => isMesse(l)).length;
+  }
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+  function getFiltered() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    const s = document.getElementById('source-filter').value;
+    const showDone = document.getElementById('show-completed')?.checked;
+    return allLeads.filter(l => {
+      if (!showDone && isHiddenStatus(l)) return false;
+      const matchQ = !q || [l[COL.name], l[COL.email], l[COL.city], l[COL.street]].some(v => v?.toLowerCase().includes(q));
+      const matchS = !s || getSource(l) === s;
+      return matchQ && matchS;
+    });
+  }
+
+  // ── Sidebar list ──────────────────────────────────────────────────────────
+  function renderList() {
+    const list  = document.getElementById('lead-list');
+    const leads = getFiltered();
+    document.getElementById('lead-count').textContent = leads.length;
+    list.innerHTML = leads.map(l => {
+      const color = ageColor(l);
+      const src   = getSource(l);
+      return `<div class="lead-item${l[COL.email] === activeEmail ? ' active' : ''}"
+           style="border-left-color:${color}"
+           onclick="selectLead('${encodeURIComponent(l[COL.email] || l[COL.name] || '')}')">
+        <div class="lead-name">${esc(l[COL.name] || '(kein Name)')}
+          <span style="color:#94a3b8;font-weight:400;font-size:0.72rem"> #${esc((l[COL.nr]||'').trim())}</span>
+        </div>
+        <div class="lead-meta">
+          ${esc(l[COL.city] || '')}${l[COL.zip] ? ' ' + esc(l[COL.zip]) : ''}
+          &nbsp;·&nbsp;<span style="color:${src==='Messe'?'#7c3aed':'inherit'};font-weight:${src==='Messe'?600:400}">${esc(src)}</span>
+          &nbsp;·&nbsp;${esc(l[COL.date] || '')}${l[COL.status] ? ` · <span style="font-weight:600">${esc(l[COL.status])}</span>` : ''}
+        </div>
+        ${l[COL.betreut] ? `<div class="lead-betreut">Betreut: ${esc(l[COL.betreut])}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  // ── Map markers ───────────────────────────────────────────────────────────
+  const CLUSTER_ZOOM = 12;      // below this → pie clusters; at/above → individual pins
+  const CLUSTER_PX   = 48;      // pixel radius for grouping
+
+  // Called once on load / data refresh – handles geocoding, then draws
+  function renderMarkers() {
+    const statusEl = document.getElementById('geo-status');
+    let pending = 0, resolved = 0;
+
+    for (const lead of mapLeadsSubset()) {
+      const q = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
+      if (!q || q in geoCache) continue;
+      pending++;
+      statusEl.style.display = 'block';
+      statusEl.textContent = `Karte: 0 / ${pending} neue Adressen werden geladen…`;
+      geocode(lead).then(() => {
+        resolved++;
+        if (resolved >= pending) statusEl.style.display = 'none';
+        else statusEl.textContent = `Karte: ${resolved} / ${pending} neue Adressen geladen…`;
+        drawMarkers();
+      });
+    }
+
+    drawMarkers();
+  }
+
+  // Pure render from cache – called on load + zoomend
+  function drawMarkers() {
+    markerLayer.clearLayers();
+    markerMap = {};
+
+    const subset = mapLeadsSubset();
+    const withCoords = subset.map(lead => {
+      const q = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
+      return (q && geoCache[q]) ? { lead, coords: geoCache[q] } : null;
+    }).filter(Boolean);
+
+    if (map.getZoom() < CLUSTER_ZOOM) {
+      renderClusters(withCoords);
+    } else {
+      for (const { lead, coords } of withCoords) placeMarker(lead, coords);
+    }
+  }
+
+  map.on('zoomend', () => drawMarkers());
+
+  // ── Clustering ────────────────────────────────────────────────────────────
+  function clusterLeads(items) {
+    const assigned = new Set();
+    const clusters = [];
+    for (let i = 0; i < items.length; i++) {
+      if (assigned.has(i)) continue;
+      const group = [items[i]];
+      assigned.add(i);
+      for (let j = i + 1; j < items.length; j++) {
+        if (assigned.has(j)) continue;
+        const dx = items[i].px.x - items[j].px.x;
+        const dy = items[i].px.y - items[j].px.y;
+        if (Math.sqrt(dx * dx + dy * dy) < CLUSTER_PX) { group.push(items[j]); assigned.add(j); }
+      }
+      clusters.push(group);
+    }
+    return clusters;
+  }
+
+  function renderClusters(withCoords) {
+    if (!withCoords.length) return;
+    const items = withCoords.map(({ lead, coords }) => ({
+      lead, coords,
+      px: map.latLngToContainerPoint(L.latLng(coords[0], coords[1]))
+    }));
+    for (const group of clusterLeads(items)) {
+      if (group.length === 1) placeMarker(group[0].lead, group[0].coords);
+      else placePieCluster(group);
+    }
+  }
+
+  function placePieCluster(group) {
+    const lat = group.reduce((s, c) => s + c.coords[0], 0) / group.length;
+    const lng = group.reduce((s, c) => s + c.coords[1], 0) / group.length;
+    const total = group.length;
+
+    // Count by age color
+    const counts = {};
+    for (const { lead } of group) {
+      const c = ageColor(lead);
+      counts[c] = (counts[c] || 0) + 1;
+    }
+
+    const size = Math.min(64, Math.max(36, 26 + total * 1.8));
+    const r = size / 2, ir = r - 2.5, cx = r, cy = r;
+    const slices = Object.entries(counts);
+
+    let paths = '';
+    if (slices.length === 1) {
+      paths = `<circle cx="${cx}" cy="${cy}" r="${ir}" fill="${slices[0][0]}" stroke="white" stroke-width="2"/>`;
+    } else {
+      let a = -Math.PI / 2;
+      for (const [color, cnt] of slices) {
+        const sweep = (cnt / total) * 2 * Math.PI;
+        const ea = a + sweep;
+        const x1 = (cx + ir * Math.cos(a)).toFixed(2),  y1 = (cy + ir * Math.sin(a)).toFixed(2);
+        const x2 = (cx + ir * Math.cos(ea)).toFixed(2), y2 = (cy + ir * Math.sin(ea)).toFixed(2);
+        paths += `<path d="M${cx},${cy}L${x1},${y1}A${ir},${ir} 0 ${sweep > Math.PI ? 1 : 0} 1 ${x2},${y2}Z"
+                       fill="${color}" stroke="white" stroke-width="1.5"/>`;
+        a = ea;
+      }
+    }
+
+    const fs = Math.max(9, Math.round(size * 0.28));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(255,255,255,0.2)" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
+      ${paths}
+      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central"
+            font-size="${fs}" font-weight="700" fill="white"
+            style="text-shadow:0 1px 3px rgba(0,0,0,0.9);font-family:sans-serif">${total}</text>
+    </svg>`;
+
+    const icon = L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [r, r], popupAnchor: [0, -r] });
+    const marker = L.marker([lat, lng], { icon });
+    marker.on('click', () => {
+      map.flyTo([lat, lng], Math.min(map.getZoom() + 2, CLUSTER_ZOOM + 1), { animate: true });
+    });
+    marker.addTo(markerLayer);
+  }
+
+  // ── Individual pin ────────────────────────────────────────────────────────
+  function pinIcon(color) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="38" viewBox="0 0 26 38">
+      <path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z"
+            fill="${color}" stroke="rgba(0,0,0,0.35)" stroke-width="1.2"/>
+      <circle cx="13" cy="13" r="5" fill="white" fill-opacity="0.45"/>
+    </svg>`;
+    return L.divIcon({ html: svg, className: '', iconSize: [26, 38], iconAnchor: [13, 38], popupAnchor: [0, -38] });
+  }
+
+  function placeMarker(lead, coords) {
+    if (!coords) return;
+    const color  = ageColor(lead);
+    const src    = getSource(lead);
+    const marker = L.marker(coords, { icon: pinIcon(color) });
+
+    const popupContent = `
+      <div class="popup-name" style="border-left:3px solid ${color};padding-left:6px">
+        ${esc(lead[COL.name] || '(kein Name)')}
+        <span style="color:#94a3b8;font-weight:400;font-size:0.75rem"> #${esc((lead[COL.nr]||'').trim())}</span>
+      </div>
+      ${lead[COL.phone]   ? `<div class="popup-row">📞 <a class="tel-link" href="${esc(telHref(lead[COL.phone]))}">${esc(lead[COL.phone])}</a></div>` : ''}
+      ${lead[COL.email]   ? `<div class="popup-row">✉️ ${esc(lead[COL.email])}</div>` : ''}
+      ${lead[COL.city]    ? `<div class="popup-row">📍 ${esc(lead[COL.street] ? lead[COL.street]+', ' : '')}${esc(lead[COL.zip]||'')} ${esc(lead[COL.city])}</div>` : ''}
+      <div class="popup-row" style="color:#64748b">${esc(src)} · ${esc(lead[COL.date]||'')}</div>
+      ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
+      ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
+      <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(lead[COL.email] || lead[COL.name] || '')}')">
+        Bearbeiten / Details
+      </button>`;
+
+    marker.bindPopup(popupContent, { maxWidth: 320 });
+    marker.addTo(markerLayer);
+
+    const key = lead[COL.email] || lead[COL.name] || '';
+    markerMap[key] = marker;
+  }
+
+  // ── Select lead (sidebar + optional map) ─────────────────────────────────
+  function selectLead(encodedKey) {
+    const key  = decodeURIComponent(encodedKey);
+    const lead = allLeads.find(l => (l[COL.email] || l[COL.name] || '') === key);
+    if (!lead) return;
+    activeEmail = lead[COL.email];
+
+    // Fly to marker and open popup if it exists
+    const marker = markerMap[key];
+    if (marker) {
+      map.setView(marker.getLatLng(), Math.max(map.getZoom(), 12), { animate: true });
+      marker.openPopup();
+    }
+
+    // Show detail in sidebar
+    openSidebarDetail(lead);
+  }
+
+  function openSidebarDetail(lead) {
+    document.getElementById('lead-list').style.display = 'none';
+    document.getElementById('sidebar-detail').classList.add('open');
+
+    const color = ageColor(lead);
+    const titleEl = document.getElementById('sd-name');
+    titleEl.textContent = lead[COL.name] || '(kein Name)';
+    titleEl.style.borderLeft = `4px solid ${color}`;
+
+    const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
+    const infoRows = [
+      ['Anfrage Nr.', (lead[COL.nr]||'').trim()],
+      ['E-Mail',      lead[COL.email]],
+      ['Adresse',     addr],
+      ['Quelle',      getSource(lead)],
+      ['Datum',       lead[COL.date]],
+      ['Info',        lead[COL.info]],
+      ['Status',      lead[COL.status]],
+      ['Nachfass bis', lead[COL.nachfass]],
+      ['Termin',      lead[COL.termin]],
+    ].filter(([, v]) => v);
+
+    let infoHtml = infoRows.map(([l, v]) => `<b>${esc(l)}:</b><span>${esc(v)}</span>`).join('');
+    if (lead[COL.phone]) {
+      const th = telHref(lead[COL.phone]);
+      const phoneCell = th
+        ? `<a class="tel-link" href="${esc(th)}">${esc(lead[COL.phone])}</a>`
+        : esc(lead[COL.phone]);
+      infoHtml = `<b>Telefon:</b><span>${phoneCell}</span>` + infoHtml;
+    }
+    document.getElementById('sd-info').innerHTML = infoHtml;
+
+    document.getElementById('sd-betreut').value = lead[COL.betreut] || '';
+    document.getElementById('sd-notizen').value = lead[COL.notes]   || '';
+    document.getElementById('sd-status').value = (lead[COL.status] || '').trim();
+    document.getElementById('sd-nachfass').value = (lead[COL.nachfass] || '').trim().slice(0, 10);
+    document.getElementById('sd-termin').value = normalizeLocalDatetime(lead[COL.termin]);
+    toggleNachfassField();
+    renderBetreutChips();
+    document.getElementById('save-hint').style.display = 'none';
+
+    const archBtn = document.getElementById('btn-archive');
+    archBtn.disabled = false;
+    archBtn.textContent = '✓ Abgearbeitet';
+
+  }
+
+  function closeSidebarDetail() {
+    document.getElementById('sidebar-detail').classList.remove('open');
+    document.getElementById('lead-list').style.display = 'block';
+    activeEmail = null;
+    renderList();
+  }
+
+  // ── Save fields ───────────────────────────────────────────────────────────
+  async function saveFields() {
+    if (!activeEmail) return;
+    const betreut = document.getElementById('sd-betreut').value;
+    const notizen = document.getElementById('sd-notizen').value;
+    const status = document.getElementById('sd-status').value;
+    const nachfass = document.getElementById('sd-nachfass').value;
+    const termin = document.getElementById('sd-termin').value;
+
+    const cols = [
+      [COL.betreut, betreut],
+      [COL.notes, notizen],
+      [COL.status, status],
+      [COL.nachfass, nachfass],
+      [COL.termin, termin],
+    ];
+
+    await Promise.all(cols.map(([column, value]) =>
+      fetch(`/api/leads/${encodeURIComponent(activeEmail)}/field`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ column, value }),
+      })
+    ));
+
+    const lead = allLeads.find(l => l[COL.email] === activeEmail);
+    if (lead) {
+      lead[COL.betreut] = betreut;
+      lead[COL.notes] = notizen;
+      lead[COL.status] = status;
+      lead[COL.nachfass] = nachfass;
+      lead[COL.termin] = termin;
+    }
+
+    const hint = document.getElementById('save-hint');
+    hint.style.display = 'inline';
+    setTimeout(() => { hint.style.display = 'none'; }, 2000);
+    renderStats();
+    renderList();
+    renderMarkers();
+  }
+
+  // ── Archive lead ──────────────────────────────────────────────────────────
+  async function doArchive() {
+    if (!activeEmail) return;
+    const lead = allLeads.find(l => l[COL.email] === activeEmail);
+    if (!confirm(`"${lead?.[COL.name] || activeEmail}" archivieren und aus der Liste entfernen?`)) return;
+
+    const btn = document.getElementById('btn-archive');
+    btn.disabled = true;
+    btn.textContent = 'Wird archiviert…';
+
+    const res = await fetch(`/api/leads/${encodeURIComponent(activeEmail)}/archive`, { method: 'POST' });
+    if (res.ok) {
+      allLeads = allLeads.filter(l => l[COL.email] !== activeEmail);
+      closeSidebarDetail();
+      renderStats();
+      renderMarkers();
+    } else {
+      alert('Fehler beim Archivieren. Bitte erneut versuchen.');
+      btn.disabled = false;
+      btn.textContent = '✓ Abgearbeitet';
+    }
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  loadVertrieblerNames().then(() => loadLeads());
+  setInterval(loadLeads, 5 * 60 * 1000);
+</script>
+</body>
+</html>

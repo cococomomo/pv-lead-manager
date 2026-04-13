@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+.env.txt
+auth/*.json
+auth/*.key
+data/vertriebler.json
+.DS_Store
+*.log
+.claude/
