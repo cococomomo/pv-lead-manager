@@ -6,6 +6,8 @@ node_modules/
 auth/*.json
 auth/*.key
 data/vertriebler.json
+data/users.json
+data/sessions/
 .DS_Store
 *.log
 .claude/

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PV Lead Manager – Anmeldung</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; padding: 1rem; }
+    .card { background: #1e293b; border-radius: 12px; padding: 1.75rem; width: 100%; max-width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.35); }
+    h1 { font-size: 1.15rem; margin: 0 0 0.25rem; color: #fff; }
+    p.sub { font-size: 0.82rem; color: #94a3b8; margin: 0 0 1.25rem; }
+    label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.25rem; }
+    input { width: 100%; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #f8fafc; font-size: 0.95rem; margin-bottom: 0.85rem; }
+    button { width: 100%; padding: 0.6rem; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; font-size: 0.95rem; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .err { color: #fca5a5; font-size: 0.82rem; margin-top: 0.75rem; min-height: 1.2em; }
+    details { margin-top: 1rem; font-size: 0.75rem; color: #64748b; }
+    details summary { cursor: pointer; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PV Lead Manager</h1>
+    <p class="sub">Mit deinem Vertriebler-Zugang anmelden (Benutzername = vergebener Name).</p>
+    <form id="f">
+      <label for="u">Benutzername</label>
+      <input id="u" name="username" autocomplete="username" required />
+      <label for="p">Passwort</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Anmelden</button>
+    </form>
+    <div class="err" id="err"></div>
+    <details>
+      <summary>Erstes Admin-Konto (einmalig)</summary>
+      <p style="margin:0.5rem 0 0">Wenn noch <strong>kein</strong> Benutzer existiert: <code>SETUP_TOKEN</code> in der Server-<code>.env</code> setzen, dann hier ausfüllen.</p>
+      <label for="em">E-Mail (Admin)</label>
+      <input id="em" placeholder="optional" />
+      <label for="st">Setup-Token</label>
+      <input id="st" type="password" placeholder="aus .env" />
+      <button type="button" style="margin-top:0.5rem;background:#059669" onclick="bootstrap()">Admin anlegen</button>
+    </details>
+  </div>
+  <script>
+    const cred = { credentials: 'same-origin' };
+
+    async function checkSession() {
+      const r = await fetch('/api/auth/me', cred);
+      const j = await r.json();
+      if (j.user) {
+        const params = new URLSearchParams(location.search);
+        location.replace(params.get('next') || '/');
+      }
+    }
+    checkSession();
+
+    document.getElementById('f').onsubmit = async (e) => {
+      e.preventDefault();
+      document.getElementById('err').textContent = '';
+      const username = document.getElementById('u').value.trim();
+      const password = document.getElementById('p').value;
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ username, password }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        document.getElementById('err').textContent = j.error === 'invalid_credentials' ? 'Zugangsdaten ungültig.' : (j.error || r.statusText);
+        return;
+      }
+      const params = new URLSearchParams(location.search);
+      location.replace(params.get('next') || '/');
+    };
+
+    async function bootstrap() {
+      document.getElementById('err').textContent = '';
+      const username = document.getElementById('u').value.trim();
+      const password = document.getElementById('p').value;
+      const email = document.getElementById('em').value.trim();
+      const setupToken = document.getElementById('st').value;
+      if (!setupToken) {
+        document.getElementById('err').textContent = 'Setup-Token eingeben.';
+        return;
+      }
+      const r = await fetch('/api/auth/bootstrap-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ username, password, email, setupToken }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        document.getElementById('err').textContent = j.error || r.statusText;
+        return;
+      }
+      location.replace('/');
+    }
+  </script>
+</body>
+</html>

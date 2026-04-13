@@ -11,6 +11,8 @@ const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
 const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
 /** Tab mit den Leads – muss exakt dem Blattnamen in Google Sheets entsprechen */
 const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt2').trim();
+/** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
+const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim();
 const ARCHIVE_TAB            = 'Cosimo';
 /** Datenbereich (Spalten); bei vielen CRM-Spalten ggf. erweitern */
 const DATA_RANGE = `${SHEET_NAME}!A1:ZZ`;
@@ -72,6 +74,21 @@ async function getHeader(sheets) {
   return res.data.values?.[0] || [];
 }
 
+async function fetchLeadsForTab(sheetTitle) {
+  const sheets = await getSheets();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${sheetTitle}!A1:ZZ`,
+  });
+  const [header, ...rows] = res.data.values || [];
+  if (!header) return [];
+  return rows.map((row) => {
+    const obj = {};
+    header.forEach((col, i) => { obj[col] = row[i] || ''; });
+    return obj;
+  });
+}
+
 async function appendLead(lead) {
   const sheets = await getSheets();
   const header = await getHeader(sheets);
@@ -107,24 +124,30 @@ async function getAllLeads() {
   if (!SPREADSHEET_ID) {
     throw new Error('GOOGLE_SPREADSHEET_ID fehlt in der Konfiguration');
   }
-  const sheets = await getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: DATA_RANGE,
-  });
-  const [header, ...rows] = res.data.values || [];
-  if (!header) return [];
-  return rows.map((row) => {
-    const obj = {};
-    header.forEach((col, i) => { obj[col] = row[i] || ''; });
-    return obj;
-  });
+  const primaryRows = await fetchLeadsForTab(SHEET_NAME);
+  const primary = primaryRows.map((o) => ({ ...o, __pvlLegacy: false }));
+
+  const leg = LEGACY_SHEET_NAME;
+  if (!leg || leg === SHEET_NAME) return primary;
+
+  const legacyRows = await fetchLeadsForTab(leg);
+  const primaryEmails = new Set(
+    primary.map((l) => String(l['E-Mail'] || '').toLowerCase()).filter(Boolean)
+  );
+  const legacy = legacyRows
+    .filter((l) => {
+      const e = String(l['E-Mail'] || '').toLowerCase();
+      return !e || !primaryEmails.has(e);
+    })
+    .map((o) => ({ ...o, __pvlLegacy: true }));
+
+  return [...primary, ...legacy];
 }
 
 async function leadExists(email) {
   if (!email) return false;
-  const leads = await getAllLeads();
-  return leads.some((l) => l['E-Mail']?.toLowerCase() === email.toLowerCase());
+  const rows = await fetchLeadsForTab(SHEET_NAME);
+  return rows.some((l) => l['E-Mail']?.toLowerCase() === email.toLowerCase());
 }
 
 // Update a single cell by column header (e.g. 'Betreut Durch', 'Notizen')
@@ -229,11 +252,29 @@ async function ensureArchiveTab(sheets, header) {
   });
 }
 
-function getLeadsSheetDebug() {
-  return {
+async function getLeadsSheetDebug() {
+  const base = {
     sheetTab: SHEET_NAME,
+    legacySheetTab: LEGACY_SHEET_NAME || null,
     spreadsheetConfigured: !!SPREADSHEET_ID,
   };
+  try {
+    if (!SPREADSHEET_ID) return { ...base, primaryRowCount: 0, legacyRowCount: 0, mergedCount: 0 };
+    const p = await fetchLeadsForTab(SHEET_NAME);
+    let legacyC = 0;
+    if (LEGACY_SHEET_NAME && LEGACY_SHEET_NAME !== SHEET_NAME) {
+      legacyC = (await fetchLeadsForTab(LEGACY_SHEET_NAME)).length;
+    }
+    const merged = await getAllLeads();
+    return {
+      ...base,
+      primaryRowCount: p.length,
+      legacyRowCount: legacyC,
+      mergedCount: merged.length,
+    };
+  } catch (e) {
+    return { ...base, error: e.message };
+  }
 }
 
 module.exports = {

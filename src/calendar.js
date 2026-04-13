@@ -156,4 +156,10 @@ async function scheduleAppointment(lead, emailData) {
   }
 }
 
-module.exports = { scheduleAppointment, createCalendarEvent, sendConfirmationEmail, leadAddressLine };
+module.exports = {
+  scheduleAppointment,
+  createCalendarEvent,
+  sendConfirmationEmail,
+  leadAddressLine,
+  getAuth,
+};

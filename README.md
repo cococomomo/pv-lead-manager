@@ -53,7 +53,19 @@ cp .env.example .env
 # Werte ausfüllen (nie committen)
 ```
 
-Vertriebler-Namen (optional): `cp data/vertriebler.example.json data/vertriebler.json` und Datei bearbeiten, **oder** unter `/admin.html` speichern (nach Basic-Auth-Login am gleichen Host).
+Vertriebler-Namen (optional): `cp data/vertriebler.example.json data/vertriebler.json` und Datei bearbeiten, **oder** unter `/admin.html` speichern.
+
+### 3b. Vertriebler-Logins (statt einem gemeinsamen Basic-Auth)
+
+1. In `.env` **`SESSION_SECRET`** setzen (mind. 16 zufällige Zeichen). Optional **`SESSION_COOKIE_SECURE=1`** hinter HTTPS.
+2. **`APP_BASE_URL`** z. B. `https://pvl.lifeco.at` (für Links in Einladungs-Mails).
+3. **Ersten Admin** anlegen:
+   - **A)** Einmalig `SETUP_TOKEN` in `.env`, dann auf `/login.html` unten „Erstes Admin-Konto“ ausfüllen, **oder**
+   - **B)** Auf dem Server: `npm run create-admin -- <user> <passwort> [email]`
+4. Weitere Nutzer: als Admin einloggen → **`/admin.html`** → Tab „Benutzer & Logins“. Optional **E-Mail senden** (nutzt Gmail OAuth wie `MY_EMAIL` / bestehende Google-Token).
+5. Wenn `SESSION_SECRET` gesetzt ist, entfällt die **Basic-Auth**-Abfrage für die App (Basic greift dann nicht mehr). Für Notfall-API weiterhin `ADMIN_TOKEN` (Bearer) möglich.
+
+Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.json`.
 
 ### 4. Google OAuth2
 
@@ -65,6 +77,8 @@ Vertriebler-Namen (optional): `cp data/vertriebler.example.json data/vertriebler
 
 - Tabellen-ID in `GOOGLE_SPREADSHEET_ID` (und ggf. `GOOGLE_ARCHIVE_SPREADSHEET_ID` für Archiv).
 - **`GOOGLE_SHEET_NAME`**: exakter Name des **Tabellenblatts**, in dem die Leads stehen (früher fest `Tabellenblatt2`). Wenn eure 100+ Zeilen z. B. auf **„Leads“** oder **„Tabellenblatt1“** liegen, muss dieser Name in der `.env` stehen – sonst bleibt die Karte leer.
+- **`GOOGLE_SHEET_LEGACY_NAME`**: optionales **zweites Blatt** derselben Mappe (z. B. alte Leads). Diese Zeilen erscheinen **nur zur Ansicht** auf der Karte (weißer Pin-Ring); **Speichern, Archivieren und IMAP-Duplikat-Prüfung** beziehen sich nur auf **`GOOGLE_SHEET_NAME`**.
+- **Eigenes Spreadsheet nur für neue Leads** (ab jetzt): später per zweiter `GOOGLE_SPREADSHEET_ID` + Anpassung von `poller.js`/`appendLead` möglich – aktuell ein Sheet mit zwei Blättern ist der einfache Weg.
 - Im Leads-Tab diese **Spaltenüberschriften** ergänzen, damit CRM & Kalender sauber speichern:
   - `Status` (z. B. Neu, Angerufen, Nachfassen, Termin, Verloren)
   - `Nachfass bis` (Datum)

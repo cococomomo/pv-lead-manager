@@ -3,69 +3,181 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PV Lead Manager – Vertriebler</title>
+  <title>PV Lead Manager – Administration</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; color: #1a202c; }
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; }
     h1 { font-size: 1.2rem; color: #1a56db; }
-    p { font-size: 0.9rem; color: #64748b; line-height: 1.5; }
-    textarea { width: 100%; min-height: 140px; padding: 0.5rem; font-size: 0.9rem; border: 1px solid #cbd5e1; border-radius: 8px; }
-    button { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600; cursor: pointer; }
-    button:hover { background: #1e40af; }
-    .msg { margin-top: 0.75rem; font-size: 0.85rem; }
+    nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    nav button { padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
+    nav button.on { background: #1a56db; color: #fff; border-color: #1a56db; }
+    section { display: none; }
+    section.on { display: block; }
+    p { font-size: 0.88rem; color: #64748b; line-height: 1.5; }
+    textarea { width: 100%; min-height: 120px; padding: 0.5rem; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 8px; }
+    input[type="text"], input[type="password"], input[type="email"] { width: 100%; padding: 0.45rem; margin: 0.25rem 0 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; }
+    label { font-size: 0.8rem; font-weight: 600; color: #475569; }
+    button.primary { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.45rem 1rem; font-weight: 600; cursor: pointer; }
+    button.primary:hover { background: #1e40af; }
+    button.danger { background: #b91c1c; color: #fff; border: none; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.78rem; cursor: pointer; }
+    .msg { margin-top: 0.6rem; font-size: 0.85rem; }
     .ok { color: #059669; }
     .err { color: #b91c1c; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.75rem; }
+    th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
     a { color: #1a56db; }
   </style>
 </head>
 <body>
-  <h1>Vertriebler (max. 20)</h1>
-  <p>Ein Name pro Zeile. Wird in <code>data/vertriebler.json</code> auf dem Server gespeichert. Du bist mit derselben Zugangsdaten eingeloggt wie für die Karte (HTTP Basic Auth). Falls zusätzlich <code>ADMIN_TOKEN</code> gesetzt ist und kein Basic Auth: dann im Netzwerk-Tab den Bearer manuell setzen (selten).</p>
+  <h1>Administration</h1>
+  <p>Nur für Admins (Session) oder mit <code>Authorization: Bearer ADMIN_TOKEN</code> bei API-Aufrufen.</p>
 
-  <label for="names">Namen</label>
-  <textarea id="names" placeholder="Anna&#10;Ben&#10;…"></textarea>
+  <nav>
+    <button type="button" class="on" data-tab="chips" onclick="tab('chips')">Vertriebler-Chips</button>
+    <button type="button" data-tab="users" onclick="tab('users')">Benutzer &amp; Logins</button>
+  </nav>
 
-  <button type="button" onclick="save()">Speichern</button>
-  <div class="msg" id="msg"></div>
-  <p style="margin-top:1.5rem"><a href="/">← Zurück zur Karte</a></p>
+  <section id="sec-chips" class="on">
+    <p>Ein Name pro Zeile → erscheint als Klick-Chip in der Karte.</p>
+    <textarea id="names" placeholder="Anna&#10;Ben&#10;…"></textarea>
+    <p><label for="btoken">Bearer ADMIN_TOKEN (nur nötig ohne Admin-Session)</label></p>
+    <input type="password" id="btoken" placeholder="optional" autocomplete="off" />
+    <p><button type="button" class="primary" onclick="saveChips()">Chips speichern</button></p>
+    <div class="msg" id="m-chips"></div>
+  </section>
+
+  <section id="sec-users">
+    <p>Benutzername = Login-Name (z. B. Vorname). Passwort mindestens 6 Zeichen. Optional E-Mail: Zugangsdaten werden per Gmail (OAuth aus <code>.env</code>) verschickt, wenn „E-Mail senden“ aktiviert ist.</p>
+    <label>Benutzername</label>
+    <input type="text" id="nu" autocomplete="off" />
+    <label>Passwort</label>
+    <input type="password" id="np" autocomplete="new-password" />
+    <label>E-Mail</label>
+    <input type="email" id="ne" autocomplete="off" />
+    <label>Rolle</label>
+    <select id="nr" style="width:100%;padding:0.45rem;margin-bottom:0.65rem;border-radius:6px;border:1px solid #cbd5e1">
+      <option value="sales">Vertrieb</option>
+      <option value="admin">Admin</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400">
+      <input type="checkbox" id="nsend" checked /> Zugangsdaten per E-Mail senden (wenn E-Mail gesetzt)
+    </label>
+    <p><button type="button" class="primary" onclick="createUser()">Benutzer anlegen</button></p>
+    <div class="msg" id="m-users"></div>
+    <h2 style="font-size:1rem;margin-top:1.25rem">Bestehende Benutzer</h2>
+    <table><thead><tr><th>Name</th><th>Rolle</th><th>E-Mail</th><th></th></tr></thead><tbody id="utb"></tbody></table>
+  </section>
+
+  <p style="margin-top:1.5rem"><a href="/">← Zurück zur Karte</a> · <a href="#" onclick="logout();return false">Abmelden</a></p>
 
   <script>
     const cred = { credentials: 'same-origin' };
 
-    async function load() {
-      const msg = document.getElementById('msg');
-      msg.textContent = '';
-      try {
-        const r = await fetch('/api/vertriebler', cred);
-        const arr = await r.json();
-        document.getElementById('names').value = Array.isArray(arr) ? arr.join('\n') : '';
-      } catch (e) {
-        msg.textContent = 'Konnte Liste nicht laden: ' + e.message;
-        msg.className = 'msg err';
-      }
+    function tab(id) {
+      document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
+      document.querySelectorAll('section').forEach((s) => s.classList.toggle('on', s.id === 'sec-' + id));
     }
 
-    async function save() {
-      const msg = document.getElementById('msg');
+    function authHeaders() {
+      const t = document.getElementById('btoken').value.trim();
+      const h = {};
+      if (t) h.Authorization = 'Bearer ' + t;
+      return h;
+    }
+
+    async function loadChips() {
+      const r = await fetch('/api/vertriebler', cred);
+      const arr = await r.json();
+      document.getElementById('names').value = Array.isArray(arr) ? arr.join('\n') : '';
+    }
+
+    async function saveChips() {
+      const msg = document.getElementById('m-chips');
       msg.textContent = '';
       const raw = document.getElementById('names').value.split('\n').map((s) => s.trim()).filter(Boolean);
-      try {
-        const r = await fetch('/api/admin/vertriebler', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ names: raw }),
-        });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.error || r.statusText);
-        msg.textContent = 'Gespeichert: ' + data.names.join(', ');
-        msg.className = 'msg ok';
-      } catch (e) {
-        msg.textContent = e.message;
-        msg.className = 'msg err';
+      const r = await fetch('/api/admin/vertriebler', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ names: raw }),
+      });
+      const j = await r.json().catch(() => ({}));
+      msg.textContent = r.ok ? ('Gespeichert: ' + (j.names || []).join(', ')) : (j.error || r.statusText);
+      msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+    }
+
+    async function loadUsers() {
+      const r = await fetch('/api/admin/users', { ...cred, headers: { ...authHeaders() } });
+      const tb = document.getElementById('utb');
+      tb.innerHTML = '';
+      if (!r.ok) {
+        tb.innerHTML = '<tr><td colspan="4">Keine Berechtigung oder nicht angemeldet.</td></tr>';
+        return;
+      }
+      const { users } = await r.json();
+      for (const u of users) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(u.username)}</td><td>${escapeHtml(u.role)}</td><td>${escapeHtml(u.email || '')}</td><td></td>`;
+        const td = tr.lastElementChild;
+        const b = document.createElement('button');
+        b.className = 'danger';
+        b.textContent = 'Löschen';
+        b.onclick = () => delUser(u.username);
+        td.appendChild(b);
+        tb.appendChild(tr);
       }
     }
 
-    load();
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function createUser() {
+      const msg = document.getElementById('m-users');
+      msg.textContent = '';
+      const body = {
+        username: document.getElementById('nu').value.trim(),
+        password: document.getElementById('np').value,
+        email: document.getElementById('ne').value.trim(),
+        role: document.getElementById('nr').value,
+        sendEmail: document.getElementById('nsend').checked,
+      };
+      const r = await fetch('/api/admin/users', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json().catch(() => ({}));
+      msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+      msg.textContent = r.ok ? (j.warning || 'Benutzer angelegt.') : (j.error || r.statusText);
+      if (r.ok) {
+        document.getElementById('nu').value = '';
+        document.getElementById('np').value = '';
+        document.getElementById('ne').value = '';
+        loadUsers();
+      }
+    }
+
+    async function delUser(username) {
+      if (!confirm('Benutzer ' + username + ' wirklich löschen?')) return;
+      const r = await fetch('/api/admin/users/delete', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ username }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) alert(j.error || r.statusText);
+      loadUsers();
+    }
+
+    async function logout() {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+      location.href = '/login.html';
+    }
+
+    loadChips();
+    loadUsers();
   </script>
 </body>
 </html>
