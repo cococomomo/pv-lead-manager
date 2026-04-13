@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('./load-env');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const express = require('express');
@@ -100,7 +100,16 @@ function verifyBasicCreds(creds) {
 function formatGoogleSheetsError(err) {
   const raw = (err && err.message) ? String(err.message) : String(err);
   if (/invalid_grant/i.test(raw)) {
-    return 'Google-Zugriff abgelaufen (invalid_grant). Auf dem Server im Projektverzeichnis OAuth erneuern: npm run oauth-setup — neue auth/google-token.json. Anschließend Dienst neu starten (pm2).';
+    const sid = String(process.env.GOOGLE_SPREADSHEET_ID || '').trim();
+    const sheetHint = sid
+      ? ` GOOGLE_SPREADSHEET_ID in .env ist gesetzt (${sid}); muss zur Lead-Tabelle passen.`
+      : ' GOOGLE_SPREADSHEET_ID in .env setzen (ID aus der Sheet-URL).';
+    return (
+      'Google-Zugriff abgelaufen (invalid_grant). Auf dem Server: npm run oauth-setup — neue auth/google-token.json, '
+      + 'Client-ID/Secret wie in der Google Cloud (gleicher OAuth-Client wie früher). Dann pm2 restart pvl-manager.'
+      + sheetHint
+      + ' Diagnose (eingeloggt): /api/debug/leads-sheet → spreadsheetId.'
+    );
   }
   return raw;
 }

@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('./load-env');
 const { google } = require('googleapis');
 const path = require('path');
 const { getMailSender } = require('./mail-transport');

@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('./load-env');
 
 const SYSTEM_PROMPT = `Du extrahierst aus E-Mail-Anfragen für Photovoltaikanlagen die relevanten Informationen für eine Lead-Tabelle.
 

@@ -75,7 +75,7 @@ Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.js
 
 ### 5. Google Sheet
 
-- Tabellen-ID in `GOOGLE_SPREADSHEET_ID` (und ggf. `GOOGLE_ARCHIVE_SPREADSHEET_ID` für Archiv).
+- Tabellen-ID **nur** in `GOOGLE_SPREADSHEET_ID` (und ggf. `GOOGLE_ARCHIVE_SPREADSHEET_ID` für Archiv) in der **`.env`** — im Repository **keine** IDs im Quelltext; die App liest ausschließlich `process.env` (siehe `src/sheets.js`).
 - **`GOOGLE_SHEET_NAME`**: exakter Name des **Tabellenblatts**, in dem die Leads stehen (Default im Code: `Sheet1`; deutsch oft `Tabellenblatt1`). Wenn die Zeilen z. B. auf **„Leads“** liegen, muss dieser Name in der `.env` stehen – sonst bleibt die Karte leer. Diagnose: `/api/debug/leads-sheet` zeigt `sheetTabs` und `sheetTabMatches`.
 - **`GOOGLE_SHEET_LEGACY_NAME`**: optionales **zweites Blatt** derselben Mappe (z. B. alte Leads). Diese Zeilen erscheinen **nur zur Ansicht** auf der Karte (weißer Pin-Ring); **Speichern, Archivieren und IMAP-Duplikat-Prüfung** beziehen sich nur auf **`GOOGLE_SHEET_NAME`**.
 - **Eigenes Spreadsheet nur für neue Leads** (ab jetzt): später per zweiter `GOOGLE_SPREADSHEET_ID` + Anpassung von `poller.js`/`appendLead` möglich – aktuell ein Sheet mit zwei Blättern ist der einfache Weg.

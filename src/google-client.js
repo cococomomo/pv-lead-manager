@@ -1,5 +1,6 @@
 'use strict';
 
+require('./load-env');
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');

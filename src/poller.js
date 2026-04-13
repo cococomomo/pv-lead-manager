@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('./load-env');
 const imaps = require('imap-simple');
 const { simpleParser } = require('mailparser');
 const cron = require('node-cron');

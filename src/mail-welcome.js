@@ -1,5 +1,6 @@
 'use strict';
 
+require('./load-env');
 const { getMailSender } = require('./mail-transport');
 const { getAuth } = require('./calendar');
 

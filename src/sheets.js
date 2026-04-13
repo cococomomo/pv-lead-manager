@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('./load-env');
 const { google } = require('googleapis');
 const path = require('path');
 const { createGoogleOAuth2Client } = require('./google-client');

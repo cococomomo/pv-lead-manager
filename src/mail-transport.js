@@ -1,5 +1,6 @@
 'use strict';
 
+require('./load-env');
 const nodemailer = require('nodemailer');
 
 /** Versand per SMTP (z. B. vertrieb@… beim Hoster) — IMAP dient nur dem Empfang, nicht dem Senden. */
