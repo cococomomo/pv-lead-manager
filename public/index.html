@@ -196,6 +196,11 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+  /** Same-origin API calls send HTTP Basic Auth after browser login */
+  function apiFetch(url, opts = {}) {
+    return fetch(url, { ...opts, credentials: 'same-origin' });
+  }
+
   // ── Map ───────────────────────────────────────────────────────────────────
   const map = L.map('map').setView([48.21, 16.37], 9);
 
@@ -291,7 +296,7 @@
 
   async function loadVertrieblerNames() {
     try {
-      const r = await fetch('/api/vertriebler');
+      const r = await apiFetch('/api/vertriebler');
       vertrieblerList = await r.json();
       if (!Array.isArray(vertrieblerList)) vertrieblerList = [];
     } catch {
@@ -400,7 +405,7 @@
   // ── Load leads ────────────────────────────────────────────────────────────
   async function loadLeads() {
     try {
-      const res = await fetch('/api/leads');
+      const res = await apiFetch('/api/leads');
       allLeads = await res.json();
       renderStats();
       renderList();
@@ -713,7 +718,7 @@
     ];
 
     await Promise.all(cols.map(([column, value]) =>
-      fetch(`/api/leads/${encodeURIComponent(activeEmail)}/field`, {
+      apiFetch(`/api/leads/${encodeURIComponent(activeEmail)}/field`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ column, value }),
       })
@@ -746,7 +751,7 @@
     btn.disabled = true;
     btn.textContent = 'Wird archiviert…';
 
-    const res = await fetch(`/api/leads/${encodeURIComponent(activeEmail)}/archive`, { method: 'POST' });
+    const res = await apiFetch(`/api/leads/${encodeURIComponent(activeEmail)}/archive`, { method: 'POST' });
     if (res.ok) {
       allLeads = allLeads.filter(l => l[COL.email] !== activeEmail);
       closeSidebarDetail();

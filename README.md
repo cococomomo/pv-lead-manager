@@ -73,16 +73,26 @@ pm2 start src/poller.js --name pv-lead-poll
 pm2 save
 ```
 
-## Hetzner / Domain (z. B. pvl.lifeco.at)
+## Livegang: warum `pvl.lifeco.at` noch leer ist
 
-1. DNS **A-Record** `pvl` → Server-IPv4 (oder AAAA für IPv6).  
-2. Auf dem Server einen Reverse-Proxy mit TLS (z. B. **Caddy** oder **Nginx** + Let’s Encrypt).  
-3. Proxy auf `http://127.0.0.1:3080` (oder den gewählten `PORT`).
+Typisch fehlt **mindestens eines** von: DNS, Firewall, laufender Node-Prozess, Reverse-Proxy. Abhaken:
 
-**Nginx** (Auszug):
+1. **DNS** beim Domain-Anbieter: Host `pvl` (oder `@` wenn Subdomain anders) als **A-Record** auf die **öffentliche IPv4** des Hetzner-Servers. Warten bis `nslookup pvl.lifeco.at` die richtige IP zeigt (oft wenige Minuten bis Stunden).
+2. **Firewall** (z. B. `ufw allow 80` und `ufw allow 443` / Hetzner Cloud Firewall): Traffic zum Webserver erlauben.
+3. **App auf dem Server**: Repo klonen oder deployen, `npm ci`, `.env` ausfüllen (inkl. Google `auth/`-Dateien), `PORT=3080`.
+4. **Passwortschutz (HTTP Basic Auth)** in `.env` auf dem Server (Werte nur dort, nicht ins Git):  
+   `BASIC_AUTH_USER=cosimo`  
+   `BASIC_AUTH_PASS=…`  
+   Ohne diese beiden Variablen ist die App **öffentlich** erreichbar (nur für lokale Tests).
+5. **Prozesse**: `pm2 start src/server.js --name pv-lead-web` und `pm2 start src/poller.js --name pv-lead-poll` (Poller für E-Mail), `pm2 save`.
+6. **Reverse-Proxy** (Nginx/Caddy) mit `server_name pvl.lifeco.at` → `http://127.0.0.1:3080`. Erst danach ist die Domain von außen nutzbar, wenn der Node-Dienst läuft.
+7. **HTTPS empfohlen**: Ohne TLS sieht jemand im Netz mit, welche Seiten du aufrufst; Basic-Auth-Passwort wäre mitlesbar. Let’s Encrypt (Certbot oder Caddy automatisch) einrichten.
+
+**Nginx** (HTTP, Auszug – TLS später mit Certbot ergänzen):
 
 ```nginx
 server {
+  listen 80;
   server_name pvl.lifeco.at;
   location / {
     proxy_pass http://127.0.0.1:3080;
@@ -95,7 +105,7 @@ server {
 }
 ```
 
-`/admin.html` ist nur durch Geheimnis geschützt, wenn du `ADMIN_TOKEN` setzt – zusätzlich Zugriff per Firewall / VPN empfehlenswert.
+`/admin.html` nutzt dieselbe Basic-Auth-Session wie die Karte (`credentials: 'same-origin'`). Optional bleibt `ADMIN_TOKEN` für Spezialfälle ohne Basic Auth.
 
 ## Dashboard (Kurz)
 

@@ -1,6 +1,7 @@
 'use strict';
 
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -11,6 +12,43 @@ const PORT = parseInt(process.env.PORT, 10) || 3080;
 const DATA_DIR = path.join(__dirname, '../data');
 const VERT_FILE = path.join(DATA_DIR, 'vertriebler.json');
 
+function safeEqStr(expected, received) {
+  try {
+    const a = Buffer.from(String(expected), 'utf8');
+    const b = Buffer.from(String(received), 'utf8');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function parseBasicAuth(header) {
+  if (!header || !header.startsWith('Basic ')) return null;
+  try {
+    const raw = Buffer.from(header.slice(6), 'base64').toString('utf8');
+    const i = raw.indexOf(':');
+    if (i < 0) return null;
+    return { user: raw.slice(0, i), pass: raw.slice(i + 1) };
+  } catch {
+    return null;
+  }
+}
+
+function basicAuthMiddleware(req, res, next) {
+  const u = process.env.BASIC_AUTH_USER;
+  const p = process.env.BASIC_AUTH_PASS;
+  if (!u || !p) return next();
+
+  const creds = parseBasicAuth(req.headers.authorization);
+  if (!creds || !safeEqStr(u, creds.user) || !safeEqStr(p, creds.pass)) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PV Lead Manager"');
+    return res.status(401).send('Authentifizierung erforderlich');
+  }
+  next();
+}
+
+app.use(basicAuthMiddleware);
 app.use(express.json({ limit: '64kb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -72,10 +110,26 @@ app.get('/api/vertriebler', async (req, res) => {
 });
 
 app.post('/api/admin/vertriebler', async (req, res) => {
+  const hasBasic = !!(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASS);
   const token = process.env.ADMIN_TOKEN;
-  if (!token || req.headers.authorization !== `Bearer ${token}`) {
+  const authHeader = req.headers.authorization || '';
+
+  let allowed = false;
+  if (hasBasic) {
+    const creds = parseBasicAuth(authHeader);
+    if (creds
+      && safeEqStr(process.env.BASIC_AUTH_USER, creds.user)
+      && safeEqStr(process.env.BASIC_AUTH_PASS, creds.pass)) {
+      allowed = true;
+    }
+  } else if (token && authHeader === `Bearer ${token}`) {
+    allowed = true;
+  }
+
+  if (!allowed) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
   const { names } = req.body;
   if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) {
     return res.status(400).json({ error: 'names must be an array of strings' });
@@ -96,7 +150,8 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`PV Lead Manager running at http://localhost:${PORT}`);
+  const authHint = process.env.BASIC_AUTH_USER ? ' (Basic-Auth aktiv)' : '';
+  console.log(`PV Lead Manager running at http://localhost:${PORT}${authHint}`);
 });
 
 module.exports = app;

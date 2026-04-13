@@ -9,7 +9,6 @@
     h1 { font-size: 1.2rem; color: #1a56db; }
     p { font-size: 0.9rem; color: #64748b; line-height: 1.5; }
     textarea { width: 100%; min-height: 140px; padding: 0.5rem; font-size: 0.9rem; border: 1px solid #cbd5e1; border-radius: 8px; }
-    input[type="password"] { width: 100%; padding: 0.45rem; margin: 0.35rem 0 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; }
     button { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600; cursor: pointer; }
     button:hover { background: #1e40af; }
     .msg { margin-top: 0.75rem; font-size: 0.85rem; }
@@ -20,10 +19,7 @@
 </head>
 <body>
   <h1>Vertriebler (max. 20)</h1>
-  <p>Ein Name pro Zeile. Wird in <code>data/vertriebler.json</code> auf dem Server gespeichert. Dafür muss <code>ADMIN_TOKEN</code> in der <code>.env</code> gesetzt sein.</p>
-
-  <label for="token">Admin-Token</label>
-  <input type="password" id="token" autocomplete="current-password" placeholder="Bearer-Token aus .env" />
+  <p>Ein Name pro Zeile. Wird in <code>data/vertriebler.json</code> auf dem Server gespeichert. Du bist mit derselben Zugangsdaten eingeloggt wie für die Karte (HTTP Basic Auth). Falls zusätzlich <code>ADMIN_TOKEN</code> gesetzt ist und kein Basic Auth: dann im Netzwerk-Tab den Bearer manuell setzen (selten).</p>
 
   <label for="names">Namen</label>
   <textarea id="names" placeholder="Anna&#10;Ben&#10;…"></textarea>
@@ -33,11 +29,13 @@
   <p style="margin-top:1.5rem"><a href="/">← Zurück zur Karte</a></p>
 
   <script>
+    const cred = { credentials: 'same-origin' };
+
     async function load() {
       const msg = document.getElementById('msg');
       msg.textContent = '';
       try {
-        const r = await fetch('/api/vertriebler');
+        const r = await fetch('/api/vertriebler', cred);
         const arr = await r.json();
         document.getElementById('names').value = Array.isArray(arr) ? arr.join('\n') : '';
       } catch (e) {
@@ -49,20 +47,12 @@
     async function save() {
       const msg = document.getElementById('msg');
       msg.textContent = '';
-      const token = document.getElementById('token').value.trim();
       const raw = document.getElementById('names').value.split('\n').map((s) => s.trim()).filter(Boolean);
-      if (!token) {
-        msg.textContent = 'Bitte Admin-Token eintragen.';
-        msg.className = 'msg err';
-        return;
-      }
       try {
         const r = await fetch('/api/admin/vertriebler', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + token,
-          },
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ names: raw }),
         });
         const data = await r.json().catch(() => ({}));
