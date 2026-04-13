@@ -10,13 +10,22 @@ const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
 const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
 /** Tab mit den Leads – muss exakt dem Blattnamen in Google Sheets entsprechen */
-const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt2').trim();
+const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt1').trim();
 /** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
 const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim();
 const ARCHIVE_TAB            = 'Cosimo';
+
+/** A1-Notation: Blattnamen mit Leerzeichen/Sonderzeichen für die API quoten */
+function sheetRange(tab, a1Part) {
+  const t = String(tab || '').trim();
+  if (!t) return `!${a1Part}`;
+  if (/^[A-Za-z0-9_]+$/.test(t)) return `${t}!${a1Part}`;
+  return `'${t.replace(/'/g, "''")}'!${a1Part}`;
+}
+
 /** Datenbereich (Spalten); bei vielen CRM-Spalten ggf. erweitern */
-const DATA_RANGE = `${SHEET_NAME}!A1:ZZ`;
-const COL_A_RANGE = `${SHEET_NAME}!A:A`;
+const DATA_RANGE = sheetRange(SHEET_NAME, 'A1:ZZ');
+const COL_A_RANGE = sheetRange(SHEET_NAME, 'A:A');
 
 function trimCell(v) {
   return String(v ?? '').trim().replace(/\u00a0/g, ' ');
@@ -42,12 +51,25 @@ function scoreHeaderRow(row) {
   return s;
 }
 
+/** Datenzeilen enthalten oft echte E-Mails — keine Kopfzeile */
+function rowLooksLikeDataNotHeader(row) {
+  if (!row || !row.length) return false;
+  for (const c of row) {
+    const t = String(c || '').trim();
+    if (!t) continue;
+    if (t.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return true;
+  }
+  return false;
+}
+
 function detectBestHeaderRowIndex(values) {
   if (!values.length) return 0;
   let best = 0;
-  let bestScore = scoreHeaderRow(values[0]);
-  for (let i = 1; i < Math.min(values.length, 30); i++) {
-    const sc = scoreHeaderRow(values[i]);
+  let bestScore = -1e9;
+  for (let i = 0; i < Math.min(values.length, 50); i++) {
+    const row = values[i] || [];
+    let sc = scoreHeaderRow(row);
+    if (rowLooksLikeDataNotHeader(row)) sc -= 30;
     if (sc > bestScore) {
       bestScore = sc;
       best = i;
@@ -105,6 +127,15 @@ function applyCanonicalFieldAliases(lead) {
   if (nr) {
     if (!String(out['Anfrage NR'] || '').trim()) out['Anfrage NR'] = String(nr).trim();
   }
+  if (!String(out['E-Mail'] || '').trim()) {
+    for (const v of Object.values(out)) {
+      const s = String(v || '').trim();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
+        out['E-Mail'] = s;
+        break;
+      }
+    }
+  }
   return out;
 }
 
@@ -133,14 +164,25 @@ function matrixToLeadObjects(values) {
   const hi = detectBestHeaderRowIndex(values);
   const header = (values[hi] || []).map((c) => trimCell(c));
   const dataRows = values.slice(hi + 1);
-  return dataRows.map((row) => {
+  const sample = dataRows.slice(0, Math.min(dataRows.length, 300));
+  const width = Math.max(
+    header.length,
+    sample.reduce((m, r) => Math.max(m, (r || []).length), 0),
+    1
+  );
+  const out = [];
+  for (const row of dataRows) {
     const obj = {};
-    header.forEach((col, i) => {
-      if (!col) return;
-      obj[col] = row[i] == null ? '' : String(row[i]);
-    });
-    return applyCanonicalFieldAliases(obj);
-  });
+    for (let i = 0; i < width; i++) {
+      const label = i < header.length ? header[i] : '';
+      const val = row && i < row.length && row[i] != null ? String(row[i]) : '';
+      const key = label || `_c${i}`;
+      obj[key] = val;
+    }
+    const lead = applyCanonicalFieldAliases(obj);
+    if (Object.values(lead).some((v) => String(v).trim())) out.push(lead);
+  }
+  return out;
 }
 
 function splitMatrixRawRows(values) {
@@ -212,7 +254,7 @@ async function fetchLeadsForTab(sheetTitle) {
   const sheets = await getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetTitle}!A1:ZZ`,
+    range: sheetRange(sheetTitle, 'A1:ZZ'),
   });
   return matrixToLeadObjects(res.data.values || []);
 }
@@ -240,7 +282,7 @@ async function appendLead(lead) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1`,
+    range: sheetRange(SHEET_NAME, 'A1'),
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
@@ -366,7 +408,7 @@ async function updateLeadField(email, columnHeader, value) {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!${colLetter}${sheetRow}`,
+    range: sheetRange(SHEET_NAME, `${colLetter}${sheetRow}`),
     valueInputOption: 'RAW',
     requestBody: { values: [[value]] },
   });
@@ -397,7 +439,7 @@ async function archiveLead(email) {
   // Append to archive
   await sheets.spreadsheets.values.append({
     spreadsheetId: ARCHIVE_SPREADSHEET_ID,
-    range: `${ARCHIVE_TAB}!A1`,
+    range: sheetRange(ARCHIVE_TAB, 'A1'),
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [rowData] },
@@ -442,7 +484,7 @@ async function ensureArchiveTab(sheets, header) {
   // Write header row
   await sheets.spreadsheets.values.update({
     spreadsheetId: ARCHIVE_SPREADSHEET_ID,
-    range: `${ARCHIVE_TAB}!A1`,
+    range: sheetRange(ARCHIVE_TAB, 'A1'),
     valueInputOption: 'RAW',
     requestBody: { values: [header] },
   });
@@ -465,11 +507,18 @@ async function getLeadsSheetDebug() {
     const sh = await getSheets();
     const r = await sh.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A1:ZZ`,
+      range: sheetRange(SHEET_NAME, 'A1:ZZ'),
     });
     const raw = splitMatrixRawRows(r.data.values || []);
+    const meta = await sh.spreadsheets.get({
+      spreadsheetId: SPREADSHEET_ID,
+      fields: 'sheets.properties.title',
+    });
+    const sheetTabs = (meta.data.sheets || []).map((s) => s.properties?.title).filter(Boolean);
     return {
       ...base,
+      sheetTabs,
+      sheetTabMatches: sheetTabs.includes(SHEET_NAME),
       headerRowIndex: raw.headerRowIndex,
       rawRowCount: (raw.dataRows || []).length,
       primaryRowCount: p.length,
