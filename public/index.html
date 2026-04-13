@@ -90,11 +90,40 @@
     .tel-link { color: #1a56db; text-decoration: none; font-weight: 600; }
     .tel-link:hover { text-decoration: underline; }
     .chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.15rem; }
-    .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.76rem; cursor: pointer; font-family: inherit; }
+    .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.76rem; cursor: pointer; font-family: inherit; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
     .chip:hover { background: #e0e7ff; border-color: #6366f1; }
+    .chip:active { transform: scale(0.97); }
     .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
     .btn-gcal:hover { background: #eef2ff; }
     .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
+
+    .filter-bar input:focus, .filter-bar select:focus,
+    .field-group input:focus, .field-group textarea:focus, .field-group select:focus {
+      outline: 2px solid #93c5fd; outline-offset: 1px; border-color: #2563eb;
+    }
+    .stat-card .num { transition: color 0.2s ease; }
+
+    #pvl-toast {
+      position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%) translateY(140%);
+      max-width: min(420px, 92vw); padding: 0.55rem 1rem; border-radius: 10px;
+      font-size: 0.85rem; font-weight: 500; box-shadow: 0 10px 40px rgba(15, 23, 42, 0.15);
+      z-index: 20000; opacity: 0; transition: opacity 0.28s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #pvl-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #pvl-toast.err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    #pvl-toast.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    #pvl-toast.info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+    @media (prefers-reduced-motion: reduce) {
+      body { animation: none; }
+      .lead-item { transition: none; }
+      .lead-item:hover { transform: none; }
+      .refresh-btn.spin { animation: none; }
+      #sidebar-detail.open { animation: none; }
+      #lead-list { scroll-behavior: auto; }
+      #pvl-toast { transition: none; }
+      .stat-card .num { transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -207,11 +236,24 @@
   </div>
 </div>
 
+<div id="pvl-toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   /** same-origin: Session-Cookie und ggf. Basic-Auth */
   function apiFetch(url, opts = {}) {
     return fetch(url, { ...opts, credentials: 'same-origin' });
+  }
+
+  let _toastTimer;
+  function showToast(msg, kind = 'err') {
+    const el = document.getElementById('pvl-toast');
+    if (!el || !msg) return;
+    clearTimeout(_toastTimer);
+    el.className = (kind === 'ok' ? 'ok' : kind === 'info' ? 'info' : 'err');
+    el.textContent = msg;
+    requestAnimationFrame(() => el.classList.add('show'));
+    _toastTimer = setTimeout(() => el.classList.remove('show'), kind === 'ok' ? 3200 : kind === 'info' ? 4000 : 5200);
   }
 
   // ── Map ───────────────────────────────────────────────────────────────────
@@ -364,9 +406,15 @@
   function renderBetreutChips() {
     const el = document.getElementById('sd-betreut-chips');
     if (!el) return;
-    el.innerHTML = vertrieblerList.map((name) =>
-      `<button type="button" class="chip" onclick="assignBetreut(${JSON.stringify(name)})">${esc(name)}</button>`
-    ).join('');
+    el.replaceChildren();
+    for (const name of vertrieblerList) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = name;
+      b.addEventListener('click', () => assignBetreut(name));
+      el.appendChild(b);
+    }
   }
 
   function assignBetreut(name) {
@@ -379,12 +427,12 @@
     if (!lead) return;
     const startStr = document.getElementById('sd-termin').value;
     if (!startStr) {
-      window.alert('Bitte unter „Termin“ Datum und Uhrzeit eintragen.');
+      showToast('Bitte unter „Termin“ Datum und Uhrzeit eintragen.', 'info');
       return;
     }
     const start = new Date(startStr);
     if (Number.isNaN(start.getTime())) {
-      window.alert('Ungültiges Datum.');
+      showToast('Ungültiges Datum.', 'err');
       return;
     }
     const end = new Date(start.getTime() + 60 * 60 * 1000);
@@ -845,13 +893,13 @@
   async function saveFields() {
     if (!activeEmail) return;
     if (activeIsLegacy) {
-      window.alert('Dieser Lead liegt im Archiv-Tabellenblatt und kann hier nicht geändert werden.');
+      showToast('Archiv-Blatt: hier nicht änderbar.', 'info');
       return;
     }
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     if (!apiEmail) {
-      window.alert('Keine E-Mail in der Zeile – API kann den Lead nicht zuordnen.');
+      showToast('Keine E-Mail in der Zeile – Speichern nicht möglich.', 'err');
       return;
     }
     const betreut = document.getElementById('sd-betreut').value;
@@ -884,7 +932,7 @@
       const failed = results.find((r) => !r.ok);
       if (failed) {
         const j = await failed.json().catch(() => ({}));
-        window.alert('Speichern fehlgeschlagen: ' + (j.error || failed.statusText || String(failed.status)));
+        showToast('Speichern fehlgeschlagen: ' + (j.error || failed.statusText || String(failed.status)), 'err');
         return;
       }
       const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
@@ -902,7 +950,7 @@
       renderList();
       renderMarkers();
     } catch (e) {
-      window.alert('Netzwerkfehler beim Speichern: ' + (e.message || String(e)));
+      showToast('Netzwerkfehler beim Speichern: ' + (e.message || String(e)), 'err');
     } finally {
       btn.disabled = false;
     }
@@ -912,7 +960,7 @@
   async function doArchive() {
     if (!activeEmail) return;
     if (activeIsLegacy) {
-      window.alert('Archiv-Leads können hier nicht archiviert werden.');
+      showToast('Archiv-Leads hier nicht archivierbar.', 'info');
       return;
     }
     const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr && !l.__pvlLegacy);
@@ -925,7 +973,7 @@
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     if (!apiEmail) {
-      alert('Keine E-Mail – kann nicht archiviert werden.');
+      showToast('Keine E-Mail – Archivieren nicht möglich.', 'err');
       btn.disabled = false;
       btn.textContent = '✓ Abgearbeitet';
       return;
@@ -938,7 +986,7 @@
       renderMarkers();
     } else {
       const j = await res.json().catch(() => ({}));
-      window.alert('Archivieren fehlgeschlagen: ' + (j.error || res.statusText || String(res.status)));
+      showToast('Archivieren fehlgeschlagen: ' + (j.error || res.statusText || String(res.status)), 'err');
       btn.disabled = false;
       btn.textContent = '✓ Abgearbeitet';
     }

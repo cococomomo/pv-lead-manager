@@ -177,8 +177,6 @@ app.use((req, res, next) => {
   return requireWebSession(req, res, next);
 });
 
-app.use(express.static(path.join(__dirname, '../public')));
-
 app.get('/api/leads', async (req, res) => {
   try {
     res.json(await getAllLeads());
@@ -311,6 +309,8 @@ app.post('/api/auth/bootstrap-admin', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+app.use(express.static(path.join(__dirname, '../public')));
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {

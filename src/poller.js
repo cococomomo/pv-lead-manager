@@ -40,6 +40,10 @@ async function pollEmails() {
     for (const message of messages) {
       try {
         const all = message.parts.find((p) => p.which === '');
+        if (!all || all.body == null) {
+          console.log('Message has no full body part, skipping.');
+          continue;
+        }
         const parsed = await simpleParser(all.body);
 
         const emailData = {

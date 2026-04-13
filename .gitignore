@@ -5,7 +5,6 @@ node_modules/
 .env.txt
 auth/*.json
 auth/*.key
-data/vertriebler.json
 data/users.json
 data/sessions/
 .DS_Store

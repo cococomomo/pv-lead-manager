@@ -5,21 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PV Lead Manager – Administration</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; }
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; animation: adm-fade 0.35s ease-out; }
+    @keyframes adm-fade { from { opacity: 0; } to { opacity: 1; } }
     h1 { font-size: 1.2rem; color: #1a56db; }
     p { font-size: 0.88rem; color: #64748b; line-height: 1.5; }
-    input[type="text"], input[type="password"], input[type="email"] { width: 100%; padding: 0.45rem; margin: 0.25rem 0 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; }
+    input[type="text"], input[type="password"], input[type="email"] { width: 100%; padding: 0.45rem; margin: 0.25rem 0 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
     label { font-size: 0.8rem; font-weight: 600; color: #475569; }
     button.primary { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.45rem 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease; }
     button.primary:hover:not(:disabled) { background: #1e40af; }
     button.primary:disabled { opacity: 0.65; cursor: wait; }
-    button.danger { background: #b91c1c; color: #fff; border: none; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.78rem; cursor: pointer; }
+    button.danger { background: #b91c1c; color: #fff; border: none; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.78rem; cursor: pointer; transition: background 0.15s ease, opacity 0.15s ease; }
+    button.danger:hover { background: #991b1b; }
     .msg { margin-top: 0.6rem; font-size: 0.85rem; }
     .ok { color: #059669; }
     .err { color: #b91c1c; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.75rem; }
     th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
     a { color: #1a56db; }
+    @media (prefers-reduced-motion: reduce) {
+      body { animation: none; }
+      input, button.primary, button.danger { transition: none; }
+    }
   </style>
 </head>
 <body>
