@@ -10,17 +10,42 @@ const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
 const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
 /** Tab mit den Leads – muss exakt dem Blattnamen in Google Sheets entsprechen */
-const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt1').trim();
+const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt1')
+  .trim()
+  .replace(/^\uFEFF/, '');
 /** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
-const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim();
+const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim().replace(/^\uFEFF/, '');
 const ARCHIVE_TAB            = 'Cosimo';
 
-/** A1-Notation: Blattnamen mit Leerzeichen/Sonderzeichen für die API quoten */
+/** A1-Notation: Blattname immer in einfachen Anführungszeichen (Google, z. B. Ziffern im Namen). */
 function sheetRange(tab, a1Part) {
-  const t = String(tab || '').trim();
+  const t = String(tab || '').trim().replace(/^\uFEFF/, '');
   if (!t) return `!${a1Part}`;
-  if (/^[A-Za-z0-9_]+$/.test(t)) return `${t}!${a1Part}`;
-  return `'${t.replace(/'/g, "''")}'!${a1Part}`;
+  const safe = t.replace(/'/g, "''");
+  return `'${safe}'!${a1Part}`;
+}
+
+async function listSheetTabTitles(sheets) {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+    fields: 'sheets.properties.title',
+  });
+  return (meta.data.sheets || []).map((s) => s.properties?.title).filter(Boolean);
+}
+
+async function throwIfRangeParseError(sheets, sheetTitle, err) {
+  const msg = String(err.message || err);
+  if (!/Unable to parse range|parse range/i.test(msg)) throw err;
+  let tabs = [];
+  try {
+    tabs = await listSheetTabTitles(sheets);
+  } catch (_) {
+    /* Meta-Lesen fehlgeschlagen — Originalfehler reicht */
+  }
+  const hint = tabs.length
+    ? `Vorhandene Blätter: ${tabs.join(', ')}. In .env GOOGLE_SHEET_NAME= exakt so setzen (wie unten in Google Sheets).`
+    : 'Prüfe GOOGLE_SPREADSHEET_ID und GOOGLE_SHEET_NAME in der .env.';
+  throw new Error(`${msg} — Blatt "${sheetTitle}"? ${hint}`);
 }
 
 /** Datenbereich (Spalten); bei vielen CRM-Spalten ggf. erweitern */
@@ -274,10 +299,15 @@ function columnIndexToLetter(index) {
 }
 
 async function getHeader(sheets) {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: DATA_RANGE,
-  });
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: DATA_RANGE,
+    });
+  } catch (e) {
+    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+  }
   const values = res.data.values || [];
   const { header } = splitMatrixRawRows(values);
   return header;
@@ -285,10 +315,15 @@ async function getHeader(sheets) {
 
 async function fetchLeadsForTab(sheetTitle) {
   const sheets = await getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: sheetRange(sheetTitle, 'A1:ZZ'),
-  });
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: sheetRange(sheetTitle, 'A1:ZZ'),
+    });
+  } catch (e) {
+    await throwIfRangeParseError(sheets, sheetTitle, e);
+  }
   return matrixToLeadObjects(res.data.values || []);
 }
 
@@ -296,10 +331,15 @@ async function appendLead(lead) {
   const sheets = await getSheets();
   const header = await getHeader(sheets);
 
-  const countRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: COL_A_RANGE,
-  });
+  let countRes;
+  try {
+    countRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: COL_A_RANGE,
+    });
+  } catch (e) {
+    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+  }
   const nextNr = Math.max(0, (countRes.data.values?.length || 1) - 1) + 1;
 
   const row = header.map((colHeader) => {
@@ -421,10 +461,15 @@ async function leadExists(email) {
 // Update a single cell by column header (e.g. 'Betreut Durch', 'Notizen')
 async function updateLeadField(email, columnHeader, value) {
   const sheets = await getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: DATA_RANGE,
-  });
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: DATA_RANGE,
+    });
+  } catch (e) {
+    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+  }
   const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
   if (!header.length) return;
 
@@ -451,10 +496,15 @@ async function updateLeadField(email, columnHeader, value) {
 // Copy lead row to archive spreadsheet "Cosimo" tab, then delete from Leads
 async function archiveLead(email) {
   const sheets = await getSheets();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: DATA_RANGE,
-  });
+  let res;
+  try {
+    res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: DATA_RANGE,
+    });
+  } catch (e) {
+    await throwIfRangeParseError(sheets, SHEET_NAME, e);
+  }
   const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
   if (!header.length) return;
 
@@ -529,6 +579,8 @@ async function getLeadsSheetDebug() {
     sheetTab: SHEET_NAME,
     legacySheetTab: LEGACY_SHEET_NAME || null,
     spreadsheetConfigured: !!SPREADSHEET_ID,
+    /** Konfigurierte Lead-Tabelle (ID = Segment aus docs.google.com/spreadsheets/d/…/edit) */
+    spreadsheetId: SPREADSHEET_ID || null,
   };
   try {
     if (!SPREADSHEET_ID) return { ...base, primaryRowCount: 0, legacyRowCount: 0, mergedCount: 0 };
@@ -539,10 +591,15 @@ async function getLeadsSheetDebug() {
     }
     const merged = await getAllLeads();
     const sh = await getSheets();
-    const r = await sh.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: sheetRange(SHEET_NAME, 'A1:ZZ'),
-    });
+    let r;
+    try {
+      r = await sh.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: sheetRange(SHEET_NAME, 'A1:ZZ'),
+      });
+    } catch (e) {
+      await throwIfRangeParseError(sh, SHEET_NAME, e);
+    }
     const raw = splitMatrixRawRows(r.data.values || []);
     const meta = await sh.spreadsheets.get({
       spreadsheetId: SPREADSHEET_ID,
