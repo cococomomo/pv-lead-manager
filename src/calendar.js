@@ -2,8 +2,8 @@
 
 require('dotenv').config();
 const { google } = require('googleapis');
-const nodemailer = require('nodemailer');
 const path = require('path');
+const { getMailSender } = require('./mail-transport');
 
 const CREDENTIALS_PATH = path.join(__dirname, '../auth/google-credentials.json');
 const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
@@ -88,20 +88,7 @@ async function createCalendarEvent(lead, startDate) {
 }
 
 async function sendConfirmationEmail(lead, appointmentDate, calendarEvent) {
-  const auth = await getAuth();
-
-  // Use Gmail via OAuth2
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: process.env.MY_EMAIL,
-      clientId: auth._clientId,
-      clientSecret: auth._clientSecret,
-      refreshToken: auth.credentials.refresh_token,
-      accessToken: auth.credentials.access_token,
-    },
-  });
+  const { transporter, from } = await getMailSender(getAuth);
 
   const dateStr = appointmentDate.toLocaleString('de-AT', {
     weekday: 'long',
@@ -114,7 +101,7 @@ async function sendConfirmationEmail(lead, appointmentDate, calendarEvent) {
   });
 
   const mailOptions = {
-    from: `"${process.env.MY_NAME}" <${process.env.MY_EMAIL}>`,
+    from,
     to: lead.email,
     subject: `Ihre PV-Anfrage – Beratungstermin am ${dateStr}`,
     text: [

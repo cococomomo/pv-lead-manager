@@ -12,8 +12,10 @@
     p.sub { font-size: 0.82rem; color: #94a3b8; margin: 0 0 1.25rem; }
     label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.25rem; }
     input { width: 100%; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #f8fafc; font-size: 0.95rem; margin-bottom: 0.85rem; }
-    button { width: 100%; padding: 0.6rem; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; font-size: 0.95rem; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
+    button { width: 100%; padding: 0.6rem; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease, transform 0.12s ease; }
+    button:hover:not(:disabled) { background: #1d4ed8; }
+    button:active:not(:disabled) { transform: scale(0.99); }
+    button:disabled { opacity: 0.65; cursor: wait; }
     .err { color: #fca5a5; font-size: 0.82rem; margin-top: 0.75rem; min-height: 1.2em; }
     details { margin-top: 1rem; font-size: 0.75rem; color: #64748b; }
     details summary { cursor: pointer; color: #94a3b8; }
@@ -57,21 +59,29 @@
     document.getElementById('f').onsubmit = async (e) => {
       e.preventDefault();
       document.getElementById('err').textContent = '';
-      const username = document.getElementById('u').value.trim();
-      const password = document.getElementById('p').value;
-      const r = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ username, password }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        document.getElementById('err').textContent = j.error === 'invalid_credentials' ? 'Zugangsdaten ungültig.' : (j.error || r.statusText);
-        return;
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        const username = document.getElementById('u').value.trim();
+        const password = document.getElementById('p').value;
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ username, password }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          document.getElementById('err').textContent = j.error === 'invalid_credentials' ? 'Zugangsdaten ungültig.' : (j.error || r.statusText);
+          return;
+        }
+        const params = new URLSearchParams(location.search);
+        location.replace(params.get('next') || '/');
+      } catch (err) {
+        document.getElementById('err').textContent = err.message || 'Anmeldung fehlgeschlagen.';
+      } finally {
+        submitBtn.disabled = false;
       }
-      const params = new URLSearchParams(location.search);
-      location.replace(params.get('next') || '/');
     };
 
     async function bootstrap() {

@@ -1,6 +1,6 @@
 # PV Lead Manager
 
-Pipeline: IMAP → KI-Extraktion → Google Sheets → optional Google Kalender + Mailbestätigung → Web-Dashboard (Leaflet-Karte, CRM-Felder, Vertriebler per Klick, Status, Google-Kalender-Link).
+Pipeline: IMAP → KI-Extraktion → Google Sheets → optional Google Kalender + Mailbestätigung → Web-Dashboard (Leaflet-Karte, CRM-Felder, „Betreut durch“ aus Benutzernamen, Status, Google-Kalender-Link).
 
 ## DNS ist da (z. B. wie beim Roof Identifier) – warum geht `pvl` trotzdem nicht?
 
@@ -53,16 +53,14 @@ cp .env.example .env
 # Werte ausfüllen (nie committen)
 ```
 
-Vertriebler-Namen (optional): `cp data/vertriebler.example.json data/vertriebler.json` und Datei bearbeiten, **oder** unter `/admin.html` speichern.
-
-### 3b. Vertriebler-Logins (statt einem gemeinsamen Basic-Auth)
+### 3b. Benutzer-Logins (statt einem gemeinsamen Basic-Auth)
 
 1. In `.env` **`SESSION_SECRET`** setzen (mind. 16 zufällige Zeichen). Optional **`SESSION_COOKIE_SECURE=1`** hinter HTTPS.
 2. **`APP_BASE_URL`** z. B. `https://pvl.lifeco.at` (für Links in Einladungs-Mails).
 3. **Ersten Admin** anlegen:
    - **A)** Einmalig `SETUP_TOKEN` in `.env`, dann auf `/login.html` unten „Erstes Admin-Konto“ ausfüllen, **oder**
    - **B)** Auf dem Server: `npm run create-admin -- <user> <passwort> [email]`
-4. Weitere Nutzer: als Admin einloggen → **`/admin.html`** → Tab „Benutzer & Logins“. Optional **E-Mail senden** (nutzt Gmail OAuth wie `MY_EMAIL` / bestehende Google-Token).
+4. Weitere Nutzer: als Admin einloggen → **`/admin.html`**. Optional **E-Mail senden**: entweder **SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `MAIL_FROM`) oder **Gmail über Google-OAuth** (`MY_EMAIL` + gültiges `auth/google-token.json`).
 5. Wenn `SESSION_SECRET` gesetzt ist, entfällt die **Basic-Auth**-Abfrage für die App (Basic greift dann nicht mehr). Für Notfall-API weiterhin `ADMIN_TOKEN` (Bearer) möglich.
 
 Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.json`.
@@ -72,6 +70,8 @@ Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.js
 1. [Google Cloud Console](https://console.cloud.google.com) – Projekt, **Gmail API**, **Google Sheets API**, **Google Calendar API** aktivieren  
 2. OAuth-Client (Desktop) → `auth/google-credentials.json`  
 3. Einmaliger OAuth-Flow → `auth/google-token.json` (z. B. `node scripts/oauth-setup.js` falls vorhanden)
+
+**`invalid_grant`:** Refresh-Token ungültig (Passwort geändert, Zugriff widerrufen, Token zu alt). Lösung: in Google-Konto **Drittanbieterzugriff** prüfen, ggf. `auth/google-token.json` löschen und **OAuth erneut** ausführen (`prompt: 'consent'` ist im Script bereits sinnvoll). Ohne gültiges Google-Token funktionieren **Sheets/Kalender** nicht; **E-Mail-Versand** kann trotzdem über **SMTP** laufen (siehe `.env.example`).
 
 ### 5. Google Sheet
 
@@ -84,9 +84,9 @@ Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.js
   - `Nachfass bis` (Datum)
   - `Termin` (Datum/Uhrzeit, Freitext oder `YYYY-MM-DDTHH:mm`)
 
-### 6. IMAP
+### 6. IMAP (nur **Empfang** für den Poller)
 
-Ordner z. B. `INBOX.Leads` / `Leads` je nach Server; in `.env` `IMAP_FOLDER` setzen.
+Ordner z. B. `INBOX.Leads` / `Leads` je nach Server; in `.env` `IMAP_FOLDER` setzen. **Ausgehende** Mails (Zugangsdaten, Kundenbestätigung) gehen **nicht** über IMAP, sondern über **SMTP** oder **Gmail-API/OAuth** (siehe oben).
 
 ## Lokal starten
 
@@ -151,7 +151,7 @@ server {
 - Karte: Leads mit Status **Termin** oder **Verloren** erscheinen nicht (keine Doppel-Anrufe). Optional: Checkbox „Abgeschlossene anzeigen“ in der Liste.
 - **tel:**-Links für Android (und andere) zum Wählen.
 - **Google Kalender …** öffnet die Google-„Termin anlegen“-Maske im **eingeloggten** Google-Konto (mit Adresse, Maps-Link im Text).
-- Vertriebler: Chips aus `/api/vertriebler` – Pflege unter `/admin.html`.
+- „Betreut durch“-Chips: Namen kommen aus **`/api/vertriebler`** (= alle **Benutzer**-Logins aus `data/users.json`), Pflege nur noch unter **`/admin.html`** (Benutzer anlegen).
 
 ## Projektstruktur
 
@@ -166,7 +166,7 @@ pv-lead-manager/
 ├── public/
 │   ├── index.html
 │   └── admin.html
-├── data/               # vertriebler.json (lokal, gitignored)
+├── data/               # users.json, sessions/ (lokal, gitignored)
 ├── auth/               # nur lokal, gitignored
 ├── .env.example
 └── package.json

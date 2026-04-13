@@ -22,8 +22,6 @@ const { sendLoginCredentialsEmail } = require('./mail-welcome');
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
 const DATA_DIR = path.join(__dirname, '../data');
-const VERT_FILE = path.join(DATA_DIR, 'vertriebler.json');
-
 app.set('trust proxy', 1);
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -227,42 +225,23 @@ app.post('/api/leads/:email/archive', async (req, res) => {
   }
 });
 
-async function readVertriebler() {
+/** Namen für „Betreut durch“-Chips = alle Benutzer (Login-Namen), sortiert */
+async function readBetreutChipNames() {
   try {
-    const raw = await fs.readFile(VERT_FILE, 'utf8');
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return [...new Set(arr.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean))];
+    const users = await listUsersSafe();
+    const names = [...new Set(users.map((u) => String(u.username || '').trim()).filter(Boolean))];
+    names.sort((a, b) => a.localeCompare(b, 'de'));
+    return names;
   } catch {
-    return (process.env.VERTIEBER_NAMES || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    return [];
   }
 }
 
 app.get('/api/vertriebler', async (req, res) => {
   try {
-    res.json(await readVertriebler());
+    res.json(await readBetreutChipNames());
   } catch (err) {
     console.error('GET /api/vertriebler error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/admin/vertriebler', async (req, res) => {
-  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
-  const { names } = req.body;
-  if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) {
-    return res.status(400).json({ error: 'names must be an array of strings' });
-  }
-  const clean = [...new Set(names.map((n) => n.trim()).filter(Boolean))].slice(0, 20);
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(VERT_FILE, `${JSON.stringify(clean, null, 2)}\n`, 'utf8');
-    res.json({ ok: true, names: clean });
-  } catch (err) {
-    console.error('POST /api/admin/vertriebler error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -334,6 +313,9 @@ app.post('/api/auth/bootstrap-admin', async (req, res) => {
 });
 
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
@@ -341,7 +323,13 @@ app.listen(PORT, () => {
   const parts = [];
   if (sessionOn) parts.push('Session-Login');
   if (!sessionOn && basicAuthConfigured()) parts.push('Basic-Auth');
-  console.log(`PV Lead Manager http://localhost:${PORT}${parts.length ? ` (${parts.join(', ')})` : ''}`);
+  const pub = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+  const local = `http://127.0.0.1:${PORT}`;
+  if (pub) {
+    console.log(`PV Lead Manager listening ${local}${parts.length ? ` (${parts.join(', ')})` : ''} · live ${pub}`);
+  } else {
+    console.log(`PV Lead Manager ${local}${parts.length ? ` (${parts.join(', ')})` : ''} — set APP_BASE_URL=https://pvl.lifeco.at for production links`);
+  }
 });
 
 module.exports = app;

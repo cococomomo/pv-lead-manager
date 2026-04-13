@@ -7,12 +7,15 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a202c; }
+    @keyframes pvl-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes pvl-spin { to { transform: rotate(360deg); } }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a202c; animation: pvl-fade-in 0.35s ease-out; }
 
     header { background: #1a56db; color: #fff; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
     header h1 { font-size: 1.15rem; }
 
-    .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 50px); }
+    .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 50px); transition: opacity 0.25s ease; }
+    .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
     /* Stats */
     .stats { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; padding: 0.6rem 1.2rem; background: #fff; border-bottom: 1px solid #e2e8f0; align-items: center; }
@@ -34,9 +37,9 @@
     .filter-bar input, .filter-bar select { width: 100%; padding: 0.35rem 0.55rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; margin-bottom: 0.35rem; }
 
     /* Lead list */
-    #lead-list { overflow-y: auto; flex: 1; }
-    .lead-item { padding: 0.6rem 0.9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.12s; border-left: 4px solid transparent; }
-    .lead-item:hover { background: #f8fafc; }
+    #lead-list { overflow-y: auto; flex: 1; scroll-behavior: smooth; }
+    .lead-item { padding: 0.6rem 0.9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.18s ease, border-left-color 0.2s ease, transform 0.15s ease; border-left: 4px solid transparent; }
+    .lead-item:hover { background: #f8fafc; transform: translateX(2px); }
     .lead-item.active { background: #eef2ff; }
     .lead-name { font-weight: 600; font-size: 0.87rem; }
     .lead-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
@@ -44,7 +47,7 @@
 
     /* Sidebar detail panel (replaces list) */
     #sidebar-detail { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-    #sidebar-detail.open { display: flex; }
+    #sidebar-detail.open { display: flex; animation: pvl-fade-in 0.22s ease-out; }
     .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid #e2e8f0; font-size: 0.82rem; color: #1a56db; cursor: pointer; flex-shrink: 0; }
     .detail-back:hover { background: #f0f4ff; }
     .detail-body { overflow-y: auto; flex: 1; padding: 0.9rem; }
@@ -58,20 +61,23 @@
     .field-group textarea { resize: vertical; min-height: 60px; }
     .detail-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
     .btn { padding: 0.4rem 0.9rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
-    .btn-save { background: #1a56db; color: #fff; }
-    .btn-save:hover { background: #1e40af; }
+    .btn-save { background: #1a56db; color: #fff; transition: background 0.18s ease, opacity 0.18s ease; }
+    .btn-save:hover:not(:disabled) { background: #1e40af; }
+    .btn-save:disabled { opacity: 0.65; cursor: wait; }
     .btn-archive { background: #059669; color: #fff; }
     .btn-archive:hover { background: #047857; }
     .btn-archive:disabled { background: #94a3b8; cursor: not-allowed; }
-    .save-hint { font-size: 0.73rem; color: #059669; display: none; align-self: center; }
+    .save-hint { font-size: 0.73rem; color: #059669; display: none; align-self: center; transition: color 0.2s ease; }
+    .save-hint.err { color: #b91c1c; }
 
-    .refresh-btn { background: #1a56db; color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem; font-size: 0.78rem; cursor: pointer; }
-    .refresh-btn:hover { background: #1e40af; }
+    .refresh-btn { background: #1a56db; color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem; font-size: 0.78rem; cursor: pointer; transition: background 0.18s ease; }
+    .refresh-btn:hover:not(:disabled) { background: #1e40af; }
+    .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
 
     /* Geocoding progress */
     #geo-status { font-size: 0.7rem; color: #64748b; padding: 0.3rem 0.9rem; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; display: none; }
 
-    /* Building analysis */
+    #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
 
     /* Leaflet popup overrides */
     .leaflet-popup-content { margin: 10px 14px; min-width: 220px; max-width: 300px; }
@@ -155,6 +161,7 @@
     <!-- Detail panel inside sidebar -->
     <div id="sidebar-detail">
       <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste</div>
+      <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem Archiv-Tabellenblatt — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
       <div class="detail-body">
         <div class="detail-title" id="sd-name"></div>
         <div class="detail-info" id="sd-info"></div>
@@ -185,7 +192,7 @@
           <input type="datetime-local" id="sd-termin" />
         </div>
         <div class="field-group">
-          <label>Betreut durch (Klick)</label>
+          <label>Betreut durch (Benutzer)</label>
           <div class="chip-row" id="sd-betreut-chips"></div>
         </div>
         <div class="detail-actions" style="flex-wrap:wrap">
@@ -250,6 +257,34 @@
     status: 'Status', nachfass: 'Nachfass bis', termin: 'Termin',
   };
 
+  /** Sheet-Spalte heißt oft „Anfrage NR“ oder mit Leerzeichen — beides abdecken */
+  function anfrageNr(lead) {
+    return String(lead['Anfrage NR'] ?? lead['Anfrage NR '] ?? lead[COL.nr] ?? '').trim();
+  }
+
+  function leadDateMs(lead) {
+    const raw = String(lead[COL.date] || '').trim();
+    if (!raw) return 0;
+    let ms = Date.parse(raw);
+    if (!Number.isNaN(ms)) return ms;
+    const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (m) {
+      const d = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10) - 1;
+      const y = parseInt(m[3], 10);
+      const hh = m[4] != null ? parseInt(m[4], 10) : 12;
+      const mm = m[5] != null ? parseInt(m[5], 10) : 0;
+      const ss = m[6] != null ? parseInt(m[6], 10) : 0;
+      return Date.UTC(y, mo, d, hh, mm, ss);
+    }
+    return 0;
+  }
+
+  function cssEscAttr(val) {
+    const s = String(val);
+    return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(s) : s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
   // ── State ─────────────────────────────────────────────────────────────────
   const LEGACY_KEY = '::__pvlLegacy';
 
@@ -277,7 +312,7 @@
     return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function isMesse(lead) { return parseInt(lead[COL.nr]?.trim(), 10) >= 9000; }
+  function isMesse(lead) { return parseInt(anfrageNr(lead), 10) >= 9000; }
 
   function getSource(lead) { return isMesse(lead) ? 'Messe' : (lead[COL.source] || ''); }
 
@@ -340,7 +375,7 @@
   }
 
   function openGoogleCalendar() {
-    const lead = allLeads.find((l) => l[COL.email] === activeEmail);
+    const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     if (!lead) return;
     const startStr = document.getElementById('sd-termin').value;
     if (!startStr) {
@@ -376,9 +411,9 @@
   }
 
   function ageColor(lead) {
-    const raw = lead[COL.date];
-    if (!raw) return '#94a3b8';
-    const days = (Date.now() - new Date(raw).getTime()) / 86400000;
+    const ms = leadDateMs(lead);
+    if (!ms) return '#94a3b8';
+    const days = (Date.now() - ms) / 86400000;
     if (days <  30) return '#7f1d1d';
     if (days <  90) return '#dc2626';
     if (days < 180) return '#f87171';
@@ -437,6 +472,10 @@
   }
 
   async function loadLeads() {
+    const layout = document.querySelector('.layout');
+    const rb = document.querySelector('.refresh-btn');
+    layout?.classList.add('app-loading');
+    rb?.classList.add('spin');
     try {
       const res = await apiFetch('/api/leads');
       const data = await res.json();
@@ -475,6 +514,9 @@
       renderStats();
       renderList();
       renderMarkers();
+    } finally {
+      layout?.classList.remove('app-loading');
+      rb?.classList.remove('spin');
     }
   }
 
@@ -516,10 +558,11 @@
       const lk = encodeURIComponent(leadKey(l));
       const act = leadKey(l) === activeLeadKeyStr;
       return `<div class="lead-item${act ? ' active' : ''}"
+           data-lk="${lk}"
            style="border-left-color:${color}"
            onclick="selectLead('${lk}')">
         <div class="lead-name">${esc(l[COL.name] || '(kein Name)')}
-          <span style="color:#94a3b8;font-weight:400;font-size:0.72rem"> #${esc((l[COL.nr]||'').trim())}</span>
+          <span style="color:#94a3b8;font-weight:400;font-size:0.72rem"> #${esc(anfrageNr(l))}</span>
         </div>
         <div class="lead-meta">
           ${esc(l[COL.city] || '')}${l[COL.zip] ? ' ' + esc(l[COL.zip]) : ''}
@@ -680,7 +723,7 @@
     const popupContent = `
       <div class="popup-name" style="border-left:3px solid ${color};padding-left:6px">
         ${esc(lead[COL.name] || '(kein Name)')}
-        <span style="color:#94a3b8;font-weight:400;font-size:0.75rem"> #${esc((lead[COL.nr]||'').trim())}</span>
+        <span style="color:#94a3b8;font-weight:400;font-size:0.75rem"> #${esc(anfrageNr(lead))}</span>
       </div>
       ${lead[COL.phone]   ? `<div class="popup-row">📞 <a class="tel-link" href="${esc(telHref(lead[COL.phone]))}">${esc(lead[COL.phone])}</a></div>` : ''}
       ${lead[COL.email]   ? `<div class="popup-row">✉️ ${esc(lead[COL.email])}</div>` : ''}
@@ -711,10 +754,14 @@
     activeIsLegacy = !!lead.__pvlLegacy;
     activeLeadKeyStr = leadKey(lead);
 
+    renderList();
+    const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
+    if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
     // Fly to marker and open popup if it exists
     const marker = markerMap[leadKey(lead)];
     if (marker) {
-      map.setView(marker.getLatLng(), Math.max(map.getZoom(), 12), { animate: true });
+      map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 12), { duration: 0.45 });
       marker.openPopup();
     }
 
@@ -743,7 +790,7 @@
 
     const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
     const infoRows = [
-      ['Anfrage Nr.', (lead[COL.nr]||'').trim()],
+      ['Anfrage Nr.', anfrageNr(lead)],
       ['E-Mail',      lead[COL.email]],
       ['Adresse',     addr],
       ['Quelle',      getSource(lead)],
@@ -821,28 +868,44 @@
       [COL.termin, termin],
     ];
 
-    await Promise.all(cols.map(([column, value]) =>
-      apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/field`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ column, value }),
-      })
-    ));
-
-    const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-    if (lead) {
-      lead[COL.betreut] = betreut;
-      lead[COL.notes] = notizen;
-      lead[COL.status] = status;
-      lead[COL.nachfass] = nachfass;
-      lead[COL.termin] = termin;
-    }
-
+    const btn = document.getElementById('btn-save');
     const hint = document.getElementById('save-hint');
-    hint.style.display = 'inline';
-    setTimeout(() => { hint.style.display = 'none'; }, 2000);
-    renderStats();
-    renderList();
-    renderMarkers();
+    hint.style.display = 'none';
+    hint.classList.remove('err');
+    hint.textContent = 'Gespeichert!';
+    btn.disabled = true;
+    try {
+      const results = await Promise.all(cols.map(([column, value]) =>
+        apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/field`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ column, value }),
+        })
+      ));
+      const failed = results.find((r) => !r.ok);
+      if (failed) {
+        const j = await failed.json().catch(() => ({}));
+        window.alert('Speichern fehlgeschlagen: ' + (j.error || failed.statusText || String(failed.status)));
+        return;
+      }
+      const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+      if (lead) {
+        lead[COL.betreut] = betreut;
+        lead[COL.notes] = notizen;
+        lead[COL.status] = status;
+        lead[COL.nachfass] = nachfass;
+        lead[COL.termin] = termin;
+      }
+      hint.style.display = 'inline';
+      hint.style.color = '';
+      setTimeout(() => { hint.style.display = 'none'; }, 2000);
+      renderStats();
+      renderList();
+      renderMarkers();
+    } catch (e) {
+      window.alert('Netzwerkfehler beim Speichern: ' + (e.message || String(e)));
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ── Archive lead ──────────────────────────────────────────────────────────
@@ -874,7 +937,8 @@
       renderStats();
       renderMarkers();
     } else {
-      alert('Fehler beim Archivieren. Bitte erneut versuchen.');
+      const j = await res.json().catch(() => ({}));
+      window.alert('Archivieren fehlgeschlagen: ' + (j.error || res.statusText || String(res.status)));
       btn.disabled = false;
       btn.textContent = '✓ Abgearbeitet';
     }

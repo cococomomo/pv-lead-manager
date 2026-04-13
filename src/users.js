@@ -88,11 +88,9 @@ async function userCount() {
 }
 
 module.exports = {
-  readUsers,
   verifyLogin,
   listUsersSafe,
   createUser,
   deleteUser,
   userCount,
-  USERS_PATH,
 };

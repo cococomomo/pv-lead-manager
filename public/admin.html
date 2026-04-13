@@ -7,17 +7,12 @@
   <style>
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; }
     h1 { font-size: 1.2rem; color: #1a56db; }
-    nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-    nav button { padding: 0.35rem 0.75rem; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
-    nav button.on { background: #1a56db; color: #fff; border-color: #1a56db; }
-    section { display: none; }
-    section.on { display: block; }
     p { font-size: 0.88rem; color: #64748b; line-height: 1.5; }
-    textarea { width: 100%; min-height: 120px; padding: 0.5rem; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 8px; }
     input[type="text"], input[type="password"], input[type="email"] { width: 100%; padding: 0.45rem; margin: 0.25rem 0 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; }
     label { font-size: 0.8rem; font-weight: 600; color: #475569; }
-    button.primary { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.45rem 1rem; font-weight: 600; cursor: pointer; }
-    button.primary:hover { background: #1e40af; }
+    button.primary { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.45rem 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease; }
+    button.primary:hover:not(:disabled) { background: #1e40af; }
+    button.primary:disabled { opacity: 0.65; cursor: wait; }
     button.danger { background: #b91c1c; color: #fff; border: none; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.78rem; cursor: pointer; }
     .msg { margin-top: 0.6rem; font-size: 0.85rem; }
     .ok { color: #059669; }
@@ -31,22 +26,10 @@
   <h1>Administration</h1>
   <p>Nur für Admins (Session) oder mit <code>Authorization: Bearer ADMIN_TOKEN</code> bei API-Aufrufen.</p>
 
-  <nav>
-    <button type="button" class="on" data-tab="chips" onclick="tab('chips')">Vertriebler-Chips</button>
-    <button type="button" data-tab="users" onclick="tab('users')">Benutzer &amp; Logins</button>
-  </nav>
-
-  <section id="sec-chips" class="on">
-    <p>Ein Name pro Zeile → erscheint als Klick-Chip in der Karte.</p>
-    <textarea id="names" placeholder="Anna&#10;Ben&#10;…"></textarea>
+  <section id="sec-users">
+    <p>Benutzername = Login-Name (erscheint auch als Chip unter „Betreut durch“ in der Karte). Passwort mindestens 6 Zeichen. Optional E-Mail: Zugangsdaten werden verschickt, wenn „E-Mail senden“ aktiv ist (SMTP oder Gmail-OAuth, siehe Server-<code>.env</code>).</p>
     <p><label for="btoken">Bearer ADMIN_TOKEN (nur nötig ohne Admin-Session)</label></p>
     <input type="password" id="btoken" placeholder="optional" autocomplete="off" />
-    <p><button type="button" class="primary" onclick="saveChips()">Chips speichern</button></p>
-    <div class="msg" id="m-chips"></div>
-  </section>
-
-  <section id="sec-users">
-    <p>Benutzername = Login-Name (z. B. Vorname). Passwort mindestens 6 Zeichen. Optional E-Mail: Zugangsdaten werden per Gmail (OAuth aus <code>.env</code>) verschickt, wenn „E-Mail senden“ aktiviert ist.</p>
     <label>Benutzername</label>
     <input type="text" id="nu" autocomplete="off" />
     <label>Passwort</label>
@@ -61,7 +44,7 @@
     <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400">
       <input type="checkbox" id="nsend" checked /> Zugangsdaten per E-Mail senden (wenn E-Mail gesetzt)
     </label>
-    <p><button type="button" class="primary" onclick="createUser()">Benutzer anlegen</button></p>
+    <p><button type="button" class="primary" id="btn-create-user" onclick="createUser()">Benutzer anlegen</button></p>
     <div class="msg" id="m-users"></div>
     <h2 style="font-size:1rem;margin-top:1.25rem">Bestehende Benutzer</h2>
     <table><thead><tr><th>Name</th><th>Rolle</th><th>E-Mail</th><th></th></tr></thead><tbody id="utb"></tbody></table>
@@ -72,37 +55,11 @@
   <script>
     const cred = { credentials: 'same-origin' };
 
-    function tab(id) {
-      document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
-      document.querySelectorAll('section').forEach((s) => s.classList.toggle('on', s.id === 'sec-' + id));
-    }
-
     function authHeaders() {
       const t = document.getElementById('btoken').value.trim();
       const h = {};
       if (t) h.Authorization = 'Bearer ' + t;
       return h;
-    }
-
-    async function loadChips() {
-      const r = await fetch('/api/vertriebler', cred);
-      const arr = await r.json();
-      document.getElementById('names').value = Array.isArray(arr) ? arr.join('\n') : '';
-    }
-
-    async function saveChips() {
-      const msg = document.getElementById('m-chips');
-      msg.textContent = '';
-      const raw = document.getElementById('names').value.split('\n').map((s) => s.trim()).filter(Boolean);
-      const r = await fetch('/api/admin/vertriebler', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ names: raw }),
-      });
-      const j = await r.json().catch(() => ({}));
-      msg.textContent = r.ok ? ('Gespeichert: ' + (j.names || []).join(', ')) : (j.error || r.statusText);
-      msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
     }
 
     async function loadUsers() {
@@ -133,28 +90,34 @@
 
     async function createUser() {
       const msg = document.getElementById('m-users');
+      const btn = document.getElementById('btn-create-user');
       msg.textContent = '';
-      const body = {
-        username: document.getElementById('nu').value.trim(),
-        password: document.getElementById('np').value,
-        email: document.getElementById('ne').value.trim(),
-        role: document.getElementById('nr').value,
-        sendEmail: document.getElementById('nsend').checked,
-      };
-      const r = await fetch('/api/admin/users', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify(body),
-      });
-      const j = await r.json().catch(() => ({}));
-      msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
-      msg.textContent = r.ok ? (j.warning || 'Benutzer angelegt.') : (j.error || r.statusText);
-      if (r.ok) {
-        document.getElementById('nu').value = '';
-        document.getElementById('np').value = '';
-        document.getElementById('ne').value = '';
-        loadUsers();
+      btn.disabled = true;
+      try {
+        const body = {
+          username: document.getElementById('nu').value.trim(),
+          password: document.getElementById('np').value,
+          email: document.getElementById('ne').value.trim(),
+          role: document.getElementById('nr').value,
+          sendEmail: document.getElementById('nsend').checked,
+        };
+        const r = await fetch('/api/admin/users', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(body),
+        });
+        const j = await r.json().catch(() => ({}));
+        msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+        msg.textContent = r.ok ? (j.warning || 'Benutzer angelegt.') : (j.error || r.statusText);
+        if (r.ok) {
+          document.getElementById('nu').value = '';
+          document.getElementById('np').value = '';
+          document.getElementById('ne').value = '';
+          loadUsers();
+        }
+      } finally {
+        btn.disabled = false;
       }
     }
 
@@ -176,7 +139,6 @@
       location.href = '/login.html';
     }
 
-    loadChips();
     loadUsers();
   </script>
 </body>

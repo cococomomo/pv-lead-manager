@@ -120,6 +120,70 @@ async function appendLead(lead) {
   });
 }
 
+/** Gleicher Lead (E-Mail, sonst Name+Tel+PLZ) nur einmal; bei mehreren Zeilen gewinnt der neueste Eintrag. */
+function dedupeLeadsKeepNewest(leads) {
+  function dedupeKey(lead) {
+    const e = String(lead['E-Mail'] || '').trim().toLowerCase();
+    if (e) return `e:${e}`;
+    const n = String(lead['Nachname + Vorname'] || '').trim().toLowerCase();
+    const tel = String(lead['Telefon'] || '').replace(/\D/g, '');
+    const plz = String(lead['PLZ'] || '').trim();
+    return `x:${n}|${tel}|${plz}`;
+  }
+
+  function parseAnfragezeitpunktMs(lead) {
+    const raw = String(lead['Anfragezeitpunkt'] || '').trim();
+    if (!raw) return 0;
+    let ms = Date.parse(raw);
+    if (!Number.isNaN(ms)) return ms;
+    const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    if (m) {
+      const d = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10) - 1;
+      const y = parseInt(m[3], 10);
+      const hh = m[4] != null ? parseInt(m[4], 10) : 12;
+      const mm = m[5] != null ? parseInt(m[5], 10) : 0;
+      const ss = m[6] != null ? parseInt(m[6], 10) : 0;
+      return Date.UTC(y, mo, d, hh, mm, ss);
+    }
+    return 0;
+  }
+
+  function requestNr(lead) {
+    const raw = String(lead['Anfrage NR'] ?? lead['Anfrage NR '] ?? '').replace(/\D/g, '');
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  const best = new Map();
+  for (let i = 0; i < leads.length; i += 1) {
+    const lead = leads[i];
+    const k = dedupeKey(lead);
+    const t = parseAnfragezeitpunktMs(lead);
+    const nr = requestNr(lead);
+    const cur = best.get(k);
+    if (!cur) {
+      best.set(k, { lead, t, nr, i });
+      continue;
+    }
+    if (t > cur.t) {
+      best.set(k, { lead, t, nr, i });
+      continue;
+    }
+    if (t < cur.t) continue;
+    // gleicher Zeitstempel
+    if (t === 0 && cur.t === 0) {
+      if (nr > cur.nr || (nr === cur.nr && i > cur.i)) best.set(k, { lead, t, nr, i });
+      continue;
+    }
+    if (i > cur.i) best.set(k, { lead, t, nr, i });
+  }
+
+  return Array.from(best.values())
+    .sort((a, b) => (b.t - a.t) || (b.nr - a.nr) || (b.i - a.i))
+    .map((x) => x.lead);
+}
+
 async function getAllLeads() {
   if (!SPREADSHEET_ID) {
     throw new Error('GOOGLE_SPREADSHEET_ID fehlt in der Konfiguration');
@@ -128,7 +192,7 @@ async function getAllLeads() {
   const primary = primaryRows.map((o) => ({ ...o, __pvlLegacy: false }));
 
   const leg = LEGACY_SHEET_NAME;
-  if (!leg || leg === SHEET_NAME) return primary;
+  if (!leg || leg === SHEET_NAME) return dedupeLeadsKeepNewest(primary);
 
   const legacyRows = await fetchLeadsForTab(leg);
   const primaryEmails = new Set(
@@ -141,7 +205,7 @@ async function getAllLeads() {
     })
     .map((o) => ({ ...o, __pvlLegacy: true }));
 
-  return [...primary, ...legacy];
+  return dedupeLeadsKeepNewest([...primary, ...legacy]);
 }
 
 async function leadExists(email) {
