@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs');
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
-const { getAllLeads, updateLeadField, archiveLead } = require('./sheets');
+const { getAllLeads, updateLeadField, archiveLead, getLeadsSheetDebug } = require('./sheets');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
@@ -89,6 +89,20 @@ app.get('/api/leads', async (req, res) => {
   } catch (err) {
     console.error('GET /api/leads error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Kurzdiagnose (keine Lead-Inhalte): Tab-Name + Zeilenanzahl
+app.get('/api/debug/leads-sheet', async (req, res) => {
+  try {
+    const leads = await getAllLeads();
+    res.json({
+      ...getLeadsSheetDebug(),
+      leadRowCount: leads.length,
+    });
+  } catch (err) {
+    console.error('GET /api/debug/leads-sheet error:', err.message);
+    res.status(500).json({ ...getLeadsSheetDebug(), error: err.message });
   }
 });
 

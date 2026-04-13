@@ -64,7 +64,8 @@ Vertriebler-Namen (optional): `cp data/vertriebler.example.json data/vertriebler
 ### 5. Google Sheet
 
 - Tabellen-ID in `GOOGLE_SPREADSHEET_ID` (und ggf. `GOOGLE_ARCHIVE_SPREADSHEET_ID` für Archiv).
-- Im **Leads**-Tab (Standard im Code: `Tabellenblatt2`) diese **Spaltenüberschriften** ergänzen, damit CRM & Kalender sauber speichern:
+- **`GOOGLE_SHEET_NAME`**: exakter Name des **Tabellenblatts**, in dem die Leads stehen (früher fest `Tabellenblatt2`). Wenn eure 100+ Zeilen z. B. auf **„Leads“** oder **„Tabellenblatt1“** liegen, muss dieser Name in der `.env` stehen – sonst bleibt die Karte leer.
+- Im Leads-Tab diese **Spaltenüberschriften** ergänzen, damit CRM & Kalender sauber speichern:
   - `Status` (z. B. Neu, Angerufen, Nachfassen, Termin, Verloren)
   - `Nachfass bis` (Datum)
   - `Termin` (Datum/Uhrzeit, Freitext oder `YYYY-MM-DDTHH:mm`)

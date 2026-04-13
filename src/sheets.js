@@ -9,8 +9,13 @@ const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 
 const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
 const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
-const SHEET_NAME             = 'Tabellenblatt2';
+/** Tab mit den Leads – muss exakt dem Blattnamen in Google Sheets entsprechen */
+const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt2').trim();
 const ARCHIVE_TAB            = 'Cosimo';
+/** Datenbereich (Spalten); bei vielen CRM-Spalten ggf. erweitern */
+const DATA_RANGE = `${SHEET_NAME}!A1:ZZ`;
+const HEADER_RANGE = `${SHEET_NAME}!A1:ZZ1`;
+const COL_A_RANGE = `${SHEET_NAME}!A:A`;
 
 // Maps lead object fields → exact sheet column headers
 const FIELD_MAP = {
@@ -48,10 +53,21 @@ async function getSheets() {
   return google.sheets({ version: 'v4', auth });
 }
 
+/** 0-basierter Spaltenindex → A, B, …, Z, AA, … */
+function columnIndexToLetter(index) {
+  let result = '';
+  let i = index;
+  while (i >= 0) {
+    result = String.fromCharCode((i % 26) + 65) + result;
+    i = Math.floor(i / 26) - 1;
+  }
+  return result;
+}
+
 async function getHeader(sheets) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1:Z1`,
+    range: HEADER_RANGE,
   });
   return res.data.values?.[0] || [];
 }
@@ -62,7 +78,7 @@ async function appendLead(lead) {
 
   const countRes = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A:A`,
+    range: COL_A_RANGE,
   });
   const nextNr = Math.max(0, (countRes.data.values?.length || 1) - 1) + 1;
 
@@ -88,10 +104,13 @@ async function appendLead(lead) {
 }
 
 async function getAllLeads() {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SPREADSHEET_ID fehlt in der Konfiguration');
+  }
   const sheets = await getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1:Z`,
+    range: DATA_RANGE,
   });
   const [header, ...rows] = res.data.values || [];
   if (!header) return [];
@@ -113,7 +132,7 @@ async function updateLeadField(email, columnHeader, value) {
   const sheets = await getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1:Z`,
+    range: DATA_RANGE,
   });
   const [header, ...rows] = res.data.values || [];
   if (!header) return;
@@ -128,7 +147,7 @@ async function updateLeadField(email, columnHeader, value) {
   if (rowIndex < 0) return;
 
   const sheetRow  = rowIndex + 2; // +1 header, +1 for 1-based
-  const colLetter = String.fromCharCode(65 + targetColIdx);
+  const colLetter = columnIndexToLetter(targetColIdx);
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
@@ -143,7 +162,7 @@ async function archiveLead(email) {
   const sheets = await getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1:Z`,
+    range: DATA_RANGE,
   });
   const [header, ...rows] = res.data.values || [];
   if (!header) return;
@@ -210,4 +229,13 @@ async function ensureArchiveTab(sheets, header) {
   });
 }
 
-module.exports = { appendLead, getAllLeads, leadExists, updateLeadField, archiveLead };
+function getLeadsSheetDebug() {
+  return {
+    sheetTab: SHEET_NAME,
+    spreadsheetConfigured: !!SPREADSHEET_ID,
+  };
+}
+
+module.exports = {
+  appendLead, getAllLeads, leadExists, updateLeadField, archiveLead, getLeadsSheetDebug,
+};
