@@ -15,7 +15,13 @@ const SHEET_TAB_REQUESTED = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE
   .replace(/^\uFEFF/, '');
 /** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
 const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim().replace(/^\uFEFF/, '');
-const ARCHIVE_TAB            = 'Cosimo';
+/** Archiv-Mappe: Ziel-Tab (nur .env; Fallback nur für bestehende Installationen ohne Variable) */
+const ARCHIVE_TAB = (() => {
+  const r = (process.env.GOOGLE_ARCHIVE_SHEET_NAME || process.env.GOOGLE_ARCHIVE_SHEET_TAB || 'Cosimo')
+    .trim()
+    .replace(/^\uFEFF/, '');
+  return r || 'Cosimo';
+})();
 
 /** A1-Notation: Blattname immer in einfachen Anführungszeichen (Google, z. B. Ziffern im Namen). */
 function sheetRange(tab, a1Part) {
@@ -43,9 +49,9 @@ async function throwIfRangeParseError(sheets, sheetTitle, err) {
     /* Meta-Lesen fehlgeschlagen — Originalfehler reicht */
   }
   const hint = tabs.length
-    ? `Vorhandene Blätter: ${tabs.join(', ')}. In .env GOOGLE_SHEET_NAME= setzen (Groß/Klein wie in Google Sheets oder nur nahe genug).`
-    : 'Prüfe GOOGLE_SPREADSHEET_ID und GOOGLE_SHEET_NAME in der .env.';
-  throw new Error(`${msg} — Blatt "${sheetTitle}"? ${hint}`);
+    ? `Vorhandene Blätter: ${tabs.join(', ')}. In der Server-.env \`GOOGLE_SHEET_NAME\` (oder \`GOOGLE_SHEET_TAB\`) auf einen dieser Namen setzen; Groß-/Kleinschreibung wird angeglichen.`
+    : 'Prüfe GOOGLE_SPREADSHEET_ID und GOOGLE_SHEET_NAME in der .env auf dem Server.';
+  throw new Error(`${msg} — konfiguriertes Blatt passt nicht zur Mappe. ${hint}`);
 }
 
 /** Ordnet .env-Blattnamen dem echten Tab-Titel zu (Google unterscheidet sonst z. B. sheet1 vs Sheet1). */
@@ -56,6 +62,31 @@ function matchSheetTabTitle(requested, titles) {
   const rl = req.toLowerCase();
   const hit = titles.find((t) => String(t).toLowerCase() === rl);
   return hit || req;
+}
+
+/**
+ * Haupt-Lead-Tab: exakter/case-insensitiver Treffer; sonst sinnvoller Fallback (z. B. veraltetes
+ * GOOGLE_SHEET_NAME auf der VM, Mappe hat nur noch ein Blatt).
+ */
+function resolveLeadsSheetTab(requested, titles) {
+  if (!titles || !titles.length) {
+    return String(requested || '').trim() || 'Sheet1';
+  }
+  const req = String(requested || '').trim();
+  const matched = matchSheetTabTitle(req, titles);
+  if (titles.includes(matched)) return matched;
+
+  if (titles.length === 1) return titles[0];
+
+  const sheet1ish = titles.find((t) => /^sheet1$/i.test(String(t)));
+  if (sheet1ish) return sheet1ish;
+
+  const def = matchSheetTabTitle('Sheet1', titles);
+  if (titles.includes(def)) return def;
+
+  throw new Error(
+    `GOOGLE_SHEET_NAME (bzw. GOOGLE_SHEET_TAB) in der .env ist „${req || '(leer)'}“, es gibt aber kein passendes Blatt. Vorhanden: ${titles.join(', ')}.`
+  );
 }
 
 function trimCell(v) {
@@ -306,7 +337,7 @@ function columnIndexToLetter(index) {
 
 async function getHeaderAndTab(sheets) {
   const titles = await listSheetTabTitles(sheets);
-  const tab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
+  const tab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
@@ -321,11 +352,14 @@ async function getHeaderAndTab(sheets) {
   return { header, tab };
 }
 
-/** @param {string} sheetTitleRequested — aus .env o.ä.; optional sheets/titles um Meta-Calls zu sparen */
-async function fetchLeadsForTab(sheetTitleRequested, sheetsOpt = null, titlesOpt = null) {
+/** @param {{ resolvePrimary?: boolean }} [options] resolvePrimary: Haupt-Lead-Tab per resolveLeadsSheetTab */
+async function fetchLeadsForTab(sheetTitleRequested, sheetsOpt = null, titlesOpt = null, options = {}) {
+  const { resolvePrimary = false } = options;
   const sheets = sheetsOpt || await getSheets();
   const titles = titlesOpt || await listSheetTabTitles(sheets);
-  const sheetTitle = matchSheetTabTitle(sheetTitleRequested, titles);
+  const sheetTitle = resolvePrimary
+    ? resolveLeadsSheetTab(sheetTitleRequested, titles)
+    : matchSheetTabTitle(sheetTitleRequested, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
@@ -445,8 +479,8 @@ async function getAllLeads() {
   }
   const sheets = await getSheets();
   const titles = await listSheetTabTitles(sheets);
-  const primaryTab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
-  const primaryRows = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sheets, titles);
+  const primaryTab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
+  const primaryRows = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sheets, titles, { resolvePrimary: true });
   const primary = primaryRows.map((o) => ({ ...o, __pvlLegacy: false }));
 
   const leg = LEGACY_SHEET_NAME;
@@ -470,7 +504,7 @@ async function getAllLeads() {
 
 async function leadExists(email) {
   if (!email) return false;
-  const rows = await fetchLeadsForTab(SHEET_TAB_REQUESTED);
+  const rows = await fetchLeadsForTab(SHEET_TAB_REQUESTED, null, null, { resolvePrimary: true });
   return rows.some((l) => l['E-Mail']?.toLowerCase() === email.toLowerCase());
 }
 
@@ -478,7 +512,7 @@ async function leadExists(email) {
 async function updateLeadField(email, columnHeader, value) {
   const sheets = await getSheets();
   const titles = await listSheetTabTitles(sheets);
-  const tab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
+  const tab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
@@ -511,11 +545,11 @@ async function updateLeadField(email, columnHeader, value) {
   });
 }
 
-// Copy lead row to archive spreadsheet "Cosimo" tab, then delete from Leads
+// Copy lead row to archive spreadsheet (Tab aus GOOGLE_ARCHIVE_SHEET_NAME), dann Zeile im Lead-Blatt löschen
 async function archiveLead(email) {
   const sheets = await getSheets();
   const titles = await listSheetTabTitles(sheets);
-  const tab = matchSheetTabTitle(SHEET_TAB_REQUESTED, titles);
+  const tab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
   let res;
   try {
     res = await sheets.spreadsheets.values.get({
@@ -610,8 +644,10 @@ async function getLeadsSheetDebug() {
       fields: 'sheets.properties.title',
     });
     const sheetTabs = (meta.data.sheets || []).map((s) => s.properties?.title).filter(Boolean);
-    const primaryResolved = matchSheetTabTitle(SHEET_TAB_REQUESTED, sheetTabs);
-    const p = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sh, sheetTabs);
+    const envMatchTitle = matchSheetTabTitle(SHEET_TAB_REQUESTED, sheetTabs);
+    const sheetTabEnvMatches = sheetTabs.includes(envMatchTitle);
+    const primaryResolved = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, sheetTabs);
+    const p = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sh, sheetTabs, { resolvePrimary: true });
     let legacyC = 0;
     if (LEGACY_SHEET_NAME) {
       const legacyResolved = matchSheetTabTitle(LEGACY_SHEET_NAME, sheetTabs);
@@ -634,7 +670,10 @@ async function getLeadsSheetDebug() {
       ...base,
       sheetTabResolved: primaryResolved,
       sheetTabs,
-      sheetTabMatches: sheetTabs.includes(primaryResolved),
+      /** true, wenn GOOGLE_SHEET_NAME ohne Fallback zu einem Blatt der Mappe passt */
+      sheetTabEnvMatches,
+      /** true, wenn ein anderer Tab gewählt wurde als der per match erreichbare Name (z. B. veralteter .env-Name) */
+      sheetTabAutoResolved: !sheetTabEnvMatches && primaryResolved !== envMatchTitle,
       headerRowIndex: raw.headerRowIndex,
       rawRowCount: (raw.dataRows || []).length,
       primaryRowCount: p.length,

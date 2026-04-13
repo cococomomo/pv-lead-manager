@@ -76,8 +76,9 @@ Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.js
 ### 5. Google Sheet
 
 - Tabellen-ID **nur** in `GOOGLE_SPREADSHEET_ID` (und ggf. `GOOGLE_ARCHIVE_SPREADSHEET_ID` für Archiv) in der **`.env`** — im Repository **keine** IDs im Quelltext; die App liest ausschließlich `process.env` (siehe `src/sheets.js`).
-- **`GOOGLE_SHEET_NAME`**: Name des **Tabellenblatts** mit den Leads (Default im Code: `Sheet1`). Die App gleicht ihn **ohne Groß-/Kleinschreibung** mit den echten Tab-Titeln ab (z. B. `sheet1` → `Sheet1`). Diagnose: `/api/debug/leads-sheet` → `sheetTabs`, `sheetTabResolved`, `sheetTabMatches`.
+- **`GOOGLE_SHEET_NAME`** (oder `GOOGLE_SHEET_TAB`): **Blattname** der Lead-Tabelle (Default: `Sheet1`). Groß-/Kleinschreibung wird angeglichen. Existiert der konfigurierte Name in der Mappe nicht, wählt die App bei **genau einem** Blatt automatisch dieses Blatt (hilft bei veralteter Server-`.env`). Diagnose: `/api/debug/leads-sheet` → `sheetTabs`, `sheetTabResolved`, `sheetTabEnvMatches`.
 - **`GOOGLE_SHEET_LEGACY_NAME`**: optionales **zweites Blatt** derselben Mappe (z. B. alte Leads). Diese Zeilen erscheinen **nur zur Ansicht** auf der Karte (weißer Pin-Ring); **Speichern, Archivieren und IMAP-Duplikat-Prüfung** beziehen sich nur auf **`GOOGLE_SHEET_NAME`**.
+- **`GOOGLE_ARCHIVE_SHEET_NAME`** (oder `GOOGLE_ARCHIVE_SHEET_TAB`): Ziel-Tab in **`GOOGLE_ARCHIVE_SPREADSHEET_ID`** fürs Archivieren (wenn unset: `Cosimo` wie bisher).
 - **Eigenes Spreadsheet nur für neue Leads** (ab jetzt): später per zweiter `GOOGLE_SPREADSHEET_ID` + Anpassung von `poller.js`/`appendLead` möglich – aktuell ein Sheet mit zwei Blättern ist der einfache Weg.
 - Im Leads-Tab diese **Spaltenüberschriften** ergänzen, damit CRM & Kalender sauber speichern:
   - `Status` (z. B. Neu, Angerufen, Nachfassen, Termin, Verloren)

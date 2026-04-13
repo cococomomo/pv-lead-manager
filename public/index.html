@@ -190,7 +190,7 @@
     <!-- Detail panel inside sidebar -->
     <div id="sidebar-detail">
       <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste</div>
-      <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem Archiv-Tabellenblatt — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
+      <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem zweiten Lead-Blatt (Legacy) — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
       <div class="detail-body">
         <div class="detail-title" id="sd-name"></div>
         <div class="detail-info" id="sd-info"></div>
@@ -550,7 +550,7 @@
       hideLoadError();
       allLeads = data;
       if (data.length === 0) {
-        showLoadError('Keine Leads geladen. Prüfen: GOOGLE_SPREADSHEET_ID, GOOGLE_SHEET_NAME (Tab-Name; Groß/Klein wird angeglichen). Diagnose: /api/debug/leads-sheet → sheetTabs, sheetTabResolved, sheetTabMatches.');
+        showLoadError('Keine Leads geladen. Prüfen: GOOGLE_SPREADSHEET_ID, GOOGLE_SHEET_NAME. Diagnose: /api/debug/leads-sheet → sheetTabs, sheetTabResolved, sheetTabEnvMatches, sheetTabAutoResolved.');
       }
       renderStats();
       renderList();
