@@ -10,7 +10,7 @@ const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
 const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
 const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
 /** Tab mit den Leads – muss exakt dem Blattnamen in Google Sheets entsprechen */
-const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Tabellenblatt1')
+const SHEET_NAME = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Sheet1')
   .trim()
   .replace(/^\uFEFF/, '');
 /** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
