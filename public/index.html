@@ -414,8 +414,9 @@
     document.getElementById('stat-total').textContent   = allLeads.length;
     document.getElementById('stat-active').textContent  = allLeads.length - done;
     document.getElementById('stat-done').textContent    = done;
-    document.getElementById('stat-new').textContent     = allLeads.filter(l => !l[COL.betreut]).length;
-    document.getElementById('stat-betreut').textContent = allLeads.filter(l =>  l[COL.betreut]).length;
+    const active = (l) => !isHiddenStatus(l);
+    document.getElementById('stat-new').textContent     = allLeads.filter(l => active(l) && !l[COL.betreut]).length;
+    document.getElementById('stat-betreut').textContent = allLeads.filter(l => active(l) &&  l[COL.betreut]).length;
     document.getElementById('stat-dp').textContent      = allLeads.filter(l => getSource(l) === 'D&P').length;
     document.getElementById('stat-pvat').textContent    = allLeads.filter(l => getSource(l) === 'Photovoltaikanlage.at').length;
     document.getElementById('stat-messe').textContent   = allLeads.filter(l => isMesse(l)).length;
