@@ -42,13 +42,21 @@ const authUrl = oAuth2Client.generateAuthUrl({
 });
 
 console.log('\n=== Google OAuth2 Setup ===\n');
-console.log('Opening browser for Google login...');
-console.log('\nIf the browser does not open, visit this URL manually:\n');
+console.log('Redirect-URI (in Google Cloud → OAuth-Client eintragen):');
+console.log(`  http://localhost:${PORT}/oauth2callback\n`);
+console.log('Im Browser öffnen:\n');
 console.log(authUrl);
-console.log('\nWaiting for callback on http://localhost:' + PORT + ' ...\n');
-
-// Open browser (Windows)
-exec(`start "" "${authUrl}"`);
+console.log('');
+if (process.platform === 'win32') {
+  exec(`start "" "${authUrl}"`);
+} else {
+  console.log(
+    'Tipp: Läuft dieses Skript per SSH auf dem Server, der Browser aber auf deinem PC, zuerst\n' +
+    '  ssh -L ' + PORT + ':127.0.0.1:' + PORT + ' user@server\n' +
+    'dann die URL oben im **lokalen** Browser öffnen (Google leitet auf localhost:' + PORT + ' → Tunnel → Server).\n'
+  );
+}
+console.log('Warte auf Callback auf http://127.0.0.1:' + PORT + ' …\n');
 
 // Local HTTP server to catch the OAuth callback
 const server = http.createServer(async (req, res) => {
@@ -99,8 +107,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  // browser already opened above
+server.listen(PORT, '127.0.0.1', () => {
+  /* nur Loopback — mit ssh -L 3334:127.0.0.1:3334 vom PC aus erreichbar */
 });
 
 server.on('error', (err) => {
