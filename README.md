@@ -88,6 +88,14 @@ Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.js
 
 Ordner z. B. `INBOX.Leads` / `Leads` je nach Server; in `.env` `IMAP_FOLDER` setzen. **Ausgehende** Mails (Zugangsdaten, Kundenbestätigung) gehen **nicht** über IMAP, sondern über **SMTP** oder **Gmail-API/OAuth** (siehe oben).
 
+## Deploy (GitHub → Server, live)
+
+1. Lokal (oder CI): `git push origin master` — Stand ist auf GitHub.
+2. Auf dem **Hetzner-Server** im Klon-Verzeichnis (SSH):  
+   `chmod +x scripts/on-server-update.sh && ./scripts/on-server-update.sh`  
+   (zieht `master`, `npm ci`, startet bzw. startet **PM2** `pv-lead-manager` aus `ecosystem.config.cjs`.)
+3. `.env` dort: **`APP_BASE_URL=https://pvl.lifeco.at`**, **`SESSION_COOKIE_SECURE=1`**, SMTP/Google wie nötig; **Nginx** → `proxy_pass http://127.0.0.1:3080` für `pvl.lifeco.at`.
+
 ## Lokal starten
 
 Standardport ist **3080** (weil 3000 oft schon belegt ist), über `PORT` in `.env` änderbar.
