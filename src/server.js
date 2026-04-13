@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -35,13 +36,42 @@ function parseBasicAuth(header) {
   }
 }
 
-function basicAuthMiddleware(req, res, next) {
+/** Basic Auth aktiv, wenn User + (Klartextpasswort ODER bcrypt-Hash) gesetzt */
+function basicAuthConfigured() {
   const u = process.env.BASIC_AUTH_USER;
-  const p = process.env.BASIC_AUTH_PASS;
-  if (!u || !p) return next();
+  const plain = process.env.BASIC_AUTH_PASS;
+  const hashed = (process.env.BASIC_AUTH_PASS_BCRYPT || '').trim();
+  if (!u || (!plain && !hashed)) return false;
+  if (hashed && !hashed.startsWith('$2')) {
+    console.warn('BASIC_AUTH_PASS_BCRYPT sollte mit $2a$, $2b$ oder $2y$ beginnen (bcrypt).');
+  }
+  return true;
+}
+
+function verifyBasicCreds(creds) {
+  if (!creds) return false;
+  const u = process.env.BASIC_AUTH_USER;
+  if (!u || !safeEqStr(u, creds.user)) return false;
+
+  const hash = (process.env.BASIC_AUTH_PASS_BCRYPT || '').trim();
+  if (hash) {
+    try {
+      return bcrypt.compareSync(creds.pass, hash);
+    } catch {
+      return false;
+    }
+  }
+
+  const plain = process.env.BASIC_AUTH_PASS;
+  if (plain) return safeEqStr(plain, creds.pass);
+  return false;
+}
+
+function basicAuthMiddleware(req, res, next) {
+  if (!basicAuthConfigured()) return next();
 
   const creds = parseBasicAuth(req.headers.authorization);
-  if (!creds || !safeEqStr(u, creds.user) || !safeEqStr(p, creds.pass)) {
+  if (!verifyBasicCreds(creds)) {
     res.setHeader('WWW-Authenticate', 'Basic realm="PV Lead Manager"');
     return res.status(401).send('Authentifizierung erforderlich');
   }
@@ -110,18 +140,14 @@ app.get('/api/vertriebler', async (req, res) => {
 });
 
 app.post('/api/admin/vertriebler', async (req, res) => {
-  const hasBasic = !!(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASS);
+  const hasBasic = basicAuthConfigured();
   const token = process.env.ADMIN_TOKEN;
   const authHeader = req.headers.authorization || '';
 
   let allowed = false;
   if (hasBasic) {
     const creds = parseBasicAuth(authHeader);
-    if (creds
-      && safeEqStr(process.env.BASIC_AUTH_USER, creds.user)
-      && safeEqStr(process.env.BASIC_AUTH_PASS, creds.pass)) {
-      allowed = true;
-    }
+    if (verifyBasicCreds(creds)) allowed = true;
   } else if (token && authHeader === `Bearer ${token}`) {
     allowed = true;
   }
@@ -150,7 +176,7 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  const authHint = process.env.BASIC_AUTH_USER ? ' (Basic-Auth aktiv)' : '';
+  const authHint = basicAuthConfigured() ? ' (Basic-Auth aktiv)' : '';
   console.log(`PV Lead Manager running at http://localhost:${PORT}${authHint}`);
 });
 
