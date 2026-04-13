@@ -31,8 +31,8 @@ if (!fs.existsSync(CREDENTIALS_PATH)) {
 const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
 const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
 
-// Use localhost redirect for the local callback server
-const redirectUri = `http://localhost:${PORT}/oauth2callback`;
+// Muss 1:1 in Google Cloud → Client → „Autorisierte Weiterleitungs-URIs“ stehen (localhost ≠ 127.0.0.1).
+const redirectUri = `http://127.0.0.1:${PORT}/oauth2callback`;
 const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirectUri);
 
 const authUrl = oAuth2Client.generateAuthUrl({
@@ -42,8 +42,8 @@ const authUrl = oAuth2Client.generateAuthUrl({
 });
 
 console.log('\n=== Google OAuth2 Setup ===\n');
-console.log('Redirect-URI (in Google Cloud → OAuth-Client eintragen):');
-console.log(`  http://localhost:${PORT}/oauth2callback\n`);
+console.log('Redirect-URI (in Google Cloud → OAuth-Client eintragen, exakt so):');
+console.log('  ' + redirectUri + '\n');
 console.log('Im Browser öffnen:\n');
 console.log(authUrl);
 console.log('');
@@ -53,16 +53,16 @@ if (process.platform === 'win32') {
   console.log(
     'Tipp: Läuft dieses Skript per SSH auf dem Server, der Browser aber auf deinem PC, zuerst\n' +
     '  ssh -L ' + PORT + ':127.0.0.1:' + PORT + ' user@server\n' +
-    'dann die URL oben im **lokalen** Browser öffnen (Google leitet auf localhost:' + PORT + ' → Tunnel → Server).\n'
+    'dann die URL oben im **lokalen** Browser öffnen (Google leitet auf ' + redirectUri + ' → Tunnel → Server).\n'
   );
 }
-console.log('Warte auf Callback auf http://127.0.0.1:' + PORT + ' …\n');
+console.log('Warte auf Callback auf ' + redirectUri + ' …\n');
 
 // Local HTTP server to catch the OAuth callback
 const server = http.createServer(async (req, res) => {
   if (!req.url.startsWith('/oauth2callback')) return;
 
-  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const code = url.searchParams.get('code');
   const error = url.searchParams.get('error');
 
