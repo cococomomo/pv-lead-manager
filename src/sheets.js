@@ -40,12 +40,19 @@ function scoreHeaderRow(row) {
     if (t === 'e-mail' || t === 'email' || t.endsWith(' e-mail')) s += 6;
     else if (t.includes('e-mail') || t === 'mail') s += 4;
     if (t.includes('nachname') || t.includes('vorname')) s += 3;
+    if (t === 'namen') s += 4;
     if (t === 'plz' || t.includes('postleitzahl')) s += 2;
     if (t === 'ort' || t.includes('stadt')) s += 2;
     if (t.includes('telefon') || t === 'tel' || t.includes('handy')) s += 2;
-    if (t.includes('straße') || t.includes('strasse')) s += 2;
+    if (t.includes('straße') || t.includes('strasse') || t === 'strasse') s += 2;
     if (t.includes('quelle')) s += 1;
-    if (t.includes('anfrage') && (t.includes('nr') || t.includes('zeit'))) s += 2;
+    if (t === 'anfrage') s += 2;
+    if (t === 'anfragezeitpunkt' || (t.includes('anfrage') && t.includes('zeit'))) s += 3;
+    else if (t.includes('anfrage') && t.includes('nr')) s += 2;
+    if (t === 'betreuer') s += 1;
+    if (t === 'notizen') s += 1;
+    if (t === 'info') s += 1;
+    if (t === 'land') s += 1;
     if (t === 'status') s += 1;
   }
   return s;
@@ -78,15 +85,43 @@ function detectBestHeaderRowIndex(values) {
   return best;
 }
 
+/** CRM-/API-Spaltenname (lowercase) ↔ abweichende Tabellenköpfe (lowercase) */
+const HEADER_SYNONYMS = {
+  'e-mail': ['e-mail', 'email', 'mail', 'e mail'],
+  'betreut durch': ['betreut durch', 'betreuer'],
+  'nachname + vorname': ['nachname + vorname', 'namen', 'name'],
+  'straße': ['straße', 'strasse'],
+  'anfrage nr': ['anfrage nr', 'anfrage nr ', 'anfrage', 'anfragennr'],
+  'anfragezeitpunkt': ['anfragezeitpunkt', 'datum'],
+  'notizen': ['notizen'],
+  'termin': ['termin'],
+  'status': ['status'],
+  'nachfass bis': ['nachfass bis', 'nachfass'],
+  'info': ['info'],
+  'quelle': ['quelle'],
+  'land': ['land', 'country'],
+  'plz': ['plz', 'postleitzahl'],
+  'ort': ['ort', 'stadt'],
+  'telefon': ['telefon', 'tel', 'handy'],
+};
+
 function findColIndex(headerCells, wantedLabel) {
-  const w = trimCell(wantedLabel).toLowerCase();
-  const cells = headerCells.map((h) => trimCell(h));
-  for (let i = 0; i < cells.length; i++) {
-    if (cells[i].toLowerCase() === w) return i;
+  const want = trimCell(wantedLabel).toLowerCase().replace(/\s+/g, ' ');
+  const cells = headerCells.map((h) => trimCell(h).toLowerCase());
+  const variants = new Set([want]);
+  for (const [crm, alts] of Object.entries(HEADER_SYNONYMS)) {
+    if (crm === want || alts.includes(want)) {
+      variants.add(crm);
+      alts.forEach((a) => variants.add(a));
+    }
   }
-  if (w === 'e-mail' || w === 'email') {
+  for (const v of variants) {
+    const i = cells.indexOf(v);
+    if (i >= 0) return i;
+  }
+  if (want === 'e-mail' || want === 'email') {
     for (let i = 0; i < cells.length; i++) {
-      const t = cells[i].toLowerCase();
+      const t = cells[i];
       if (t === 'e-mail' || t === 'email' || t === 'mail' || t === 'e mail') return i;
     }
   }
@@ -109,21 +144,21 @@ function applyCanonicalFieldAliases(lead) {
     if (v && !String(out[canonical] || '').trim()) out[canonical] = v;
   };
   set('E-Mail', out['E-Mail'] || firstMatch((t) => t === 'e-mail' || t === 'email' || t === 'mail'));
-  set('Nachname + Vorname', out['Nachname + Vorname'] || firstMatch((t) => (t.includes('nachname') && t.includes('vorname')) || t === 'name' || t === 'kunde'));
+  set('Nachname + Vorname', out['Nachname + Vorname'] || firstMatch((t) => t === 'namen' || (t.includes('nachname') && t.includes('vorname')) || t === 'name' || t === 'kunde'));
   set('Telefon', out['Telefon'] || firstMatch((t) => t.includes('telefon') || t === 'tel' || t.includes('handy')));
-  set('Straße', out['Straße'] || firstMatch((t) => t.includes('straße') || t.includes('strasse') || t === 'adresse'));
+  set('Straße', out['Straße'] || firstMatch((t) => t === 'strasse' || t.includes('straße') || t.includes('strasse') || t === 'adresse'));
   set('PLZ', out['PLZ'] || firstMatch((t) => t === 'plz' || t.includes('postleitzahl')));
   set('Ort', out['Ort'] || firstMatch((t) => t === 'ort' || t.includes('stadt')));
   set('Land', out['Land'] || firstMatch((t) => t === 'land' || t === 'country'));
-  set('Quelle', out['Quelle'] || firstMatch((t) => t.includes('quelle')));
-  set('Anfragezeitpunkt', out['Anfragezeitpunkt'] || firstMatch((t) => t.includes('anfragezeit') || t === 'datum' || t.includes('datum anfrage')));
+  set('Quelle', out['Quelle'] || firstMatch((t) => t === 'quelle' || t.includes('quelle')));
+  set('Anfragezeitpunkt', out['Anfragezeitpunkt'] || firstMatch((t) => t === 'anfragezeitpunkt' || t.includes('anfragezeit') || t === 'datum' || t.includes('datum anfrage')));
   set('Info', out['Info'] || firstMatch((t) => t === 'info' || t.includes('bemerkung')));
   set('Status', out['Status'] || firstMatch((t) => t === 'status'));
-  set('Betreut Durch', out['Betreut Durch'] || firstMatch((t) => t.includes('betreut')));
+  set('Betreut Durch', out['Betreut Durch'] || firstMatch((t) => t === 'betreuer' || t.includes('betreut')));
   set('Notizen', out['Notizen'] || firstMatch((t) => t === 'notizen' || t.includes('notiz')));
   set('Nachfass bis', out['Nachfass bis'] || firstMatch((t) => t.includes('nachfass')));
   set('Termin', out['Termin'] || firstMatch((t) => t === 'termin'));
-  const nr = out['Anfrage NR'] || out['Anfrage NR '] || firstMatch((t) => t.replace(/\s/g, '').includes('anfrag') && t.includes('nr'));
+  const nr = out['Anfrage NR'] || out['Anfrage NR '] || firstMatch((t) => t === 'anfrage') || firstMatch((t) => t.replace(/\s/g, '').includes('anfrag') && t.includes('nr'));
   if (nr) {
     if (!String(out['Anfrage NR'] || '').trim()) out['Anfrage NR'] = String(nr).trim();
   }
@@ -147,14 +182,14 @@ function fieldForColumnTitle(colHeader) {
   }
   if (t === 'email' || t === 'e-mail' || t === 'mail' || t === 'e mail') return 'email';
   if (t.includes('nachname') && t.includes('vorname')) return 'name';
-  if (t === 'name' || t === 'kunde') return 'name';
+  if (t === 'namen' || t === 'name' || t === 'kunde') return 'name';
   if (t.includes('telefon') || t === 'tel' || t.includes('handy')) return 'phone';
-  if (t.includes('straße') || t.includes('strasse')) return 'street';
+  if (t.includes('straße') || t.includes('strasse') || t === 'strasse') return 'street';
   if (t === 'plz' || t.includes('postleitzahl')) return 'zip';
   if (t === 'ort' || t.includes('stadt')) return 'city';
   if (t === 'land' || t === 'country') return 'country';
-  if (t.includes('quelle')) return 'source';
-  if (t.includes('anfragezeit') || t === 'datum' || t.includes('datum')) return 'date';
+  if (t.includes('quelle') || t === 'quelle') return 'source';
+  if (t === 'anfragezeitpunkt' || t.includes('anfragezeit') || t === 'datum' || t.includes('datum anfrage')) return 'date';
   if (t === 'info' || t.includes('bemerkung')) return 'info';
   return null;
 }
@@ -271,7 +306,8 @@ async function appendLead(lead) {
 
   const row = header.map((colHeader) => {
     const ch = trimCell(colHeader);
-    if (/^anfrage\s*nr$/i.test(ch.replace(/\s/g, ' ')) || ch.replace(/\s/g, '').toLowerCase() === 'anfragennr') {
+    const chLow = ch.toLowerCase();
+    if (chLow === 'anfrage' || /^anfrage\s*nr$/i.test(ch.replace(/\s/g, ' ')) || ch.replace(/\s/g, '').toLowerCase() === 'anfragennr') {
       return String(nextNr);
     }
     const field = fieldForColumnTitle(ch);
@@ -320,7 +356,7 @@ function dedupeLeadsKeepNewest(leads) {
   }
 
   function requestNr(lead) {
-    const raw = String(lead['Anfrage NR'] ?? lead['Anfrage NR '] ?? '').replace(/\D/g, '');
+    const raw = String(lead['Anfrage NR'] ?? lead['Anfrage NR '] ?? lead.anfrage ?? '').replace(/\D/g, '');
     const n = parseInt(raw, 10);
     return Number.isFinite(n) ? n : 0;
   }

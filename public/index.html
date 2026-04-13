@@ -301,7 +301,7 @@
 
   /** Sheet-Spalte heißt oft „Anfrage NR“ oder mit Leerzeichen — beides abdecken */
   function anfrageNr(lead) {
-    return String(lead['Anfrage NR'] ?? lead['Anfrage NR '] ?? lead[COL.nr] ?? '').trim();
+    return String(lead['Anfrage NR'] ?? lead['Anfrage NR '] ?? lead.anfrage ?? lead[COL.nr] ?? '').trim();
   }
 
   function leadDateMs(lead) {
