@@ -42,6 +42,17 @@
       <input id="st" type="password" placeholder="aus .env" />
       <button type="button" style="margin-top:0.5rem;background:#059669" onclick="bootstrap()">Admin anlegen</button>
     </details>
+    <details style="margin-top:0.75rem">
+      <summary>Passwort vergessen</summary>
+      <p style="margin:0.5rem 0 0">Auf dem Server in <code>.env</code>: <code>PASSWORD_RESET_TOKEN</code> (mind. 16 Zeichen) setzen, App neu starten. Dann hier dasselbe Token eintragen.</p>
+      <label for="ru">Benutzername</label>
+      <input id="ru" placeholder="z. B. cosimo" autocomplete="username" />
+      <label for="rp">Neues Passwort</label>
+      <input id="rp" type="password" autocomplete="new-password" minlength="6" />
+      <label for="rt">Reset-Token</label>
+      <input id="rt" type="password" placeholder="PASSWORD_RESET_TOKEN aus .env" />
+      <button type="button" style="margin-top:0.5rem;background:#7c3aed" onclick="doReset()">Passwort speichern</button>
+    </details>
   </div>
   <script>
     const cred = { credentials: 'same-origin' };
@@ -106,6 +117,36 @@
         return;
       }
       location.replace('/');
+    }
+
+    async function doReset() {
+      document.getElementById('err').textContent = '';
+      const username = document.getElementById('ru').value.trim() || document.getElementById('u').value.trim();
+      const newPassword = document.getElementById('rp').value;
+      const resetToken = document.getElementById('rt').value;
+      if (!username || !newPassword || newPassword.length < 6) {
+        document.getElementById('err').textContent = 'Benutzername und neues Passwort (min. 6 Zeichen).';
+        return;
+      }
+      if (!resetToken) {
+        document.getElementById('err').textContent = 'Reset-Token eingeben.';
+        return;
+      }
+      const r = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ username, newPassword, resetToken }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        document.getElementById('err').textContent = j.error || r.statusText;
+        return;
+      }
+      document.getElementById('err').textContent = '';
+      document.getElementById('u').value = username;
+      document.getElementById('p').value = newPassword;
+      alert('Passwort geändert. Du kannst dich jetzt anmelden.');
     }
   </script>
 </body>

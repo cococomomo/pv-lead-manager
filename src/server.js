@@ -16,6 +16,7 @@ const {
   createUser,
   deleteUser,
   userCount,
+  resetUserPassword,
 } = require('./users');
 const { sendLoginCredentialsEmail } = require('./mail-welcome');
 
@@ -96,6 +97,14 @@ function verifyBasicCreds(creds) {
   return false;
 }
 
+function formatGoogleSheetsError(err) {
+  const raw = (err && err.message) ? String(err.message) : String(err);
+  if (/invalid_grant/i.test(raw)) {
+    return 'Google-Zugriff abgelaufen (invalid_grant). Auf dem Server im Projektverzeichnis OAuth erneuern: npm run oauth-setup — neue auth/google-token.json. Anschließend Dienst neu starten (pm2).';
+  }
+  return raw;
+}
+
 function basicAuthMiddleware(req, res, next) {
   if (sessionOn) return next();
   if (!basicAuthConfigured()) return next();
@@ -168,6 +177,7 @@ app.use((req, res, next) => {
     if (req.path === '/api/auth/login' && req.method === 'POST') return next();
     if (req.path === '/api/auth/logout' && req.method === 'POST') return next();
     if (req.path === '/api/auth/bootstrap-admin' && req.method === 'POST') return next();
+    if (req.path === '/api/auth/reset-password' && req.method === 'POST') return next();
     if (req.path === '/api/auth/me') return next();
     if (!sessionOn) return next();
     return requireApiSession(req, res, next);
@@ -182,7 +192,7 @@ app.get('/api/leads', async (req, res) => {
     res.json(await getAllLeads());
   } catch (err) {
     console.error('GET /api/leads error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: formatGoogleSheetsError(err) });
   }
 });
 
@@ -197,7 +207,7 @@ app.get('/api/debug/leads-sheet', async (req, res) => {
     try {
       dbg = await getLeadsSheetDebug();
     } catch (_) { /* ignore */ }
-    res.status(500).json({ ...dbg, error: err.message });
+    res.status(500).json({ ...dbg, error: formatGoogleSheetsError(err) });
   }
 });
 
@@ -304,6 +314,24 @@ app.post('/api/auth/bootstrap-admin', async (req, res) => {
   try {
     await createUser({ username, password, email, role: 'admin' });
     req.session.user = { username: String(username).trim(), role: 'admin' };
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/** Passwort zurücksetzen ohne Login: PASSWORD_RESET_TOKEN in .env (mind. 16 Zeichen), gleicher Wert im Formular. */
+app.post('/api/auth/reset-password', async (req, res) => {
+  const token = String(process.env.PASSWORD_RESET_TOKEN || '').trim();
+  if (!token || token.length < 16) {
+    return res.status(503).json({ error: 'PASSWORD_RESET_TOKEN nicht konfiguriert (mind. 16 Zeichen in .env)' });
+  }
+  const { username, newPassword, resetToken } = req.body || {};
+  if (!resetToken || resetToken !== token) {
+    return res.status(403).json({ error: 'Ungültiges Reset-Token' });
+  }
+  try {
+    await resetUserPassword(username, newPassword);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

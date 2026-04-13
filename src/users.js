@@ -87,10 +87,23 @@ async function userCount() {
   return (await readUsers()).length;
 }
 
+async function resetUserPassword(username, newPassword) {
+  const name = String(username || '').trim();
+  if (!name || !newPassword || String(newPassword).length < 6) {
+    throw new Error('Benutzername und neues Passwort (min. 6 Zeichen) erforderlich');
+  }
+  const users = await readUsers();
+  const idx = users.findIndex((x) => String(x.username).toLowerCase() === name.toLowerCase());
+  if (idx < 0) throw new Error('Benutzer nicht gefunden');
+  users[idx].passwordHash = bcrypt.hashSync(String(newPassword), 12);
+  await writeUsers(users);
+}
+
 module.exports = {
   verifyLogin,
   listUsersSafe,
   createUser,
   deleteUser,
   userCount,
+  resetUserPassword,
 };

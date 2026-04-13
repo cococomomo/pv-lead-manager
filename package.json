@@ -12,6 +12,7 @@
     "poll": "node src/poller.js",
     "hash-basic-password": "node scripts/hash-basic-password.js",
     "create-admin": "node scripts/create-admin.js",
+    "reset-password": "node scripts/reset-password.js",
     "oauth-setup": "node scripts/oauth-setup.js"
   },
   "dependencies": {
