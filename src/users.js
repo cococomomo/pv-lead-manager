@@ -27,6 +27,12 @@ async function findUser(username) {
   return (await readUsers()).find((x) => String(x.username || '').toLowerCase() === u) || null;
 }
 
+function normalizeCalendarPreference(pref) {
+  const v = String(pref || '').toLowerCase();
+  if (v === 'outlook' || v === 'apple') return v;
+  return 'google';
+}
+
 async function verifyLogin(username, password) {
   const u = await findUser(username);
   if (!u || !u.passwordHash) return null;
@@ -39,6 +45,7 @@ async function verifyLogin(username, password) {
     username: u.username,
     role: u.role === 'admin' ? 'admin' : 'sales',
     email: u.email || '',
+    calendarPreference: normalizeCalendarPreference(u.calendarPreference),
   };
 }
 
@@ -47,6 +54,7 @@ async function listUsersSafe() {
     username: u.username,
     role: u.role === 'admin' ? 'admin' : 'sales',
     email: u.email || '',
+    calendarPreference: normalizeCalendarPreference(u.calendarPreference),
   }));
 }
 
@@ -64,7 +72,28 @@ async function createUser({ username, password, email, role = 'sales' }) {
     passwordHash: bcrypt.hashSync(String(password), 12),
     email: String(email || '').trim(),
     role: role === 'admin' ? 'admin' : 'sales',
+    calendarPreference: 'google',
   });
+  await writeUsers(users);
+}
+
+async function getUserPublic(username) {
+  const u = await findUser(username);
+  if (!u) return null;
+  return {
+    username: u.username,
+    role: u.role === 'admin' ? 'admin' : 'sales',
+    calendarPreference: normalizeCalendarPreference(u.calendarPreference),
+  };
+}
+
+async function updateCalendarPreference(username, pref) {
+  const name = String(username || '').trim();
+  if (!name) throw new Error('Benutzername fehlt');
+  const users = await readUsers();
+  const idx = users.findIndex((x) => String(x.username).toLowerCase() === name.toLowerCase());
+  if (idx < 0) throw new Error('Benutzer nicht gefunden');
+  users[idx].calendarPreference = normalizeCalendarPreference(pref);
   await writeUsers(users);
 }
 
@@ -106,4 +135,7 @@ module.exports = {
   deleteUser,
   userCount,
   resetUserPassword,
+  getUserPublic,
+  updateCalendarPreference,
+  normalizeCalendarPreference,
 };

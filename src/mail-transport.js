@@ -25,39 +25,20 @@ function createSmtpTransport() {
   });
 }
 
-async function createGmailOAuthTransport(getAuth) {
-  const auth = await getAuth();
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: process.env.MY_EMAIL,
-      clientId: auth._clientId,
-      clientSecret: auth._clientSecret,
-      refreshToken: auth.credentials.refresh_token,
-      accessToken: auth.credentials.access_token,
-    },
-  });
-}
-
 /**
- * @param {() => Promise<object>} getAuth  Google OAuth-Client (z. B. calendar.getAuth)
  * @returns {{ transporter: import('nodemailer').Transporter, from: string }}
  */
-async function getMailSender(getAuth) {
+async function getMailSender() {
   const fromName = process.env.MY_NAME || 'PV Lead Manager';
-  if (smtpConfigured()) {
-    const addr = (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim();
-    if (!addr) throw new Error('MAIL_FROM oder SMTP_USER als Absender-Adresse setzen');
-    return {
-      transporter: createSmtpTransport(),
-      from: `"${fromName}" <${addr}>`,
-    };
+  if (!smtpConfigured()) {
+    throw new Error(
+      'SMTP_HOST, SMTP_USER, SMTP_PASS in der .env setzen (E-Mail-Versand; Gmail/OAuth wurde entfernt).'
+    );
   }
-  const addr = (process.env.MY_EMAIL || '').trim();
-  if (!addr) throw new Error('MY_EMAIL fehlt (oder SMTP_HOST/SMTP_USER/SMTP_PASS für SMTP-Versand setzen)');
+  const addr = (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim();
+  if (!addr) throw new Error('MAIL_FROM oder SMTP_USER als Absender-Adresse setzen');
   return {
-    transporter: await createGmailOAuthTransport(getAuth),
+    transporter: createSmtpTransport(),
     from: `"${fromName}" <${addr}>`,
   };
 }

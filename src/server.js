@@ -9,7 +9,23 @@ const path = require('path');
 const session = require('express-session');
 const FileStore = require('session-file-store')(session);
 
-const { getAllLeads, updateLeadField, archiveLead, getLeadsSheetDebug } = require('./sheets');
+const { generateCalendarLink } = require('./calendar-links');
+const {
+  getAllLeads,
+  updateLeadField,
+  updateLeadFieldsBulk,
+  archiveLead,
+  getLeadsSheetDebug,
+  setLeadStatus,
+  getLeadByEmail,
+  countLeadsMissingMapCoords,
+  getLeadsMissingMapCoordsList,
+  updateLeadStreetPlzOrtById,
+  updateLeadAddressAndGeocodeById,
+  setLeadStatusByDbId,
+  buildLeadsExportCsv,
+  regeocodeLeadByEmail,
+} = require('./sheets');
 const {
   verifyLogin,
   listUsersSafe,
@@ -17,8 +33,11 @@ const {
   deleteUser,
   userCount,
   resetUserPassword,
+  getUserPublic,
+  updateCalendarPreference,
 } = require('./users');
 const { sendLoginCredentialsEmail } = require('./mail-welcome');
+const { getDashboardStats } = require('./stats');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
@@ -97,21 +116,8 @@ function verifyBasicCreds(creds) {
   return false;
 }
 
-function formatGoogleSheetsError(err) {
-  const raw = (err && err.message) ? String(err.message) : String(err);
-  if (/invalid_grant/i.test(raw)) {
-    const sid = String(process.env.GOOGLE_SPREADSHEET_ID || '').trim();
-    const sheetHint = sid
-      ? ` GOOGLE_SPREADSHEET_ID in .env ist gesetzt (${sid}); muss zur Lead-Tabelle passen.`
-      : ' GOOGLE_SPREADSHEET_ID in .env setzen (ID aus der Sheet-URL).';
-    return (
-      'Google-Zugriff abgelaufen (invalid_grant). Auf dem Server: npm run oauth-setup — neue auth/google-token.json, '
-      + 'Client-ID/Secret wie in der Google Cloud (gleicher OAuth-Client wie früher). Dann pm2 restart pvl-manager.'
-      + sheetHint
-      + ' Diagnose (eingeloggt): /api/debug/leads-sheet → spreadsheetId.'
-    );
-  }
-  return raw;
+function formatLeadsApiError(err) {
+  return (err && err.message) ? String(err.message) : String(err);
 }
 
 function basicAuthMiddleware(req, res, next) {
@@ -161,7 +167,14 @@ app.post('/api/auth/login', async (req, res) => {
   const user = await verifyLogin(username, password);
   if (!user) return res.status(401).json({ error: 'invalid_credentials' });
   req.session.user = { username: user.username, role: user.role };
-  res.json({ ok: true, user: { username: user.username, role: user.role } });
+  res.json({
+    ok: true,
+    user: {
+      username: user.username,
+      role: user.role,
+      calendarPreference: user.calendarPreference || 'google',
+    },
+  });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -175,9 +188,30 @@ app.post('/api/auth/logout', (req, res) => {
   }
 });
 
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
   if (!req.session || !req.session.user) return res.json({ user: null });
-  res.json({ user: req.session.user });
+  try {
+    const user = await getUserPublic(req.session.user.username);
+    res.json({ user: user || { username: req.session.user.username, role: req.session.user.role, calendarPreference: 'google' } });
+  } catch (err) {
+    console.error('GET /api/auth/me error:', err.message);
+    res.status(500).json({ user: null, error: err.message });
+  }
+});
+
+app.patch('/api/auth/profile', async (req, res) => {
+  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  const { calendarPreference } = req.body || {};
+  if (calendarPreference === undefined) {
+    return res.status(400).json({ error: 'calendarPreference erforderlich (google|outlook|apple)' });
+  }
+  try {
+    await updateCalendarPreference(req.session.user.username, calendarPreference);
+    const user = await getUserPublic(req.session.user.username);
+    res.json({ ok: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Geschützte API + HTML (Session ODER nur Basic ohne Session)
@@ -201,7 +235,72 @@ app.get('/api/leads', async (req, res) => {
     res.json(await getAllLeads());
   } catch (err) {
     console.error('GET /api/leads error:', err.message);
-    res.status(500).json({ error: formatGoogleSheetsError(err) });
+    res.status(500).json({ error: formatLeadsApiError(err) });
+  }
+});
+
+app.get('/api/leads/missing-coords/count', (req, res) => {
+  try {
+    res.json({ count: countLeadsMissingMapCoords() });
+  } catch (err) {
+    console.error('GET missing-coords count:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/leads/missing-coords', (req, res) => {
+  try {
+    res.json(getLeadsMissingMapCoordsList());
+  } catch (err) {
+    console.error('GET missing-coords:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Adresse korrigieren + sofort Geocoding (Nominatim-Kaskade AT). */
+app.post('/api/lead-rows/:id/address-geocode', async (req, res) => {
+  const { strasse, plz, ort } = req.body || {};
+  try {
+    await updateLeadStreetPlzOrtById(req.params.id, strasse, plz, ort);
+    const out = await updateLeadAddressAndGeocodeById(req.params.id);
+    res.json(out);
+  } catch (err) {
+    console.error('POST address-geocode:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+/** Status oder Archivieren per SQLite-Zeilen-ID (ohne E-Mail). */
+app.post('/api/lead-rows/:id/status', async (req, res) => {
+  const { status } = req.body || {};
+  if (!status) return res.status(400).json({ error: 'status erforderlich' });
+  try {
+    const result = await setLeadStatusByDbId(req.params.id, status);
+    res.json(result);
+  } catch (err) {
+    console.error('POST lead-rows status:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+app.get('/api/export/leads.csv', (req, res) => {
+  try {
+    const csv = buildLeadsExportCsv();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="leads_export.csv"');
+    res.send('\uFEFF' + csv);
+  } catch (err) {
+    console.error('GET export leads.csv:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/stats', (req, res) => {
+  try {
+    res.json(getDashboardStats());
+  } catch (err) {
+    console.error('GET /api/stats error:', err.message);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -216,7 +315,7 @@ app.get('/api/debug/leads-sheet', async (req, res) => {
     try {
       dbg = await getLeadsSheetDebug();
     } catch (_) { /* ignore */ }
-    res.status(500).json({ ...dbg, error: formatGoogleSheetsError(err) });
+    res.status(500).json({ ...dbg, error: formatLeadsApiError(err) });
   }
 });
 
@@ -228,6 +327,68 @@ app.patch('/api/leads/:email/field', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('PATCH field error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Mehrere Felder (Kontakt & Adresse) in einem Request; `email` ist die aktuelle Lead-E-Mail zum Auffinden der Zeile. */
+app.post('/api/leads/update', async (req, res) => {
+  const { email, updates } = req.body || {};
+  if (!email || typeof updates !== 'object' || updates == null) {
+    return res.status(400).json({ error: 'email und updates (Objekt) erforderlich' });
+  }
+  try {
+    await updateLeadFieldsBulk(String(email).trim(), updates);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/leads/update error:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+app.post('/api/leads/:email/status', async (req, res) => {
+  const { status } = req.body || {};
+  if (!status) return res.status(400).json({ error: 'status is required' });
+  try {
+    const result = await setLeadStatus(decodeURIComponent(req.params.email), status);
+    res.json(result);
+  } catch (err) {
+    console.error('POST status error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:email/regeocode', async (req, res) => {
+  try {
+    const out = await regeocodeLeadByEmail(decodeURIComponent(req.params.email));
+    res.json(out);
+  } catch (err) {
+    console.error('POST regeocode:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+app.post('/api/calendar/build', async (req, res) => {
+  try {
+    const { email, start, end } = req.body || {};
+    if (!email || !start) return res.status(400).json({ error: 'email und start erforderlich' });
+    const lead = await getLeadByEmail(String(email));
+    if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
+    const startD = new Date(start);
+    const endD = end ? new Date(end) : new Date(startD.getTime() + 60 * 60 * 1000);
+    if (Number.isNaN(startD.getTime()) || Number.isNaN(endD.getTime())) {
+      return res.status(400).json({ error: 'Ungültiges Datum' });
+    }
+    const partnerName = req.session?.user?.username || process.env.MY_NAME || 'Vertrieb';
+    const payload = generateCalendarLink(lead, partnerName, startD, endD);
+    res.json({
+      googleUrl: payload.googleUrl,
+      outlookUrl: payload.outlookUrl,
+      icsContent: payload.icsContent,
+      icsFilename: payload.icsFilename,
+    });
+  } catch (err) {
+    console.error('POST /api/calendar/build error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

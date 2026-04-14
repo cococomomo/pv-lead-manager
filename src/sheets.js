@@ -1,196 +1,13 @@
 'use strict';
 
 require('./load-env');
-const { google } = require('googleapis');
-const path = require('path');
-const { createGoogleOAuth2Client } = require('./google-client');
-
-const TOKEN_PATH = path.join(__dirname, '../auth/google-token.json');
-
-const SPREADSHEET_ID         = process.env.GOOGLE_SPREADSHEET_ID;
-const ARCHIVE_SPREADSHEET_ID = process.env.GOOGLE_ARCHIVE_SPREADSHEET_ID;
-/** Tab mit den Leads (Wunschname aus .env); wird gegen echte Tab-Titel gematcht (Groß/Klein egal). */
-const SHEET_TAB_REQUESTED = (process.env.GOOGLE_SHEET_NAME || process.env.GOOGLE_SHEET_TAB || 'Sheet1')
-  .trim()
-  .replace(/^\uFEFF/, '');
-/** Optionales zweites Blatt (z. B. alte Leads) – nur Anzeige/Karte, Schreiben nur im Hauptblatt */
-const LEGACY_SHEET_NAME = (process.env.GOOGLE_SHEET_LEGACY_NAME || '').trim().replace(/^\uFEFF/, '');
-/** Archiv-Mappe: Ziel-Tab (nur .env; Fallback nur für bestehende Installationen ohne Variable) */
-const ARCHIVE_TAB = (() => {
-  const r = (process.env.GOOGLE_ARCHIVE_SHEET_NAME || process.env.GOOGLE_ARCHIVE_SHEET_TAB || 'Cosimo')
-    .trim()
-    .replace(/^\uFEFF/, '');
-  return r || 'Cosimo';
-})();
-
-/** A1-Notation: Blattname immer in einfachen Anführungszeichen (Google, z. B. Ziffern im Namen). */
-function sheetRange(tab, a1Part) {
-  const t = String(tab || '').trim().replace(/^\uFEFF/, '');
-  if (!t) return `!${a1Part}`;
-  const safe = t.replace(/'/g, "''");
-  return `'${safe}'!${a1Part}`;
-}
-
-async function listSheetTabTitles(sheets) {
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId: SPREADSHEET_ID,
-    fields: 'sheets.properties.title',
-  });
-  return (meta.data.sheets || []).map((s) => s.properties?.title).filter(Boolean);
-}
-
-async function throwIfRangeParseError(sheets, sheetTitle, err) {
-  const msg = String(err.message || err);
-  if (!/Unable to parse range|parse range/i.test(msg)) throw err;
-  let tabs = [];
-  try {
-    tabs = await listSheetTabTitles(sheets);
-  } catch (_) {
-    /* Meta-Lesen fehlgeschlagen — Originalfehler reicht */
-  }
-  const hint = tabs.length
-    ? `Vorhandene Blätter: ${tabs.join(', ')}. In der Server-.env \`GOOGLE_SHEET_NAME\` (oder \`GOOGLE_SHEET_TAB\`) auf einen dieser Namen setzen; Groß-/Kleinschreibung wird angeglichen.`
-    : 'Prüfe GOOGLE_SPREADSHEET_ID und GOOGLE_SHEET_NAME in der .env auf dem Server.';
-  throw new Error(`${msg} — konfiguriertes Blatt passt nicht zur Mappe. ${hint}`);
-}
-
-/** Ordnet .env-Blattnamen dem echten Tab-Titel zu (Google unterscheidet sonst z. B. sheet1 vs Sheet1). */
-function matchSheetTabTitle(requested, titles) {
-  const req = String(requested || '').trim();
-  if (!req || !titles || !titles.length) return req;
-  if (titles.includes(req)) return req;
-  const rl = req.toLowerCase();
-  const hit = titles.find((t) => String(t).toLowerCase() === rl);
-  return hit || req;
-}
-
-/**
- * Haupt-Lead-Tab: exakter/case-insensitiver Treffer; sonst sinnvoller Fallback (z. B. veraltetes
- * GOOGLE_SHEET_NAME auf der VM, Mappe hat nur noch ein Blatt).
- */
-function resolveLeadsSheetTab(requested, titles) {
-  if (!titles || !titles.length) {
-    return String(requested || '').trim() || 'Sheet1';
-  }
-  const req = String(requested || '').trim();
-  const matched = matchSheetTabTitle(req, titles);
-  if (titles.includes(matched)) return matched;
-
-  if (titles.length === 1) return titles[0];
-
-  const sheet1ish = titles.find((t) => /^sheet1$/i.test(String(t)));
-  if (sheet1ish) return sheet1ish;
-
-  const def = matchSheetTabTitle('Sheet1', titles);
-  if (titles.includes(def)) return def;
-
-  throw new Error(
-    `GOOGLE_SHEET_NAME (bzw. GOOGLE_SHEET_TAB) in der .env ist „${req || '(leer)'}“, es gibt aber kein passendes Blatt. Vorhanden: ${titles.join(', ')}.`
-  );
-}
+const { getDb, getDbPath } = require('./database');
+const { geocodeAddressCascade } = require('./geocode-address-cascade');
 
 function trimCell(v) {
   return String(v ?? '').trim().replace(/\u00a0/g, ' ');
 }
 
-/** Erste sinnvolle Kopfzeile finden (viele Tabellen haben eine Titelzeile über den Spalten). */
-function scoreHeaderRow(row) {
-  if (!row || !row.length) return 0;
-  let s = 0;
-  for (const c of row) {
-    const t = trimCell(c).toLowerCase();
-    if (t === 'e-mail' || t === 'email' || t.endsWith(' e-mail')) s += 6;
-    else if (t.includes('e-mail') || t === 'mail') s += 4;
-    if (t.includes('nachname') || t.includes('vorname')) s += 3;
-    if (t === 'namen') s += 4;
-    if (t === 'plz' || t.includes('postleitzahl')) s += 2;
-    if (t === 'ort' || t.includes('stadt')) s += 2;
-    if (t.includes('telefon') || t === 'tel' || t.includes('handy')) s += 2;
-    if (t.includes('straße') || t.includes('strasse') || t === 'strasse') s += 2;
-    if (t.includes('quelle')) s += 1;
-    if (t === 'anfrage') s += 2;
-    if (t === 'anfragezeitpunkt' || (t.includes('anfrage') && t.includes('zeit'))) s += 3;
-    else if (t.includes('anfrage') && t.includes('nr')) s += 2;
-    if (t === 'betreuer') s += 1;
-    if (t === 'notizen') s += 1;
-    if (t === 'info') s += 1;
-    if (t === 'land') s += 1;
-    if (t === 'status') s += 1;
-  }
-  return s;
-}
-
-/** Datenzeilen enthalten oft echte E-Mails — keine Kopfzeile */
-function rowLooksLikeDataNotHeader(row) {
-  if (!row || !row.length) return false;
-  for (const c of row) {
-    const t = String(c || '').trim();
-    if (!t) continue;
-    if (t.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return true;
-  }
-  return false;
-}
-
-function detectBestHeaderRowIndex(values) {
-  if (!values.length) return 0;
-  let best = 0;
-  let bestScore = -1e9;
-  for (let i = 0; i < Math.min(values.length, 50); i++) {
-    const row = values[i] || [];
-    let sc = scoreHeaderRow(row);
-    if (rowLooksLikeDataNotHeader(row)) sc -= 30;
-    if (sc > bestScore) {
-      bestScore = sc;
-      best = i;
-    }
-  }
-  return best;
-}
-
-/** CRM-/API-Spaltenname (lowercase) ↔ abweichende Tabellenköpfe (lowercase) */
-const HEADER_SYNONYMS = {
-  'e-mail': ['e-mail', 'email', 'mail', 'e mail'],
-  'betreut durch': ['betreut durch', 'betreuer'],
-  'nachname + vorname': ['nachname + vorname', 'namen', 'name'],
-  'straße': ['straße', 'strasse'],
-  'anfrage nr': ['anfrage nr', 'anfrage nr ', 'anfrage', 'anfragennr'],
-  'anfragezeitpunkt': ['anfragezeitpunkt', 'datum'],
-  'notizen': ['notizen'],
-  'termin': ['termin'],
-  'status': ['status'],
-  'nachfass bis': ['nachfass bis', 'nachfass'],
-  'info': ['info'],
-  'quelle': ['quelle'],
-  'land': ['land', 'country'],
-  'plz': ['plz', 'postleitzahl'],
-  'ort': ['ort', 'stadt'],
-  'telefon': ['telefon', 'tel', 'handy'],
-};
-
-function findColIndex(headerCells, wantedLabel) {
-  const want = trimCell(wantedLabel).toLowerCase().replace(/\s+/g, ' ');
-  const cells = headerCells.map((h) => trimCell(h).toLowerCase());
-  const variants = new Set([want]);
-  for (const [crm, alts] of Object.entries(HEADER_SYNONYMS)) {
-    if (crm === want || alts.includes(want)) {
-      variants.add(crm);
-      alts.forEach((a) => variants.add(a));
-    }
-  }
-  for (const v of variants) {
-    const i = cells.indexOf(v);
-    if (i >= 0) return i;
-  }
-  if (want === 'e-mail' || want === 'email') {
-    for (let i = 0; i < cells.length; i++) {
-      const t = cells[i];
-      if (t === 'e-mail' || t === 'email' || t === 'mail' || t === 'e mail') return i;
-    }
-  }
-  return -1;
-}
-
-/** Bekannte Abweichungen in Spaltennamen → erwartete CRM-Schlüssel */
 function applyCanonicalFieldAliases(lead) {
   const keys = Object.keys(lead);
   const normKey = (k) => trimCell(k).toLowerCase();
@@ -236,176 +53,80 @@ function applyCanonicalFieldAliases(lead) {
   return out;
 }
 
-/** Tabellenkopf → FIELD_MAP-Schlüssel (für appendLead-Zeile) */
-function fieldForColumnTitle(colHeader) {
-  const t = trimCell(colHeader).toLowerCase().replace(/\s+/g, ' ');
-  for (const [field, colName] of Object.entries(FIELD_MAP)) {
-    if (trimCell(colName).toLowerCase() === t) return field;
-  }
-  if (t === 'email' || t === 'e-mail' || t === 'mail' || t === 'e mail') return 'email';
-  if (t.includes('nachname') && t.includes('vorname')) return 'name';
-  if (t === 'namen' || t === 'name' || t === 'kunde') return 'name';
-  if (t.includes('telefon') || t === 'tel' || t.includes('handy')) return 'phone';
-  if (t.includes('straße') || t.includes('strasse') || t === 'strasse') return 'street';
-  if (t === 'plz' || t.includes('postleitzahl')) return 'zip';
-  if (t === 'ort' || t.includes('stadt')) return 'city';
-  if (t === 'land' || t === 'country') return 'country';
-  if (t.includes('quelle') || t === 'quelle') return 'source';
-  if (t === 'anfragezeitpunkt' || t.includes('anfragezeit') || t === 'datum' || t.includes('datum anfrage')) return 'date';
-  if (t === 'info' || t.includes('bemerkung')) return 'info';
-  return null;
+function parseCoord(v) {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
 }
 
-function matrixToLeadObjects(values) {
-  if (!values.length) return [];
-  const hi = detectBestHeaderRowIndex(values);
-  const header = (values[hi] || []).map((c) => trimCell(c));
-  const dataRows = values.slice(hi + 1);
-  const sample = dataRows.slice(0, Math.min(dataRows.length, 300));
-  const width = Math.max(
-    header.length,
-    sample.reduce((m, r) => Math.max(m, (r || []).length), 0),
-    1
-  );
-  const out = [];
-  for (const row of dataRows) {
-    const obj = {};
-    for (let i = 0; i < width; i++) {
-      const label = i < header.length ? header[i] : '';
-      const val = row && i < row.length && row[i] != null ? String(row[i]) : '';
-      const key = label || `_c${i}`;
-      obj[key] = val;
-    }
-    const lead = applyCanonicalFieldAliases(obj);
-    if (Object.values(lead).some((v) => String(v).trim())) out.push(lead);
-  }
-  return out;
+function dbRowToApiLead(row) {
+  const emailNorm = String(row.email || row.col_14 || '').trim();
+  const lat = parseCoord(row.latitude);
+  const lng = parseCoord(row.longitude);
+  const base = {
+    anfrage: row.anfrage ?? '',
+    namen: row.namen ?? '',
+    telefon: row.telefon ?? '',
+    email: emailNorm,
+    strasse: row.strasse ?? '',
+    plz: row.plz ?? '',
+    ort: row.ort ?? '',
+    land: row.land ?? '',
+    quelle: row.quelle ?? '',
+    anfragezeitpunkt: row.anfragezeitpunkt ?? '',
+    info: row.info ?? '',
+    betreuer: row.betreuer ?? '',
+    notizen: row.notizen ?? '',
+    col_14: row.col_14 ?? '',
+    'Anfrage NR': row.anfrage != null ? String(row.anfrage) : '',
+    'Nachname + Vorname': row.namen ?? '',
+    'E-Mail': emailNorm,
+    Telefon: row.telefon ?? '',
+    Straße: row.strasse ?? '',
+    PLZ: row.plz ?? '',
+    Ort: row.ort ?? '',
+    Land: row.land ?? '',
+    Quelle: row.quelle ?? '',
+    Anfragezeitpunkt: row.anfragezeitpunkt ?? '',
+    Info: row.info ?? '',
+    'Betreut Durch': row.betreuer ?? '',
+    Notizen: row.notizen ?? '',
+    Status: row.status ?? '',
+    'Nachfass bis': row.nachfass_bis ?? '',
+    Termin: row.termin ?? '',
+    last_updated: row.last_updated || '',
+    created_at: row.created_at || '',
+    latitude: lat,
+    longitude: lng,
+    __pvlLegacy: false,
+  };
+  return applyCanonicalFieldAliases(base);
 }
 
-function splitMatrixRawRows(values) {
-  if (!values.length) return { headerRowIndex: 0, header: [], dataRows: [] };
-  const hi = detectBestHeaderRowIndex(values);
-  const header = (values[hi] || []).map((c) => trimCell(c));
-  const dataRows = values.slice(hi + 1);
-  return { headerRowIndex: hi, header, dataRows };
-}
-
-// Maps lead object fields → exact sheet column headers
-const FIELD_MAP = {
-  name:    'Nachname + Vorname',
-  phone:   'Telefon',
-  email:   'E-Mail',
-  street:  'Straße',
-  zip:     'PLZ',
-  city:    'Ort',
-  country: 'Land',
-  source:  'Quelle',
-  date:    'Anfragezeitpunkt',
-  info:    'Info',
+const PATCH_COLUMN_TO_SQL = {
+  'betreut durch': 'betreuer',
+  betreuer: 'betreuer',
+  notizen: 'notizen',
+  status: 'status',
+  'nachfass bis': 'nachfass_bis',
+  nachfass: 'nachfass_bis',
+  termin: 'termin',
+  'e-mail': 'email',
+  email: 'email',
+  telefon: 'telefon',
+  'straße': 'strasse',
+  strasse: 'strasse',
+  plz: 'plz',
+  ort: 'ort',
 };
 
-let _auth = null;
-
-async function getAuth() {
-  if (_auth) return _auth;
-  const oAuth2Client = createGoogleOAuth2Client();
-  try {
-    const token = require(TOKEN_PATH);
-    oAuth2Client.setCredentials(token);
-  } catch {
-    throw new Error('Google token not found. Run the OAuth flow first to generate auth/google-token.json');
+function resolvePatchColumn(columnHeader) {
+  const key = trimCell(columnHeader).toLowerCase().replace(/\s+/g, ' ');
+  if (PATCH_COLUMN_TO_SQL[key]) return PATCH_COLUMN_TO_SQL[key];
+  for (const [k, col] of Object.entries(PATCH_COLUMN_TO_SQL)) {
+    if (key === k || key.includes(k)) return col;
   }
-  _auth = oAuth2Client;
-  return _auth;
-}
-
-async function getSheets() {
-  const auth = await getAuth();
-  return google.sheets({ version: 'v4', auth });
-}
-
-/** 0-basierter Spaltenindex → A, B, …, Z, AA, … */
-function columnIndexToLetter(index) {
-  let result = '';
-  let i = index;
-  while (i >= 0) {
-    result = String.fromCharCode((i % 26) + 65) + result;
-    i = Math.floor(i / 26) - 1;
-  }
-  return result;
-}
-
-async function getHeaderAndTab(sheets) {
-  const titles = await listSheetTabTitles(sheets);
-  const tab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
-  let res;
-  try {
-    res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: sheetRange(tab, 'A1:ZZ'),
-    });
-  } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
-  }
-  const values = res.data.values || [];
-  const { header } = splitMatrixRawRows(values);
-  return { header, tab };
-}
-
-/** @param {{ resolvePrimary?: boolean }} [options] resolvePrimary: Haupt-Lead-Tab per resolveLeadsSheetTab */
-async function fetchLeadsForTab(sheetTitleRequested, sheetsOpt = null, titlesOpt = null, options = {}) {
-  const { resolvePrimary = false } = options;
-  const sheets = sheetsOpt || await getSheets();
-  const titles = titlesOpt || await listSheetTabTitles(sheets);
-  const sheetTitle = resolvePrimary
-    ? resolveLeadsSheetTab(sheetTitleRequested, titles)
-    : matchSheetTabTitle(sheetTitleRequested, titles);
-  let res;
-  try {
-    res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: sheetRange(sheetTitle, 'A1:ZZ'),
-    });
-  } catch (e) {
-    await throwIfRangeParseError(sheets, sheetTitleRequested, e);
-  }
-  return matrixToLeadObjects(res.data.values || []);
-}
-
-async function appendLead(lead) {
-  const sheets = await getSheets();
-  const { header, tab } = await getHeaderAndTab(sheets);
-
-  let countRes;
-  try {
-    countRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: sheetRange(tab, 'A:A'),
-    });
-  } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
-  }
-  const nextNr = Math.max(0, (countRes.data.values?.length || 1) - 1) + 1;
-
-  const row = header.map((colHeader) => {
-    const ch = trimCell(colHeader);
-    const chLow = ch.toLowerCase();
-    if (chLow === 'anfrage' || /^anfrage\s*nr$/i.test(ch.replace(/\s/g, ' ')) || ch.replace(/\s/g, '').toLowerCase() === 'anfragennr') {
-      return String(nextNr);
-    }
-    const field = fieldForColumnTitle(ch);
-    if (!field) return '';
-    const val = lead[field];
-    return val === null || val === undefined ? '' : String(val);
-  });
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: sheetRange(tab, 'A1'),
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [row] },
-  });
+  return null;
 }
 
 /** Gleicher Lead (E-Mail, sonst Name+Tel+PLZ) nur einmal; bei mehreren Zeilen gewinnt der neueste Eintrag. */
@@ -425,7 +146,7 @@ function dedupeLeadsKeepNewest(leads) {
     if (!raw) return 0;
     let ms = Date.parse(raw);
     if (!Number.isNaN(ms)) return ms;
-    const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+    const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{2}))?)?/);
     if (m) {
       const d = parseInt(m[1], 10);
       const mo = parseInt(m[2], 10) - 1;
@@ -460,7 +181,6 @@ function dedupeLeadsKeepNewest(leads) {
       continue;
     }
     if (t < cur.t) continue;
-    // gleicher Zeitstempel
     if (t === 0 && cur.t === 0) {
       if (nr > cur.nr || (nr === cur.nr && i > cur.i)) best.set(k, { lead, t, nr, i });
       continue;
@@ -473,218 +193,386 @@ function dedupeLeadsKeepNewest(leads) {
     .map((x) => x.lead);
 }
 
+function nextAnfrageNr(db) {
+  const row = db.prepare(`
+    SELECT MAX(CAST(anfrage AS INTEGER)) AS m
+    FROM leads
+    WHERE anfrage GLOB '[0-9]*' AND length(trim(anfrage)) <= 12
+  `).get();
+  const m = row && Number.isFinite(row.m) ? row.m : 0;
+  return m + 1;
+}
+
 async function getAllLeads() {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SPREADSHEET_ID fehlt in der Konfiguration');
-  }
-  const sheets = await getSheets();
-  const titles = await listSheetTabTitles(sheets);
-  const primaryTab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
-  const primaryRows = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sheets, titles, { resolvePrimary: true });
-  const primary = primaryRows.map((o) => ({ ...o, __pvlLegacy: false }));
-
-  const leg = LEGACY_SHEET_NAME;
-  if (!leg) return dedupeLeadsKeepNewest(primary);
-  const legacyTab = matchSheetTabTitle(leg, titles);
-  if (legacyTab === primaryTab) return dedupeLeadsKeepNewest(primary);
-
-  const legacyRows = await fetchLeadsForTab(leg, sheets, titles);
-  const primaryEmails = new Set(
-    primary.map((l) => String(l['E-Mail'] || '').toLowerCase()).filter(Boolean)
-  );
-  const legacy = legacyRows
-    .filter((l) => {
-      const e = String(l['E-Mail'] || '').toLowerCase();
-      return !e || !primaryEmails.has(e);
-    })
-    .map((o) => ({ ...o, __pvlLegacy: true }));
-
-  return dedupeLeadsKeepNewest([...primary, ...legacy]);
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM leads
+    WHERE archived_at IS NULL OR archived_at = ''
+    ORDER BY datetime(COALESCE(NULLIF(trim(last_updated), ''), created_at)) DESC, id DESC
+  `).all();
+  const leads = rows.map(dbRowToApiLead);
+  return dedupeLeadsKeepNewest(leads);
 }
 
 async function leadExists(email) {
   if (!email) return false;
-  const rows = await fetchLeadsForTab(SHEET_TAB_REQUESTED, null, null, { resolvePrimary: true });
-  return rows.some((l) => l['E-Mail']?.toLowerCase() === email.toLowerCase());
+  const db = getDb();
+  const e = String(email).trim().toLowerCase();
+  const row = db.prepare(`
+    SELECT 1 AS x FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    LIMIT 1
+  `).get(e);
+  return !!row;
 }
 
-// Update a single cell by column header (e.g. 'Betreut Durch', 'Notizen')
+/**
+ * @param {object} lead — Felder wie vom LLM-Extractor (name, phone, email, …)
+ */
+function iso8601FromLeadDate(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return new Date().toISOString();
+  let ms = Date.parse(s);
+  if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{2}))?)?/);
+  if (m) {
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const y = parseInt(m[3], 10);
+    const hh = m[4] != null ? parseInt(m[4], 10) : 12;
+    const mm = m[5] != null ? parseInt(m[5], 10) : 0;
+    const ss = m[6] != null ? parseInt(m[6], 10) : 0;
+    ms = Date.UTC(y, mo, d, hh, mm, ss);
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+async function appendLead(lead) {
+  const db = getDb();
+  const nr = nextAnfrageNr(db);
+  const email = String(lead.email || '').trim();
+  const lat = parseCoord(lead.latitude);
+  const lng = parseCoord(lead.longitude);
+  const createdAt = iso8601FromLeadDate(lead.date);
+  const stmt = db.prepare(`
+    INSERT INTO leads (
+      anfrage, namen, telefon, email, strasse, plz, ort, land, quelle,
+      anfragezeitpunkt, info, betreuer, notizen, col_14, status, last_updated,
+      created_at, latitude, longitude
+    ) VALUES (
+      @anfrage, @namen, @telefon, @email, @strasse, @plz, @ort, @land, @quelle,
+      @anfragezeitpunkt, @info, @betreuer, @notizen, @col_14, 'Neu', datetime('now'),
+      @created_at, @latitude, @longitude
+    )
+  `);
+  const info = stmt.run({
+    anfrage: String(nr),
+    namen: lead.name != null ? String(lead.name) : '',
+    telefon: lead.phone != null ? String(lead.phone) : '',
+    email,
+    strasse: lead.street != null ? String(lead.street) : '',
+    plz: lead.zip != null ? String(lead.zip) : '',
+    ort: lead.city != null ? String(lead.city) : '',
+    land: lead.country != null ? String(lead.country) : 'Österreich',
+    quelle: lead.source != null ? String(lead.source) : '',
+    anfragezeitpunkt: lead.date != null ? String(lead.date) : '',
+    info: lead.info != null ? String(lead.info) : '',
+    betreuer: '',
+    notizen: '',
+    col_14: email,
+    created_at: createdAt,
+    latitude: lat,
+    longitude: lng,
+  });
+  const rid = Number(info.lastInsertRowid);
+  const needsGeo = rid > 0 && (lat == null || lng == null || lat === 0 || lng === 0);
+  if (needsGeo) {
+    const r = db.prepare('SELECT strasse, plz, ort FROM leads WHERE id = ?').get(rid);
+    if (r) {
+      const g = await geocodeAddressCascade({
+        strasse: r.strasse || '',
+        plz: r.plz || '',
+        ort: r.ort || '',
+      });
+      db.prepare('UPDATE leads SET latitude = ?, longitude = ?, last_updated = datetime(\'now\') WHERE id = ?').run(
+        g.lat,
+        g.lon,
+        rid,
+      );
+    }
+  }
+}
+
 async function updateLeadField(email, columnHeader, value) {
-  const sheets = await getSheets();
-  const titles = await listSheetTabTitles(sheets);
-  const tab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
-  let res;
-  try {
-    res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: sheetRange(tab, 'A1:ZZ'),
-    });
-  } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
+  const col = resolvePatchColumn(columnHeader);
+  if (!col) return;
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  const row = db.prepare(`
+    SELECT id FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(e);
+  if (!row) return;
+  if (col === 'email') {
+    const em = String(value ?? '').trim();
+    db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(em, em, row.id);
+    return;
   }
-  const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
-  if (!header.length) return;
-
-  const emailColIdx  = findColIndex(header, 'E-Mail');
-  const targetColIdx = findColIndex(header, columnHeader);
-  if (emailColIdx < 0 || targetColIdx < 0) return;
-
-  const rowIndex = rows.findIndex(
-    (r) => String(r[emailColIdx] || '').trim().toLowerCase() === email.toLowerCase()
-  );
-  if (rowIndex < 0) return;
-
-  const sheetRow = headerRowIndex + rowIndex + 2;
-  const colLetter = columnIndexToLetter(targetColIdx);
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID,
-    range: sheetRange(tab, `${colLetter}${sheetRow}`),
-    valueInputOption: 'RAW',
-    requestBody: { values: [[value]] },
-  });
+  db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(String(value ?? ''), row.id);
 }
 
-// Copy lead row to archive spreadsheet (Tab aus GOOGLE_ARCHIVE_SHEET_NAME), dann Zeile im Lead-Blatt löschen
+/**
+ * Mehrere CRM-/Kontaktfelder in einem Schritt (E-Mail zuletzt, damit Lookup per alter E-Mail funktioniert).
+ * @param {string} currentEmail
+ * @param {Record<string, string>} updates — z. B. { 'E-Mail': '…', Telefon: '…', Straße: '…', PLZ: '…', Ort: '…' }
+ */
+async function updateLeadFieldsBulk(currentEmail, updates) {
+  if (!updates || typeof updates !== 'object') throw new Error('updates fehlt');
+  const db = getDb();
+  const e0 = String(currentEmail || '').trim().toLowerCase();
+  const row = db.prepare(`
+    SELECT id FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(e0);
+  if (!row) throw new Error('Lead nicht gefunden');
+  const { id } = row;
+
+  const allowedCols = new Set(Object.values(PATCH_COLUMN_TO_SQL));
+  const pairs = [];
+  let newEmail = null;
+  for (const [header, rawVal] of Object.entries(updates)) {
+    const col = resolvePatchColumn(header);
+    if (!col || !allowedCols.has(col)) continue;
+    if (col === 'email') {
+      newEmail = String(rawVal ?? '').trim();
+      continue;
+    }
+    pairs.push([col, String(rawVal ?? '')]);
+  }
+  for (const [col, val] of pairs) {
+    db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(val, id);
+  }
+  if (newEmail !== null) {
+    db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(newEmail, newEmail, id);
+  }
+}
+
+const STATUS_VALUES = new Set([
+  'Neu', 'Nicht erreicht', 'Angerufen', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren',
+]);
+
+/**
+ * Setzt CRM-Status; bei „Archivieren“ wird der Lead archiviert (wie /archive).
+ */
+async function setLeadStatus(email, status) {
+  const s = String(status || '').trim();
+  if (!STATUS_VALUES.has(s)) throw new Error('Ungültiger Status');
+  if (s === 'Archivieren') {
+    await archiveLead(email);
+    return { archived: true };
+  }
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  const row = db.prepare(`
+    SELECT id FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(e);
+  if (!row) return { ok: false };
+  db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, row.id);
+  return { ok: true };
+}
+
 async function archiveLead(email) {
-  const sheets = await getSheets();
-  const titles = await listSheetTabTitles(sheets);
-  const tab = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, titles);
-  let res;
-  try {
-    res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: sheetRange(tab, 'A1:ZZ'),
-    });
-  } catch (e) {
-    await throwIfRangeParseError(sheets, SHEET_TAB_REQUESTED, e);
-  }
-  const { headerRowIndex, header, dataRows: rows } = splitMatrixRawRows(res.data.values || []);
-  if (!header.length) return;
-
-  const emailColIdx = findColIndex(header, 'E-Mail');
-  if (emailColIdx < 0) return;
-  const rowIndex = rows.findIndex(
-    (r) => String(r[emailColIdx] || '').trim().toLowerCase() === email.toLowerCase()
-  );
-  if (rowIndex < 0) return;
-
-  const rowData = rows[rowIndex];
-
-  // Ensure archive tab exists with header
-  await ensureArchiveTab(sheets, header);
-
-  // Append to archive
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: ARCHIVE_SPREADSHEET_ID,
-    range: sheetRange(ARCHIVE_TAB, 'A1'),
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: [rowData] },
-  });
-
-  // Delete row from Leads sheet
-  const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-  const leadsSheet = sheetInfo.data.sheets.find((s) => s.properties.title === tab);
-  if (!leadsSheet) return;
-  const sheetId = leadsSheet.properties.sheetId;
-
-  const delStart = headerRowIndex + 1 + rowIndex;
-  const delEnd = delStart + 1;
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SPREADSHEET_ID,
-    requestBody: {
-      requests: [{
-        deleteDimension: {
-          range: {
-            sheetId,
-            dimension: 'ROWS',
-            startIndex: delStart,
-            endIndex:   delEnd,
-          },
-        },
-      }],
-    },
-  });
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  db.prepare(`
+    UPDATE leads SET archived_at = datetime('now'), last_updated = datetime('now')
+    WHERE id = (
+      SELECT id FROM leads
+      WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+      ORDER BY id DESC
+      LIMIT 1
+    )
+  `).run(e);
 }
 
-async function ensureArchiveTab(sheets, header) {
-  const info = await sheets.spreadsheets.get({ spreadsheetId: ARCHIVE_SPREADSHEET_ID });
-  const exists = info.data.sheets.some((s) => s.properties.title === ARCHIVE_TAB);
-  if (exists) return;
-
-  // Create tab
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: ARCHIVE_SPREADSHEET_ID,
-    requestBody: { requests: [{ addSheet: { properties: { title: ARCHIVE_TAB } } }] },
-  });
-
-  // Write header row
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: ARCHIVE_SPREADSHEET_ID,
-    range: sheetRange(ARCHIVE_TAB, 'A1'),
-    valueInputOption: 'RAW',
-    requestBody: { values: [header] },
-  });
+async function getLeadByEmail(email) {
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  const row = db.prepare(`
+    SELECT * FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(e);
+  return row ? dbRowToApiLead(row) : null;
 }
 
 async function getLeadsSheetDebug() {
-  const base = {
-    sheetTab: SHEET_TAB_REQUESTED,
-    legacySheetTab: LEGACY_SHEET_NAME || null,
-    spreadsheetConfigured: !!SPREADSHEET_ID,
-    /** Konfigurierte Lead-Tabelle (ID = Segment aus docs.google.com/spreadsheets/d/…/edit) */
-    spreadsheetId: SPREADSHEET_ID || null,
-  };
+  const dbPath = getDbPath();
   try {
-    if (!SPREADSHEET_ID) return { ...base, primaryRowCount: 0, legacyRowCount: 0, mergedCount: 0 };
-    const sh = await getSheets();
-    const meta = await sh.spreadsheets.get({
-      spreadsheetId: SPREADSHEET_ID,
-      fields: 'sheets.properties.title',
-    });
-    const sheetTabs = (meta.data.sheets || []).map((s) => s.properties?.title).filter(Boolean);
-    const envMatchTitle = matchSheetTabTitle(SHEET_TAB_REQUESTED, sheetTabs);
-    const sheetTabEnvMatches = sheetTabs.includes(envMatchTitle);
-    const primaryResolved = resolveLeadsSheetTab(SHEET_TAB_REQUESTED, sheetTabs);
-    const p = await fetchLeadsForTab(SHEET_TAB_REQUESTED, sh, sheetTabs, { resolvePrimary: true });
-    let legacyC = 0;
-    if (LEGACY_SHEET_NAME) {
-      const legacyResolved = matchSheetTabTitle(LEGACY_SHEET_NAME, sheetTabs);
-      if (legacyResolved !== primaryResolved) {
-        legacyC = (await fetchLeadsForTab(LEGACY_SHEET_NAME, sh, sheetTabs)).length;
-      }
-    }
-    const merged = await getAllLeads();
-    let r;
-    try {
-      r = await sh.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID,
-        range: sheetRange(primaryResolved, 'A1:ZZ'),
-      });
-    } catch (e) {
-      await throwIfRangeParseError(sh, SHEET_TAB_REQUESTED, e);
-    }
-    const raw = splitMatrixRawRows(r.data.values || []);
+    const db = getDb();
+    const total = db.prepare('SELECT COUNT(*) AS c FROM leads').get().c;
+    const active = db.prepare(`SELECT COUNT(*) AS c FROM leads WHERE archived_at IS NULL OR archived_at = ''`).get().c;
+    const archived = db.prepare('SELECT COUNT(*) AS c FROM leads WHERE archived_at IS NOT NULL AND archived_at != \'\'').get().c;
     return {
-      ...base,
-      sheetTabResolved: primaryResolved,
-      sheetTabs,
-      /** true, wenn GOOGLE_SHEET_NAME ohne Fallback zu einem Blatt der Mappe passt */
-      sheetTabEnvMatches,
-      /** true, wenn ein anderer Tab gewählt wurde als der per match erreichbare Name (z. B. veralteter .env-Name) */
-      sheetTabAutoResolved: !sheetTabEnvMatches && primaryResolved !== envMatchTitle,
-      headerRowIndex: raw.headerRowIndex,
-      rawRowCount: (raw.dataRows || []).length,
-      primaryRowCount: p.length,
-      legacyRowCount: legacyC,
-      mergedCount: merged.length,
+      backend: 'sqlite',
+      dbPath,
+      totalRowCount: total,
+      activeRowCount: active,
+      archivedRowCount: archived,
     };
-  } catch (e) {
-    return { ...base, error: e.message };
+  } catch (err) {
+    return { backend: 'sqlite', dbPath, error: err.message };
   }
 }
 
+/** Aktive Leads ohne gültigen Kartenpunkt (NULL oder 0). */
+function countLeadsMissingMapCoords() {
+  const db = getDb();
+  return db.prepare(`
+    SELECT COUNT(*) AS c FROM leads
+    WHERE (archived_at IS NULL OR archived_at = '')
+      AND (
+        latitude IS NULL OR longitude IS NULL
+        OR latitude = 0 OR longitude = 0
+      )
+  `).get().c;
+}
+
+function getLeadsMissingMapCoordsList() {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT * FROM leads
+    WHERE (archived_at IS NULL OR archived_at = '')
+      AND (
+        latitude IS NULL OR longitude IS NULL
+        OR latitude = 0 OR longitude = 0
+      )
+    ORDER BY datetime(COALESCE(NULLIF(trim(last_updated), ''), created_at)) DESC, id DESC
+  `).all();
+  return rows.map((row) => ({ ...dbRowToApiLead(row), pvlDbId: row.id }));
+}
+
+/**
+ * Adresse speichern + Nominatim-Kaskade (AT) + lat/lng schreiben.
+ * @param {number|string} id — SQLite `leads.id`
+ */
+async function updateLeadAddressAndGeocodeById(id) {
+  const idNum = parseInt(String(id), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Lead-ID');
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT id, strasse, plz, ort FROM leads
+    WHERE id = ? AND (archived_at IS NULL OR archived_at = '')
+  `).get(idNum);
+  if (!row) throw new Error('Lead nicht gefunden');
+  const g = await geocodeAddressCascade({
+    strasse: row.strasse || '',
+    plz: row.plz || '',
+    ort: row.ort || '',
+  });
+  db.prepare(`
+    UPDATE leads SET latitude = ?, longitude = ?, last_updated = datetime('now') WHERE id = ?
+  `).run(g.lat, g.lon, idNum);
+  const full = db.prepare('SELECT * FROM leads WHERE id = ?').get(idNum);
+  return { lead: dbRowToApiLead(full), geocodeLabel: g.label, nominatimHit: g.nominatimHit };
+}
+
+/** Aktuelle Adresse aus DB neu geocodieren (nach Speichern im CRM-Detail). */
+async function regeocodeLeadByEmail(email) {
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  const row = db.prepare(`
+    SELECT id FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(e);
+  if (!row) throw new Error('Lead nicht gefunden');
+  return updateLeadAddressAndGeocodeById(row.id);
+}
+
+async function updateLeadStreetPlzOrtById(id, strasse, plz, ort) {
+  const idNum = parseInt(String(id), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Lead-ID');
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT id FROM leads WHERE id = ? AND (archived_at IS NULL OR archived_at = '')
+  `).get(idNum);
+  if (!row) throw new Error('Lead nicht gefunden');
+  db.prepare(`
+    UPDATE leads SET strasse = ?, plz = ?, ort = ?, last_updated = datetime('now') WHERE id = ?
+  `).run(String(strasse ?? '').trim(), String(plz ?? '').trim(), String(ort ?? '').trim(), idNum);
+}
+
+/** Status/Archiv per DB-ID (für Leads ohne E-Mail). */
+async function setLeadStatusByDbId(id, status) {
+  const s = String(status || '').trim();
+  if (!STATUS_VALUES.has(s)) throw new Error('Ungültiger Status');
+  const idNum = parseInt(String(id), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Lead-ID');
+  const db = getDb();
+  const row = db.prepare(`SELECT id FROM leads WHERE id = ? AND (archived_at IS NULL OR archived_at = '')`).get(idNum);
+  if (!row) throw new Error('Lead nicht gefunden');
+  if (s === 'Archivieren') {
+    db.prepare(`UPDATE leads SET archived_at = datetime('now'), last_updated = datetime('now') WHERE id = ?`).run(idNum);
+    return { archived: true };
+  }
+  db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, idNum);
+  return { ok: true };
+}
+
+function csvEscapeCell(v) {
+  const s = String(v ?? '');
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/** Alle Zeilen inkl. Archiv — für Backup/Export. */
+function buildLeadsExportCsv() {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT id, anfrage, namen, telefon, email, strasse, plz, ort, land, quelle,
+      anfragezeitpunkt, info, betreuer, notizen, col_14, status, nachfass_bis, termin,
+      archived_at, created_at, last_updated, latitude, longitude
+    FROM leads
+    ORDER BY id ASC
+  `).all();
+  const headers = [
+    'id', 'anfrage', 'namen', 'telefon', 'email', 'strasse', 'plz', 'ort', 'land', 'quelle',
+    'anfragezeitpunkt', 'info', 'betreuer', 'notizen', 'col_14', 'status', 'nachfass_bis', 'termin',
+    'archived_at', 'created_at', 'last_updated', 'latitude', 'longitude',
+  ];
+  const lines = [headers.join(',')];
+  for (const r of rows) {
+    lines.push(headers.map((h) => csvEscapeCell(r[h])).join(','));
+  }
+  return lines.join('\r\n');
+}
+
 module.exports = {
-  appendLead, getAllLeads, leadExists, updateLeadField, archiveLead, getLeadsSheetDebug,
+  appendLead,
+  getAllLeads,
+  leadExists,
+  updateLeadField,
+  updateLeadFieldsBulk,
+  archiveLead,
+  getLeadsSheetDebug,
+  setLeadStatus,
+  getLeadByEmail,
+  countLeadsMissingMapCoords,
+  getLeadsMissingMapCoordsList,
+  updateLeadAddressAndGeocodeById,
+  updateLeadStreetPlzOrtById,
+  setLeadStatusByDbId,
+  buildLeadsExportCsv,
+  regeocodeLeadByEmail,
 };

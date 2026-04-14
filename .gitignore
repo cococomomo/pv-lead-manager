@@ -6,7 +6,11 @@ node_modules/
 auth/*.json
 auth/*.key
 data/users.json
+data/leads.db
+data/leads.db-shm
+data/leads.db-wal
 data/sessions/
 .DS_Store
 *.log
+!data/import_errors.log
 .claude/

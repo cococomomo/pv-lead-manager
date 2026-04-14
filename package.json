@@ -1,7 +1,7 @@
 {
   "name": "pv-lead-manager",
   "version": "1.0.0",
-  "description": "PV lead management system with email polling, AI extraction, Google Sheets, and Calendar integration",
+  "description": "PV lead management system with email polling, AI extraction, SQLite leads store, and web dashboard",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -13,16 +13,21 @@
     "hash-basic-password": "node scripts/hash-basic-password.js",
     "create-admin": "node scripts/create-admin.js",
     "reset-password": "node scripts/reset-password.js",
-    "oauth-setup": "node scripts/oauth-setup.js",
-    "verify-google-token": "node scripts/verify-google-token.js"
+    "import-leads-csv": "node scripts/import-csv.js",
+    "geocode-leads-db": "node scripts/geocode-leads-db.js",
+    "audit-leads-coords": "node scripts/audit-leads-coords.js",
+    "deploy-check": "node scripts/deploy-check.js",
+    "compare-csv-sqlite": "node scripts/compare-csv-sqlite.js",
+    "fix-missing-coords": "node scripts/fix-missing-coords.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.1",
+    "csv-parse": "^5.6.0",
     "dotenv": "^16.4.5",
     "express": "^4.18.3",
     "express-session": "^1.18.1",
-    "googleapis": "^144.0.0",
     "imap-simple": "^5.1.0",
     "mailparser": "^3.7.1",
     "node-cron": "^3.0.3",

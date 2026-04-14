@@ -69,13 +69,12 @@ async function pollEmails() {
           continue;
         }
 
-        // Write to Google Sheets
         await appendLead(lead);
         console.log(`Lead saved: ${lead.name} <${lead.email}>`);
 
         // Schedule appointment and send confirmation
         if (lead.email) {
-          await scheduleAppointment(lead, emailData);
+          await scheduleAppointment(lead);
         }
       } catch (err) {
         console.error('Error processing message:', err.message);

@@ -4,17 +4,126 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PV Lead Manager</title>
+  <!-- Favicon: Sonnen-Emoji ☀️ (SVG mit Text, damit alle Browser es zuverlässig anzeigen) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     @keyframes pvl-fade-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes pvl-spin { to { transform: rotate(360deg); } }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a202c; animation: pvl-fade-in 0.35s ease-out; }
 
-    header { background: #1a56db; color: #fff; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
-    header h1 { font-size: 1.15rem; }
+    header {
+      background: linear-gradient(180deg, #1a56db 0%, #1746b3 100%);
+      color: #fff;
+      padding: 0.28rem 0.85rem 0.32rem;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.12);
+    }
+    .header-brand { display: flex; align-items: flex-start; gap: 0.45rem; min-width: 0; flex: 1 1 auto; }
+    .header-brand .header-sun { font-size: 1.05rem; line-height: 1.35; opacity: 0.92; flex-shrink: 0; }
+    .header-title-block { min-width: 0; }
+    header h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: rgba(255, 255, 255, 0.96);
+      margin: 0;
+      line-height: 1.2;
+    }
+    .header-mini-stats {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem 0.65rem;
+      margin-top: 0.12rem;
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.82);
+      line-height: 1.35;
+    }
+    .header-mini-stats .hdr-stat strong { color: #fff; font-weight: 700; }
+    .header-warn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.28rem;
+      margin-top: 0.1rem;
+      padding: 0.18rem 0.5rem;
+      background: #fef9c3;
+      color: #713f12;
+      border-radius: 6px;
+      font-size: 0.66rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #eab308;
+      font-family: inherit;
+      text-align: left;
+      max-width: 100%;
+    }
+    .header-warn-badge.ok-state {
+      background: rgba(220, 252, 231, 0.95);
+      color: #14532d;
+      border-color: #86efac;
+      cursor: default;
+    }
+    .header-warn-badge.ok-state:hover { background: rgba(220, 252, 231, 0.95); }
+    .header-warn-badge:hover:not(.ok-state) { background: #fef08a; }
+    .header-warn-badge.is-hidden { display: none !important; }
+    .header-export {
+      font-size: 0.72rem;
+      color: #fff;
+      text-decoration: underline;
+      opacity: 0.92;
+    }
+    .header-actions { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; margin-left: auto; }
 
-    .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 50px); transition: opacity 0.25s ease; }
+    .pvl-modal { display: none; position: fixed; inset: 0; z-index: 30000; align-items: center; justify-content: center; padding: 1rem; }
+    .pvl-modal.open { display: flex; }
+    .pvl-modal-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.45); }
+    .pvl-modal-panel {
+      position: relative;
+      background: #fff;
+      border-radius: 10px;
+      max-width: min(640px, 96vw);
+      max-height: min(86vh, 720px);
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .pvl-modal-head { padding: 0.65rem 1rem; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-shrink: 0; }
+    .pvl-modal-head h2 { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
+    .pvl-modal-close { background: none; border: none; font-size: 1.35rem; line-height: 1; cursor: pointer; color: #64748b; padding: 0 0.25rem; }
+    .pvl-modal-body { overflow-y: auto; padding: 0.65rem 1rem 1rem; flex: 1; }
+    .missing-lead-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 0.55rem;
+      background: #fafafa;
+    }
+    .missing-lead-card .row-title { font-weight: 700; font-size: 0.82rem; margin-bottom: 0.35rem; color: #1e293b; }
+    .missing-lead-card .addr-grid { display: grid; grid-template-columns: 1fr; gap: 0.35rem; margin: 0.4rem 0; }
+    @media (min-width: 480px) {
+      .missing-lead-card .addr-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .missing-lead-card input { width: 100%; padding: 0.3rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 5px; font-size: 0.78rem; }
+    .missing-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin-top: 0.45rem; }
+    .btn-mini { padding: 0.28rem 0.5rem; font-size: 0.72rem; border-radius: 5px; border: none; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .btn-mini-tel { background: #e0f2fe; color: #0369a1; }
+    .btn-mini-tel:hover { background: #bae6fd; }
+    .btn-mini-save { background: #1a56db; color: #fff; }
+    .btn-mini-save:disabled { opacity: 0.6; cursor: wait; }
+    .btn-mini-ok { background: #059669; color: #fff; }
+    .btn-mini-warn { background: #64748b; color: #fff; }
+
+    .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 2.35rem); transition: opacity 0.25s ease; }
     .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
     /* Stats */
@@ -28,6 +137,12 @@
 
     /* Map */
     #map { background: #dde; }
+    .marker-cluster-small { background-color: rgba(214, 0, 0, 0.55); }
+    .marker-cluster-small div { background-color: rgba(139, 0, 0, 0.85); color: #fff; }
+    .marker-cluster-medium { background-color: rgba(255, 92, 92, 0.5); }
+    .marker-cluster-medium div { background-color: rgba(214, 0, 0, 0.8); color: #fff; }
+    .marker-cluster-large { background-color: rgba(255, 199, 199, 0.55); }
+    .marker-cluster-large div { background-color: rgba(214, 0, 0, 0.75); color: #fff; }
 
     /* Sidebar */
     .sidebar { background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; }
@@ -96,6 +211,19 @@
     .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
     .btn-gcal:hover { background: #eef2ff; }
     .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
+    .status-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .status-btn {
+      padding: 0.32rem 0.55rem; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc;
+      font-size: 0.74rem; font-weight: 600; cursor: pointer; font-family: inherit;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    }
+    .status-btn:hover:not(:disabled) { background: #e0e7ff; border-color: #6366f1; }
+    .status-btn:active:not(:disabled) { transform: scale(0.98); }
+    .status-btn.active { background: #1a56db; border-color: #1a56db; color: #fff; }
+    .status-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-cal { background: #0f766e; color: #fff; border: none; }
+    .btn-cal:hover:not(:disabled) { background: #115e59; }
+    .btn-cal:disabled { background: #94a3b8; cursor: not-allowed; }
 
     .filter-bar input:focus, .filter-bar select:focus,
     .field-group input:focus, .field-group textarea:focus, .field-group select:focus {
@@ -129,11 +257,26 @@
 <body>
 
 <header>
-  <span>☀️</span>
-  <h1>PV Lead Manager</h1>
-  <span id="session-user" style="margin-left:auto;font-size:0.78rem;opacity:0.95"></span>
-  <span style="font-size:0.78rem"><a href="/admin.html" style="color:#fff;text-decoration:underline">Admin</a></span>
-  <span style="font-size:0.78rem"><a href="#" id="logout-link" style="color:#fff;text-decoration:underline">Abmelden</a></span>
+  <div class="header-brand">
+    <span class="header-sun" aria-hidden="true">☀️</span>
+    <div class="header-title-block">
+      <h1>PV Lead Manager</h1>
+      <div class="header-mini-stats" id="header-mini-stats" aria-live="polite"></div>
+      <button type="button" class="header-warn-badge is-hidden" id="header-warn-missing" aria-label="Leads ohne Kartenpunkt"></button>
+    </div>
+  </div>
+  <div class="header-actions">
+    <span id="session-user" style="font-size:0.74rem;opacity:0.92"></span>
+    <label for="nav-cal-pref" style="font-size:0.7rem;opacity:0.88">Kalender</label>
+    <select id="nav-cal-pref" style="font-size:0.7rem;padding:0.18rem 0.32rem;border-radius:6px;border:1px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.12);color:#fff;max-width:7.2rem" title="Kalender-App für Termin-Links">
+      <option value="google">Google</option>
+      <option value="outlook">Outlook</option>
+      <option value="apple">Apple</option>
+    </select>
+    <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
+    <span style="font-size:0.74rem"><a href="/admin.html" style="color:#fff;text-decoration:underline">Admin</a></span>
+    <span style="font-size:0.74rem"><a href="#" id="logout-link" style="color:#fff;text-decoration:underline">Abmelden</a></span>
+  </div>
 </header>
 
 <div class="layout">
@@ -145,19 +288,16 @@
     <div class="stat-card"><div class="num" id="stat-done">0</div><div class="lbl">Termin / Verl.</div></div>
     <div class="stat-card"><div class="num" id="stat-new">0</div><div class="lbl">Neu</div></div>
     <div class="stat-card"><div class="num" id="stat-betreut">0</div><div class="lbl">In Betreuung</div></div>
-    <div class="stat-card"><div class="num" id="stat-dp">0</div><div class="lbl">D&amp;P</div></div>
-    <div class="stat-card"><div class="num" id="stat-pvat">0</div><div class="lbl">PVanlage.at</div></div>
-    <div class="stat-card"><div class="num" id="stat-messe">0</div><div class="lbl">Messe</div></div>
     <div class="legend">
       <b>Pin-Ring:</b>
       <span class="leg" style="border:2px solid #0f172a;background:transparent;color:#0f172a">Neu / aktives Blatt</span>
       <span class="leg" style="border:2px solid #fff;box-shadow:0 0 0 1px #94a3b8;background:transparent;color:#334155">Archiv-Blatt</span>
       <b style="margin-left:0.5rem">Alter:</b>
-      <span class="leg" style="background:#7f1d1d;color:#fff">&lt; 1 Mon</span>
-      <span class="leg" style="background:#dc2626;color:#fff">1–3 Mon</span>
-      <span class="leg" style="background:#f87171;color:#fff">3–6 Mon</span>
-      <span class="leg" style="background:#fca5a5;color:#111">6–12 Mon</span>
-      <span class="leg" style="background:#fee2e2;color:#111">&gt; 1 Jahr</span>
+      <span class="leg" style="background:#FFC7C7;color:#1a202c">&lt; 1 Mon</span>
+      <span class="leg" style="background:#FFA0A0;color:#1a202c">1–3 Mon</span>
+      <span class="leg" style="background:#FF5C5C;color:#1a202c">3–6 Mon</span>
+      <span class="leg" style="background:#D60000;color:#fff">6–12 Mon</span>
+      <span class="leg" style="background:#8B0000;color:#fff">&gt; 1 Jahr</span>
     </div>
   </div>
 
@@ -172,16 +312,18 @@
     </div>
     <div class="filter-bar">
       <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList()" />
-      <select id="source-filter" onchange="renderList()">
-        <option value="">Alle Quellen</option>
-        <option value="D&P">D&P</option>
-        <option value="Photovoltaikanlage.at">Photovoltaikanlage.at</option>
-        <option value="noortec.at">noortec.at</option>
-        <option value="Messe">Messe</option>
+      <select id="sort-leads" onchange="renderList()">
+        <option value="last_updated_desc">Sortierung: zuletzt bearbeitet (neu zuerst)</option>
+        <option value="last_updated_asc">Sortierung: zuletzt bearbeitet (alt zuerst)</option>
+        <option value="anfrage_desc">Sortierung: Anfragedatum (neu zuerst)</option>
+        <option value="anfrage_asc">Sortierung: Anfragedatum (alt zuerst)</option>
+        <option value="created_at_desc">Sortierung: Lead-Alter / created_at (neu zuerst)</option>
+        <option value="created_at_asc">Sortierung: Lead-Alter / created_at (alt zuerst)</option>
+        <option value="name_asc">Sortierung: Name A–Z</option>
       </select>
       <label class="filter-check">
         <input type="checkbox" id="show-completed" onchange="onToggleCompleted()" />
-        Abgeschlossene anzeigen (Termin / Verloren)
+        Abgeschlossene anzeigen (Termin vereinbart / Lead verloren)
       </label>
     </div>
     <div id="geo-status"></div>
@@ -194,6 +336,16 @@
       <div class="detail-body">
         <div class="detail-title" id="sd-name"></div>
         <div class="detail-info" id="sd-info"></div>
+        <div class="field-group" id="sd-contact-wrap">
+          <label>Kontakt &amp; Adresse bearbeiten</label>
+          <input type="email" id="sd-c-email" placeholder="E-Mail" autocomplete="email" />
+          <input type="tel" id="sd-c-phone" placeholder="Telefon" autocomplete="tel" style="margin-top:0.35rem" />
+          <input type="text" id="sd-c-street" placeholder="Straße" autocomplete="street-address" style="margin-top:0.35rem" />
+          <div style="display:flex;gap:0.35rem;margin-top:0.35rem">
+            <input type="text" id="sd-c-zip" placeholder="PLZ" autocomplete="postal-code" style="flex:0 0 38%" />
+            <input type="text" id="sd-c-city" placeholder="Ort" autocomplete="address-level2" style="flex:1" />
+          </div>
+        </div>
         <div class="field-group">
           <label>Betreut Durch</label>
           <input type="text" id="sd-betreut" placeholder="Name des Vertrieblers" />
@@ -204,13 +356,7 @@
         </div>
         <div class="field-group">
           <label>Status</label>
-          <select id="sd-status" onchange="toggleNachfassField()">
-            <option value="">Neu</option>
-            <option value="Angerufen">Angerufen</option>
-            <option value="Nachfassen">Nachfassen</option>
-            <option value="Termin">Termin</option>
-            <option value="Verloren">Verloren</option>
-          </select>
+          <div id="sd-status-bar" class="status-bar" aria-label="Status wählen"></div>
         </div>
         <div class="field-group" id="sd-nachfass-wrap" style="display:none">
           <label>Nachfass bis</label>
@@ -225,9 +371,8 @@
           <div class="chip-row" id="sd-betreut-chips"></div>
         </div>
         <div class="detail-actions" style="flex-wrap:wrap">
-          <button type="button" class="btn btn-gcal" id="btn-gcal" onclick="openGoogleCalendar()">Google Kalender …</button>
+          <button type="button" class="btn btn-cal" id="btn-cal-appointment" onclick="openCalendarAppointment()">Termin und Kalender</button>
           <button type="button" class="btn btn-save" id="btn-save" onclick="saveFields()">Speichern</button>
-          <button class="btn btn-archive" id="btn-archive" onclick="doArchive()">✓ Abgearbeitet</button>
           <span class="save-hint" id="save-hint">Gespeichert!</span>
         </div>
 
@@ -238,7 +383,19 @@
 
 <div id="pvl-toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
+<div id="modal-missing-coords" class="pvl-modal" role="dialog" aria-modal="true" aria-labelledby="modal-missing-title">
+  <div class="pvl-modal-backdrop" id="modal-missing-backdrop"></div>
+  <div class="pvl-modal-panel">
+    <div class="pvl-modal-head">
+      <h2 id="modal-missing-title">Leads ohne Kartenpunkt</h2>
+      <button type="button" class="pvl-modal-close" id="modal-missing-close" aria-label="Schließen">&times;</button>
+    </div>
+    <div class="pvl-modal-body" id="modal-missing-coords-body"></div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
   /** same-origin: Session-Cookie und ggf. Basic-Auth */
   function apiFetch(url, opts = {}) {
@@ -257,7 +414,11 @@
   }
 
   // ── Map ───────────────────────────────────────────────────────────────────
-  const map = L.map('map').setView([48.21, 16.37], 9);
+  const map = L.map('map', {
+    zoomSnap: 0,
+    zoomDelta: 0.5,
+    wheelPxPerZoomLevel: 60,
+  }).setView([48.21, 16.37], 9);
 
   const satellite = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -288,7 +449,51 @@
     { collapsed: false }
   ).addTo(map);
 
-  const markerLayer = L.layerGroup().addTo(map);
+  const markerLayer = (typeof L.markerClusterGroup === 'function'
+    ? L.markerClusterGroup({
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        maxClusterRadius: 72,
+        spiderfyDistanceMultiplier: 2,
+        removeOutsideVisibleBounds: true,
+        animateAddingMarkers: false,
+        spiderLegPolylineOptions: { weight: 1.5, color: '#8B0000', opacity: 0.75 },
+      })
+    : L.layerGroup()
+  ).addTo(map);
+
+  /** Kartenansicht vor Lead-Fokus (State-Memory für Zoom zurück). Global für Debugging. */
+  var lastMapState = null;
+
+  function captureLastMapStateIfNeeded() {
+    const detail = document.getElementById('sidebar-detail');
+    if (!detail || detail.classList.contains('open')) return;
+    const c = map.getCenter();
+    lastMapState = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+  }
+
+  function restoreLastMapState() {
+    if (!lastMapState) return;
+    const { lat, lng, zoom } = lastMapState;
+    map.flyTo([lat, lng], zoom, { duration: 0.55, animate: true });
+    lastMapState = null;
+  }
+
+  function isMapClickOnLeadUi(ev) {
+    const t = ev && ev.originalEvent && ev.originalEvent.target;
+    if (!t || !t.closest) return false;
+    return !!(t.closest('.leaflet-marker-icon')
+      || t.closest('.marker-cluster')
+      || t.closest('.leaflet-popup'));
+  }
+
+  map.on('click', (e) => {
+    const detail = document.getElementById('sidebar-detail');
+    if (!detail || !detail.classList.contains('open')) return;
+    if (isMapClickOnLeadUi(e)) return;
+    closeSidebarDetail();
+  });
 
   // ── Column keys ───────────────────────────────────────────────────────────
   const COL = {
@@ -320,6 +525,41 @@
       return Date.UTC(y, mo, d, hh, mm, ss);
     }
     return 0;
+  }
+
+  function leadCreatedAtMs(lead) {
+    const raw = String(lead.created_at || '').trim();
+    if (raw) {
+      const ms = Date.parse(raw);
+      if (!Number.isNaN(ms)) return ms;
+    }
+    return leadDateMs(lead);
+  }
+
+  /** Strikte Alter-Farben (nur Rot-Töne, kein Grau). */
+  function getMarkerColor(msOrLead) {
+    let ms;
+    if (typeof msOrLead === 'object' && msOrLead !== null) {
+      ms = leadCreatedAtMs(msOrLead);
+    } else if (typeof msOrLead === 'number' && Number.isFinite(msOrLead)) {
+      ms = msOrLead;
+    } else {
+      ms = Date.parse(String(msOrLead || ''));
+    }
+    if (!ms || Number.isNaN(ms)) return '#8B0000';
+    const days = (Date.now() - ms) / 86400000;
+    if (days < 0) return '#FFC7C7';
+    if (days < 30) return '#FFC7C7';
+    if (days < 90) return '#FFA0A0';
+    if (days < 180) return '#FF5C5C';
+    if (days < 365) return '#D60000';
+    return '#8B0000';
+  }
+
+  function getMarkerColorForLead(lead) {
+    const ms = leadCreatedAtMs(lead);
+    if (!ms) return '#8B0000';
+    return getMarkerColor(ms);
   }
 
   function cssEscAttr(val) {
@@ -360,7 +600,71 @@
 
   function isHiddenStatus(lead) {
     const s = (lead[COL.status] || '').trim().toLowerCase();
-    return s === 'termin' || s === 'verloren';
+    return s === 'termin vereinbart' || s === 'lead verloren' || s === 'termin' || s === 'verloren';
+  }
+
+  const STATUS_OPTIONS = ['Neu', 'Nicht erreicht', 'Angerufen', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren'];
+  let detailCurrentStatus = '';
+  let userCalendarPreference = 'google';
+  /** Anzeigename für Kalender-Details (Google sofort, ohne API). */
+  let calendarPartnerName = '';
+
+  function normalizeStatusDisplay(s) {
+    const x = String(s || '').trim();
+    if (!x) return 'Neu';
+    if (x === 'Termin') return 'Termin vereinbart';
+    if (x === 'Verloren') return 'Lead verloren';
+    return x;
+  }
+
+  function initStatusBar() {
+    const bar = document.getElementById('sd-status-bar');
+    if (!bar || bar.dataset.inited) return;
+    bar.dataset.inited = '1';
+    for (const st of STATUS_OPTIONS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'status-btn';
+      b.dataset.status = st;
+      b.textContent = st;
+      b.addEventListener('click', () => applyStatus(st));
+      bar.appendChild(b);
+    }
+  }
+
+  function syncStatusBarHighlight() {
+    const bar = document.getElementById('sd-status-bar');
+    if (!bar) return;
+    const cur = normalizeStatusDisplay(detailCurrentStatus);
+    for (const b of bar.querySelectorAll('.status-btn')) {
+      b.classList.toggle('active', normalizeStatusDisplay(b.dataset.status) === cur);
+    }
+  }
+
+  function parseMetaTs(lead) {
+    const raw = String(lead.last_updated || lead.created_at || '').trim();
+    const ms = Date.parse(raw);
+    if (!Number.isNaN(ms)) return ms;
+    return leadDateMs(lead);
+  }
+
+  function compareBySort(a, b, mode) {
+    if (mode === 'name_asc') {
+      return String(a[COL.name] || '').localeCompare(String(b[COL.name] || ''), 'de');
+    }
+    if (mode === 'anfrage_asc' || mode === 'anfrage_desc') {
+      const da = leadDateMs(a);
+      const db = leadDateMs(b);
+      return mode === 'anfrage_asc' ? da - db : db - da;
+    }
+    if (mode === 'created_at_asc' || mode === 'created_at_desc') {
+      const ca = leadCreatedAtMs(a) || 0;
+      const cb = leadCreatedAtMs(b) || 0;
+      return mode === 'created_at_asc' ? ca - cb : cb - ca;
+    }
+    const ta = parseMetaTs(a);
+    const tb = parseMetaTs(b);
+    return mode === 'last_updated_asc' ? ta - tb : tb - ta;
   }
 
   function mapLeadsSubset() {
@@ -378,10 +682,21 @@
     return digits ? `tel:${digits}` : '';
   }
 
-  function toggleNachfassField() {
-    const st = document.getElementById('sd-status').value;
+  function leadListPhoneHtml(lead) {
+    if (!lead[COL.phone]) return '';
+    const h = telHref(lead[COL.phone]);
+    const inner = h
+      ? `<a class="tel-link" href="${esc(h)}">📞 ${esc(lead[COL.phone])}</a>`
+      : esc(lead[COL.phone]);
+    return `<div class="lead-meta">${inner}</div>`;
+  }
+
+  function syncNachfassTerminVisibility() {
+    const st = normalizeStatusDisplay(detailCurrentStatus);
     document.getElementById('sd-nachfass-wrap').style.display = st === 'Nachfassen' ? 'block' : 'none';
-    document.getElementById('sd-termin-wrap').style.display = st === 'Termin' ? 'block' : 'none';
+    document.getElementById('sd-termin-wrap').style.display = st === 'Termin vereinbart' ? 'block' : 'none';
+    const calBtn = document.getElementById('btn-cal-appointment');
+    if (calBtn) calBtn.disabled = !!activeIsLegacy;
   }
 
   function normalizeLocalDatetime(v) {
@@ -422,51 +737,162 @@
     saveFields();
   }
 
-  function openGoogleCalendar() {
-    const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-    if (!lead) return;
-    const startStr = document.getElementById('sd-termin').value;
-    if (!startStr) {
-      showToast('Bitte unter „Termin“ Datum und Uhrzeit eintragen.', 'info');
-      return;
-    }
-    const start = new Date(startStr);
-    if (Number.isNaN(start.getTime())) {
-      showToast('Ungültiges Datum.', 'err');
-      return;
-    }
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
-    const fmt = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-    const title = `PV – ${lead[COL.name] || lead[COL.email]}`;
-    const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
-    const loc = addr ? `${addr}, Österreich` : '';
-    const mapsUrl = loc ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}` : '';
-    const parts = [
-      lead[COL.phone] ? `Tel: ${lead[COL.phone]}` : '',
-      lead[COL.email] ? `E-Mail: ${lead[COL.email]}` : '',
-      lead[COL.info] ? `Info: ${lead[COL.info]}` : '',
-      document.getElementById('sd-notizen').value ? `Notizen: ${document.getElementById('sd-notizen').value}` : '',
-      mapsUrl ? `Google Maps: ${mapsUrl}` : '',
-    ].filter(Boolean);
+  function defaultCalendarSlot() {
+    const n = new Date();
+    n.setSeconds(0, 0);
+    n.setMinutes(0);
+    n.setHours(n.getHours() + 1);
+    if (n.getTime() <= Date.now() + 30 * 1000) n.setHours(n.getHours() + 1);
+    const end = new Date(n.getTime() + 60 * 60 * 1000);
+    return { start: n, end };
+  }
+
+  function googleCalendarUtcChunk(d) {
+    return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  }
+
+  /** Google Calendar „action=TEMPLATE“ — gleiches Format wie Server (`calendar-links.js`). */
+  function buildGoogleCalendarUrlClient({ title, location, description, start, end }) {
     const params = new URLSearchParams({
       action: 'TEMPLATE',
       text: title,
-      details: parts.join('\n'),
-      location: loc,
-      dates: `${fmt(start)}/${fmt(end)}`,
+      details: description,
+      location,
+      dates: `${googleCalendarUtcChunk(start)}/${googleCalendarUtcChunk(end)}`,
     });
-    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank', 'noopener,noreferrer');
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
   }
 
-  function ageColor(lead) {
-    const ms = leadDateMs(lead);
-    if (!ms) return '#94a3b8';
-    const days = (Date.now() - ms) / 86400000;
-    if (days <  30) return '#7f1d1d';
-    if (days <  90) return '#dc2626';
-    if (days < 180) return '#f87171';
-    if (days < 365) return '#fca5a5';
-    return '#fee2e2';
+  function resolveCalendarSlotFromForm() {
+    const terminVal = document.getElementById('sd-termin').value;
+    let start;
+    let end;
+    if (terminVal && terminVal.trim()) {
+      start = new Date(terminVal);
+      if (Number.isNaN(start.getTime())) {
+        const fb = defaultCalendarSlot();
+        start = fb.start;
+        end = fb.end;
+      } else {
+        end = new Date(start.getTime() + 60 * 60 * 1000);
+      }
+    } else {
+      const fb = defaultCalendarSlot();
+      start = fb.start;
+      end = fb.end;
+    }
+    return { start, end };
+  }
+
+  async function openCalendarAppointment() {
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
+    const { start, end } = resolveCalendarSlotFromForm();
+    const pref = (document.getElementById('nav-cal-pref') && document.getElementById('nav-cal-pref').value) || userCalendarPreference || 'google';
+
+    const customerName = (document.getElementById('sd-name') && document.getElementById('sd-name').textContent) || (rowLead && rowLead[COL.name]) || '';
+    const st = (document.getElementById('sd-c-street') && document.getElementById('sd-c-street').value) || '';
+    const zi = (document.getElementById('sd-c-zip') && document.getElementById('sd-c-zip').value) || '';
+    const ci = (document.getElementById('sd-c-city') && document.getElementById('sd-c-city').value) || '';
+    const location = [st, zi, ci].map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+    const partner = calendarPartnerName || 'Vertrieb';
+    const title = `PV - ${String(customerName || 'Kunde').trim() || 'Kunde'}`;
+    const description = `Vertriebspartner: ${partner}`;
+
+    if (pref === 'google') {
+      const url = buildGoogleCalendarUrlClient({ title, location, description, start, end });
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (!apiEmail) {
+      showToast('Kalender (Outlook/Apple): Bitte eine E-Mail zum Lead hinterlegen.', 'info');
+      return;
+    }
+    try {
+      const r = await apiFetch('/api/calendar/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: apiEmail,
+          start: start.toISOString(),
+          end: end.toISOString(),
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Kalender-Link fehlgeschlagen', 'err');
+        return;
+      }
+      if (pref === 'apple' && j.icsContent) {
+        const blob = new Blob([j.icsContent], { type: 'text/calendar;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = j.icsFilename || 'termin.ics';
+        a.rel = 'noopener noreferrer';
+        a.target = '_blank';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('Kalendereintrag (.ics) heruntergeladen.', 'ok');
+        return;
+      }
+      const url = pref === 'outlook' ? j.outlookUrl : j.googleUrl;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
+  }
+
+  async function applyStatus(status) {
+    if (activeIsLegacy) {
+      showToast('Legacy-Lead: Status hier nicht änderbar.', 'info');
+      return;
+    }
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
+    if (!apiEmail) {
+      showToast('Keine E-Mail – Status nicht speicherbar.', 'err');
+      return;
+    }
+    if (status === 'Archivieren') {
+      if (!confirm(`„${rowLead?.[COL.name] || apiEmail}“ archivieren und aus der aktiven Liste nehmen?`)) return;
+    }
+    try {
+      const r = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Status speichern fehlgeschlagen', 'err');
+        return;
+      }
+      if (j.archived) {
+        allLeads = allLeads.filter((l) => leadKey(l) !== activeLeadKeyStr);
+        closeSidebarDetail();
+        renderStats();
+        renderMarkers();
+        showToast('Lead archiviert.', 'ok');
+        refreshHeaderStats();
+        return;
+      }
+      detailCurrentStatus = status;
+      const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+      if (lead) {
+        lead[COL.status] = status;
+        lead.last_updated = new Date().toISOString();
+      }
+      syncStatusBarHighlight();
+      syncNachfassTerminVisibility();
+      renderStats();
+      renderList();
+      renderMarkers();
+      showToast('Status gespeichert', 'ok');
+      refreshHeaderStats();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
   }
 
   // ── Geocoding with cache + throttle ──────────────────────────────────────
@@ -484,7 +910,7 @@
     while (geoQueue.length) {
       const { q, resolve } = geoQueue.shift();
       if (q in geoCache) { resolve(geoCache[q]); continue; }
-      await new Promise(r => setTimeout(r, 1200)); // Nominatim: max 1 req/s
+      await new Promise(r => setTimeout(r, 1500)); // Nominatim: konservativ 1,5 s
       try {
         const res = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=at`,
@@ -500,13 +926,6 @@
     geoQueueRunning = false;
   }
 
-  function geocode(lead) {
-    const q = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
-    if (!q) return Promise.resolve(null);
-    if (q in geoCache) return Promise.resolve(geoCache[q]);
-    return new Promise(resolve => enqueueGeocode(q, resolve));
-  }
-
   // ── Load leads ────────────────────────────────────────────────────────────
   function showLoadError(msg) {
     const el = document.getElementById('load-error');
@@ -517,6 +936,168 @@
   function hideLoadError() {
     const el = document.getElementById('load-error');
     if (el) el.style.display = 'none';
+  }
+
+  async function refreshHeaderStats() {
+    const el = document.getElementById('header-mini-stats');
+    const warnBtn = document.getElementById('header-warn-missing');
+    if (!el) return;
+    try {
+      const r = await apiFetch('/api/stats');
+      if (!r.ok) {
+        el.innerHTML = '';
+        if (warnBtn) {
+          warnBtn.textContent = '';
+          warnBtn.classList.add('is-hidden');
+          warnBtn.classList.remove('ok-state');
+          warnBtn.title = '';
+        }
+        return;
+      }
+      const s = await r.json();
+      el.innerHTML =
+        '<span class="hdr-stat">Gesamt: <strong>' + esc(String(s.totalLeads ?? '–')) + '</strong></span>' +
+        '<span class="hdr-stat">Neu (7/30 T.): <strong>+' + esc(String(s.newWeek ?? 0)) + '</strong> / <strong>+' + esc(String(s.newMonth ?? 0)) + '</strong></span>' +
+        '<span class="hdr-stat">Erledigt (7/30 T.): <strong>' + esc(String(s.doneWeek ?? 0)) + '</strong> / <strong>' + esc(String(s.doneMonth ?? 0)) + '</strong></span>';
+      const miss = parseInt(String(s.missingMapCoords ?? 0), 10) || 0;
+      if (warnBtn) {
+        warnBtn.classList.remove('is-hidden');
+        warnBtn.textContent = '⚠️ ' + miss + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt';
+        if (miss > 0) {
+          warnBtn.classList.remove('ok-state');
+          warnBtn.title = 'Klicken: Liste bearbeiten (Adresse, Geocoding, Anruf, Status)';
+        } else {
+          warnBtn.classList.add('ok-state');
+          warnBtn.title = 'Alle aktiven Leads haben einen Kartenpunkt (Koordinaten vollständig).';
+        }
+      }
+    } catch {
+      el.innerHTML = '';
+      if (warnBtn) {
+        warnBtn.textContent = '';
+        warnBtn.classList.add('is-hidden');
+        warnBtn.classList.remove('ok-state');
+        warnBtn.title = '';
+      }
+    }
+  }
+
+  function closeMissingCoordsModal() {
+    const m = document.getElementById('modal-missing-coords');
+    if (m) { m.classList.remove('open'); }
+  }
+
+  function missingCoordsRowHtml(lead) {
+    const id = lead.pvlDbId;
+    if (id == null) return '';
+    const th = telHref(lead[COL.phone]);
+    const telBtn = th
+      ? `<a class="btn-mini btn-mini-tel" href="${esc(th)}">📞 Anrufen</a>`
+      : '';
+    return `<div class="missing-lead-card" data-pvl-id="${id}">
+      <div class="row-title">${esc(lead[COL.name] || '(kein Name)')} <span style="color:#64748b;font-weight:500">#${esc(anfrageNr(lead))}</span>${lead[COL.email] ? ' · ' + esc(lead[COL.email]) : ''}</div>
+      <div class="addr-grid">
+        <input type="text" class="mc-str" placeholder="Straße" value="${esc(lead[COL.street] || '')}" />
+        <input type="text" class="mc-zip" placeholder="PLZ" value="${esc(lead[COL.zip] || '')}" />
+        <input type="text" class="mc-city" placeholder="Ort" value="${esc(lead[COL.city] || '')}" style="grid-column:1/-1" />
+      </div>
+      <div class="missing-actions">
+        <button type="button" class="btn-mini btn-mini-save mc-save">Speichern &amp; Geocoding</button>
+        ${telBtn}
+        <button type="button" class="btn-mini btn-mini-ok mc-st-termin">Termin vereinbart</button>
+        <button type="button" class="btn-mini btn-mini-warn mc-st-arch">Archivieren</button>
+      </div>
+    </div>`;
+  }
+
+  async function refreshMissingModalBody() {
+    const body = document.getElementById('modal-missing-coords-body');
+    if (!body) return;
+    try {
+      const r = await apiFetch('/api/leads/missing-coords');
+      if (!r.ok) {
+        body.innerHTML = '<p style="color:#b91c1c;font-size:0.85rem">Liste konnte nicht geladen werden.</p>';
+        return;
+      }
+      const list = await r.json();
+      if (!Array.isArray(list) || !list.length) {
+        body.innerHTML = '<p style="color:#64748b;font-size:0.85rem">Keine Leads ohne gültigen Kartenpunkt mehr.</p>';
+        closeMissingCoordsModal();
+        return;
+      }
+      body.innerHTML = list.map(missingCoordsRowHtml).join('');
+      body.querySelectorAll('.missing-lead-card').forEach((card) => {
+        const id = parseInt(card.getAttribute('data-pvl-id'), 10);
+        card.querySelector('.mc-save')?.addEventListener('click', () => missingCoordsSave(id, card));
+        card.querySelector('.mc-st-termin')?.addEventListener('click', () => missingCoordsStatus(id, 'Termin vereinbart'));
+        card.querySelector('.mc-st-arch')?.addEventListener('click', () => missingCoordsStatus(id, 'Archivieren'));
+      });
+    } catch {
+      body.innerHTML = '<p style="color:#b91c1c;font-size:0.85rem">Netzwerkfehler.</p>';
+    }
+  }
+
+  async function openMissingCoordsModal() {
+    const m = document.getElementById('modal-missing-coords');
+    if (!m) return;
+    m.classList.add('open');
+    const body = document.getElementById('modal-missing-coords-body');
+    if (body) body.innerHTML = '<p style="color:#64748b;font-size:0.85rem">Laden…</p>';
+    await refreshMissingModalBody();
+  }
+
+  async function missingCoordsSave(id, cardEl) {
+    const card = cardEl || document.querySelector('.missing-lead-card[data-pvl-id="' + id + '"]');
+    if (!card) return;
+    const str = card.querySelector('.mc-str')?.value?.trim() ?? '';
+    const zi = card.querySelector('.mc-zip')?.value?.trim() ?? '';
+    const ci = card.querySelector('.mc-city')?.value?.trim() ?? '';
+    const btn = card.querySelector('.mc-save');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await apiFetch('/api/lead-rows/' + id + '/address-geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strasse: str, plz: zi, ort: ci }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Speichern/Geocoding fehlgeschlagen', 'err');
+        return;
+      }
+      showToast(j.geocodeLabel || 'Adresse gespeichert', 'ok');
+      await loadLeads();
+      await refreshMissingModalBody();
+      refreshHeaderStats();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function missingCoordsStatus(id, status) {
+    if (status === 'Archivieren') {
+      if (!confirm('Diesen Lead archivieren und aus der aktiven Liste nehmen?')) return;
+    }
+    try {
+      const r = await apiFetch('/api/lead-rows/' + id + '/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Status speichern fehlgeschlagen', 'err');
+        return;
+      }
+      showToast(j.archived ? 'Archiviert.' : 'Status gespeichert.', 'ok');
+      await loadLeads();
+      await refreshMissingModalBody();
+      refreshHeaderStats();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
   }
 
   async function loadLeads() {
@@ -550,7 +1131,7 @@
       hideLoadError();
       allLeads = data;
       if (data.length === 0) {
-        showLoadError('Keine Leads geladen. Prüfen: GOOGLE_SPREADSHEET_ID, GOOGLE_SHEET_NAME. Diagnose: /api/debug/leads-sheet → sheetTabs, sheetTabResolved, sheetTabEnvMatches, sheetTabAutoResolved.');
+        showLoadError('Keine Leads geladen. SQLite prüfen: data/leads.db existiert und enthält Zeilen (Import: npm run import-leads-csv). Diagnose: /api/debug/leads-sheet');
       }
       renderStats();
       renderList();
@@ -565,6 +1146,7 @@
     } finally {
       layout?.classList.remove('app-loading');
       rb?.classList.remove('spin');
+      refreshHeaderStats();
     }
   }
 
@@ -575,24 +1157,23 @@
     document.getElementById('stat-active').textContent  = allLeads.length - done;
     document.getElementById('stat-done').textContent    = done;
     const active = (l) => !isHiddenStatus(l);
-    document.getElementById('stat-new').textContent     = allLeads.filter(l => active(l) && !l[COL.betreut]).length;
-    document.getElementById('stat-betreut').textContent = allLeads.filter(l => active(l) &&  l[COL.betreut]).length;
-    document.getElementById('stat-dp').textContent      = allLeads.filter(l => getSource(l) === 'D&P').length;
-    document.getElementById('stat-pvat').textContent    = allLeads.filter(l => getSource(l) === 'Photovoltaikanlage.at').length;
-    document.getElementById('stat-messe').textContent   = allLeads.filter(l => isMesse(l)).length;
+    const stNeu = (l) => !String(l[COL.status] || '').trim() || normalizeStatusDisplay(l[COL.status]) === 'Neu';
+    document.getElementById('stat-new').textContent     = allLeads.filter((l) => active(l) && stNeu(l)).length;
+    document.getElementById('stat-betreut').textContent = allLeads.filter((l) => active(l) && l[COL.betreut]).length;
   }
 
   // ── Filter ────────────────────────────────────────────────────────────────
   function getFiltered() {
     const q = document.getElementById('search-input').value.toLowerCase();
-    const s = document.getElementById('source-filter').value;
     const showDone = document.getElementById('show-completed')?.checked;
-    return allLeads.filter(l => {
+    const sortMode = document.getElementById('sort-leads')?.value || 'last_updated_desc';
+    let rows = allLeads.filter((l) => {
       if (!showDone && isHiddenStatus(l)) return false;
-      const matchQ = !q || [l[COL.name], l[COL.email], l[COL.city], l[COL.street]].some(v => v?.toLowerCase().includes(q));
-      const matchS = !s || getSource(l) === s;
-      return matchQ && matchS;
+      const matchQ = !q || [l[COL.name], l[COL.email], l[COL.city], l[COL.street]].some((v) => v?.toLowerCase().includes(q));
+      return matchQ;
     });
+    rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
+    return rows;
   }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────
@@ -601,8 +1182,7 @@
     const leads = getFiltered();
     document.getElementById('lead-count').textContent = leads.length;
       list.innerHTML = leads.map(l => {
-      const color = ageColor(l);
-      const src   = getSource(l);
+      const color = getMarkerColorForLead(l);
       const lk = encodeURIComponent(leadKey(l));
       const act = leadKey(l) === activeLeadKeyStr;
       return `<div class="lead-item${act ? ' active' : ''}"
@@ -614,138 +1194,91 @@
         </div>
         <div class="lead-meta">
           ${esc(l[COL.city] || '')}${l[COL.zip] ? ' ' + esc(l[COL.zip]) : ''}
-          &nbsp;·&nbsp;<span style="color:${src==='Messe'?'#7c3aed':'inherit'};font-weight:${src==='Messe'?600:400}">${esc(src)}</span>
           &nbsp;·&nbsp;${esc(l[COL.date] || '')}${l[COL.status] ? ` · <span style="font-weight:600">${esc(l[COL.status])}</span>` : ''}
         </div>
+        ${leadListPhoneHtml(l)}
         ${l[COL.betreut] ? `<div class="lead-betreut">Betreut: ${esc(l[COL.betreut])}</div>` : ''}
       </div>`;
     }).join('');
   }
 
-  // ── Map markers ───────────────────────────────────────────────────────────
-  const CLUSTER_ZOOM = 12;      // below this → pie clusters; at/above → individual pins
-  const CLUSTER_PX   = 48;      // pixel radius for grouping
-
-  // Called once on load / data refresh – handles geocoding, then draws
-  function renderMarkers() {
-    const statusEl = document.getElementById('geo-status');
-    let pending = 0, resolved = 0;
-
-    for (const lead of mapLeadsSubset()) {
-      const q = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
-      if (!q || q in geoCache) continue;
-      pending++;
-      statusEl.style.display = 'block';
-      statusEl.textContent = `Karte: 0 / ${pending} neue Adressen werden geladen…`;
-      geocode(lead).then(() => {
-        resolved++;
-        if (resolved >= pending) statusEl.style.display = 'none';
-        else statusEl.textContent = `Karte: ${resolved} / ${pending} neue Adressen geladen…`;
-        drawMarkers();
-      });
-    }
-
-    drawMarkers();
+  function coordsFromDb(lead) {
+    const la = parseFloat(lead.latitude);
+    const lo = parseFloat(lead.longitude);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+    if (la === 0 || lo === 0) return null;
+    return [la, lo];
   }
 
-  // Pure render from cache – called on load + zoomend
-  function drawMarkers() {
+  function getLeadFocusLatLng(lead) {
+    const m = markerMap[leadKey(lead)];
+    if (m) return m.getLatLng();
+    const c = coordsFromDb(lead);
+    if (c) return L.latLng(c[0], c[1]);
+    return null;
+  }
+
+  function geocodeFullAddressQuery(lead) {
+    const st = String(lead[COL.street] || '').trim();
+    const zi = String(lead[COL.zip] || '').trim();
+    const ci = String(lead[COL.city] || '').trim();
+    if (!st) return null;
+    return `${st}, ${zi} ${ci}, Österreich`.replace(/\s+/g, ' ').replace(/ ,/g, ',').trim();
+  }
+
+  function geocodeCityQuery(lead) {
+    const zi = String(lead[COL.zip] || '').trim();
+    const ci = String(lead[COL.city] || '').trim();
+    if (!ci) return null;
+    return `${zi} ${ci}, Österreich`.replace(/\s+/g, ' ').trim();
+  }
+
+  function geocodeQueryString(q) {
+    if (!q) return Promise.resolve(null);
+    if (q in geoCache) return Promise.resolve(geoCache[q]);
+    return new Promise((resolve) => enqueueGeocode(q, resolve));
+  }
+
+  async function resolveCoordsForLead(lead) {
+    const d = coordsFromDb(lead);
+    if (d) return d;
+    const qA = geocodeFullAddressQuery(lead);
+    if (qA) {
+      const c = await geocodeQueryString(qA);
+      if (c) return c;
+    }
+    const qB = geocodeCityQuery(lead);
+    if (qB) {
+      const c = await geocodeQueryString(qB);
+      if (c) return c;
+    }
+    return [48.2082, 16.3738];
+  }
+
+  let markerRenderGen = 0;
+
+  async function renderMarkers() {
+    const gen = ++markerRenderGen;
+    const statusEl = document.getElementById('geo-status');
     markerLayer.clearLayers();
     markerMap = {};
-
     const subset = mapLeadsSubset();
-    const withCoords = subset.map(lead => {
-      const q = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
-      return (q && geoCache[q]) ? { lead, coords: geoCache[q] } : null;
-    }).filter(Boolean);
-
-    if (map.getZoom() < CLUSTER_ZOOM) {
-      renderClusters(withCoords);
-    } else {
-      for (const { lead, coords } of withCoords) placeMarker(lead, coords);
+    const anyClientGeo = subset.some((l) => !coordsFromDb(l) && (geocodeFullAddressQuery(l) || geocodeCityQuery(l)));
+    if (anyClientGeo) {
+      statusEl.style.display = 'block';
+      statusEl.textContent = 'Karte: Adressen werden geladen…';
     }
-  }
-
-  map.on('zoomend', () => drawMarkers());
-
-  // ── Clustering ────────────────────────────────────────────────────────────
-  function clusterLeads(items) {
-    const assigned = new Set();
-    const clusters = [];
-    for (let i = 0; i < items.length; i++) {
-      if (assigned.has(i)) continue;
-      const group = [items[i]];
-      assigned.add(i);
-      for (let j = i + 1; j < items.length; j++) {
-        if (assigned.has(j)) continue;
-        const dx = items[i].px.x - items[j].px.x;
-        const dy = items[i].px.y - items[j].px.y;
-        if (Math.sqrt(dx * dx + dy * dy) < CLUSTER_PX) { group.push(items[j]); assigned.add(j); }
+    for (let i = 0; i < subset.length; i += 1) {
+      const lead = subset[i];
+      if (gen !== markerRenderGen) return;
+      if (!coordsFromDb(lead) && (geocodeFullAddressQuery(lead) || geocodeCityQuery(lead))) {
+        statusEl.textContent = `Karte: Lead ${i + 1} / ${subset.length}…`;
       }
-      clusters.push(group);
+      const coords = await resolveCoordsForLead(lead);
+      if (gen !== markerRenderGen) return;
+      placeMarker(lead, coords);
     }
-    return clusters;
-  }
-
-  function renderClusters(withCoords) {
-    if (!withCoords.length) return;
-    const items = withCoords.map(({ lead, coords }) => ({
-      lead, coords,
-      px: map.latLngToContainerPoint(L.latLng(coords[0], coords[1]))
-    }));
-    for (const group of clusterLeads(items)) {
-      if (group.length === 1) placeMarker(group[0].lead, group[0].coords);
-      else placePieCluster(group);
-    }
-  }
-
-  function placePieCluster(group) {
-    const lat = group.reduce((s, c) => s + c.coords[0], 0) / group.length;
-    const lng = group.reduce((s, c) => s + c.coords[1], 0) / group.length;
-    const total = group.length;
-
-    // Count by age color
-    const counts = {};
-    for (const { lead } of group) {
-      const c = ageColor(lead);
-      counts[c] = (counts[c] || 0) + 1;
-    }
-
-    const size = Math.min(64, Math.max(36, 26 + total * 1.8));
-    const r = size / 2, ir = r - 2.5, cx = r, cy = r;
-    const slices = Object.entries(counts);
-
-    let paths = '';
-    if (slices.length === 1) {
-      paths = `<circle cx="${cx}" cy="${cy}" r="${ir}" fill="${slices[0][0]}" stroke="white" stroke-width="2"/>`;
-    } else {
-      let a = -Math.PI / 2;
-      for (const [color, cnt] of slices) {
-        const sweep = (cnt / total) * 2 * Math.PI;
-        const ea = a + sweep;
-        const x1 = (cx + ir * Math.cos(a)).toFixed(2),  y1 = (cy + ir * Math.sin(a)).toFixed(2);
-        const x2 = (cx + ir * Math.cos(ea)).toFixed(2), y2 = (cy + ir * Math.sin(ea)).toFixed(2);
-        paths += `<path d="M${cx},${cy}L${x1},${y1}A${ir},${ir} 0 ${sweep > Math.PI ? 1 : 0} 1 ${x2},${y2}Z"
-                       fill="${color}" stroke="white" stroke-width="1.5"/>`;
-        a = ea;
-      }
-    }
-
-    const fs = Math.max(9, Math.round(size * 0.28));
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(255,255,255,0.2)" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
-      ${paths}
-      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central"
-            font-size="${fs}" font-weight="700" fill="white"
-            style="text-shadow:0 1px 3px rgba(0,0,0,0.9);font-family:sans-serif">${total}</text>
-    </svg>`;
-
-    const icon = L.divIcon({ html: svg, className: '', iconSize: [size, size], iconAnchor: [r, r], popupAnchor: [0, -r] });
-    const marker = L.marker([lat, lng], { icon });
-    marker.on('click', () => {
-      map.flyTo([lat, lng], Math.min(map.getZoom() + 2, CLUSTER_ZOOM + 1), { animate: true });
-    });
-    marker.addTo(markerLayer);
+    if (anyClientGeo) statusEl.style.display = 'none';
   }
 
   // ── Individual pin ────────────────────────────────────────────────────────
@@ -764,7 +1297,7 @@
 
   function placeMarker(lead, coords) {
     if (!coords) return;
-    const color  = ageColor(lead);
+    const color  = getMarkerColorForLead(lead);
     const src    = getSource(lead);
     const marker = L.marker(coords, { icon: pinIcon(color, !!lead.__pvlLegacy) });
 
@@ -783,6 +1316,9 @@
         Bearbeiten / Details
       </button>`;
 
+    marker.on('click', (ev) => {
+      if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
+    });
     marker.bindPopup(popupContent, { maxWidth: 320 });
     marker.addTo(markerLayer);
 
@@ -802,18 +1338,27 @@
     activeIsLegacy = !!lead.__pvlLegacy;
     activeLeadKeyStr = leadKey(lead);
 
+    captureLastMapStateIfNeeded();
+
     renderList();
     const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
     if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-    // Fly to marker and open popup if it exists
     const marker = markerMap[leadKey(lead)];
-    if (marker) {
-      map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 12), { duration: 0.45 });
-      marker.openPopup();
+    const target = getLeadFocusLatLng(lead);
+    const rawZ = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 19;
+    const zMax = Number.isFinite(rawZ) && rawZ > 0 && rawZ < 99 ? rawZ : 19;
+    const flyMax = () => {
+      if (!target) return;
+      if (marker) marker.closePopup();
+      map.flyTo(target, zMax, { duration: 0.55, animate: true });
+    };
+    if (marker && typeof markerLayer.zoomToShowLayer === 'function') {
+      markerLayer.zoomToShowLayer(marker, flyMax);
+    } else {
+      flyMax();
     }
 
-    // Show detail in sidebar
     openSidebarDetail(lead);
   }
 
@@ -823,15 +1368,14 @@
 
     const legacy = !!lead.__pvlLegacy;
     document.getElementById('sd-legacy-banner').style.display = legacy ? 'block' : 'none';
-    ['sd-betreut', 'sd-notizen', 'sd-status', 'sd-nachfass', 'sd-termin'].forEach((id) => {
+    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = legacy;
     });
+    document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = legacy; });
     document.getElementById('btn-save').disabled = legacy;
-    document.getElementById('btn-gcal').disabled = legacy;
-    document.getElementById('btn-archive').disabled = legacy;
 
-    const color = ageColor(lead);
+    const color = getMarkerColorForLead(lead);
     const titleEl = document.getElementById('sd-name');
     titleEl.textContent = lead[COL.name] || '(kein Name)';
     titleEl.style.borderLeft = `4px solid ${color}`;
@@ -859,33 +1403,39 @@
     }
     document.getElementById('sd-info').innerHTML = infoHtml;
 
+    document.getElementById('sd-c-email').value = lead[COL.email] || '';
+    document.getElementById('sd-c-phone').value = lead[COL.phone] || '';
+    document.getElementById('sd-c-street').value = lead[COL.street] || '';
+    document.getElementById('sd-c-zip').value = lead[COL.zip] || '';
+    document.getElementById('sd-c-city').value = lead[COL.city] || '';
+
+    initStatusBar();
     document.getElementById('sd-betreut').value = lead[COL.betreut] || '';
     document.getElementById('sd-notizen').value = lead[COL.notes]   || '';
-    document.getElementById('sd-status').value = (lead[COL.status] || '').trim();
+    detailCurrentStatus = normalizeStatusDisplay(lead[COL.status]);
     document.getElementById('sd-nachfass').value = (lead[COL.nachfass] || '').trim().slice(0, 10);
     document.getElementById('sd-termin').value = normalizeLocalDatetime(lead[COL.termin]);
-    toggleNachfassField();
+    syncStatusBarHighlight();
+    syncNachfassTerminVisibility();
     renderBetreutChips();
     document.getElementById('save-hint').style.display = 'none';
-
-    const archBtn = document.getElementById('btn-archive');
-    archBtn.textContent = '✓ Abgearbeitet';
-    archBtn.disabled = legacy;
   }
 
   function closeSidebarDetail() {
+    restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
     document.getElementById('lead-list').style.display = 'block';
     activeEmail = null;
     activeIsLegacy = false;
     activeLeadKeyStr = null;
-    ['sd-betreut', 'sd-notizen', 'sd-status', 'sd-nachfass', 'sd-termin'].forEach((id) => {
+    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = false;
     });
+    document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = false; });
     document.getElementById('btn-save').disabled = false;
-    document.getElementById('btn-gcal').disabled = false;
-    document.getElementById('btn-archive').disabled = false;
+    const calBtn = document.getElementById('btn-cal-appointment');
+    if (calBtn) calBtn.disabled = false;
     renderList();
   }
 
@@ -904,14 +1454,25 @@
     }
     const betreut = document.getElementById('sd-betreut').value;
     const notizen = document.getElementById('sd-notizen').value;
-    const status = document.getElementById('sd-status').value;
     const nachfass = document.getElementById('sd-nachfass').value;
     const termin = document.getElementById('sd-termin').value;
+
+    const contactUpdates = {
+      'E-Mail': document.getElementById('sd-c-email').value.trim(),
+      'Telefon': document.getElementById('sd-c-phone').value.trim(),
+      'Straße': document.getElementById('sd-c-street').value.trim(),
+      'PLZ': document.getElementById('sd-c-zip').value.trim(),
+      'Ort': document.getElementById('sd-c-city').value.trim(),
+    };
+    const addrChanged = !rowLead || (
+      String(rowLead[COL.street] || '').trim() !== contactUpdates['Straße']
+      || String(rowLead[COL.zip] || '').trim() !== contactUpdates['PLZ']
+      || String(rowLead[COL.city] || '').trim() !== contactUpdates['Ort']
+    );
 
     const cols = [
       [COL.betreut, betreut],
       [COL.notes, notizen],
-      [COL.status, status],
       [COL.nachfass, nachfass],
       [COL.termin, termin],
     ];
@@ -923,8 +1484,19 @@
     hint.textContent = 'Gespeichert!';
     btn.disabled = true;
     try {
+      const rContact = await apiFetch('/api/leads/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: apiEmail, updates: contactUpdates }),
+      });
+      if (!rContact.ok) {
+        const j = await rContact.json().catch(() => ({}));
+        showToast(j.error || 'Kontakt/Adresse speichern fehlgeschlagen', 'err');
+        return;
+      }
+      const patchEmail = (document.getElementById('sd-c-email').value || '').trim() || apiEmail;
       const results = await Promise.all(cols.map(([column, value]) =>
-        apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/field`, {
+        apiFetch(`/api/leads/${encodeURIComponent(patchEmail)}/field`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ column, value }),
         })
@@ -937,11 +1509,18 @@
       }
       const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
       if (lead) {
+        lead[COL.email] = contactUpdates['E-Mail'];
+        lead[COL.phone] = contactUpdates['Telefon'];
+        lead[COL.street] = contactUpdates['Straße'];
+        lead[COL.zip] = contactUpdates['PLZ'];
+        lead[COL.city] = contactUpdates['Ort'];
         lead[COL.betreut] = betreut;
         lead[COL.notes] = notizen;
-        lead[COL.status] = status;
         lead[COL.nachfass] = nachfass;
         lead[COL.termin] = termin;
+        lead.last_updated = new Date().toISOString();
+        activeEmail = lead[COL.email] || activeEmail;
+        activeLeadKeyStr = leadKey(lead);
       }
       hint.style.display = 'inline';
       hint.style.color = '';
@@ -949,46 +1528,30 @@
       renderStats();
       renderList();
       renderMarkers();
+      refreshHeaderStats();
+      const pe = (document.getElementById('sd-c-email').value || '').trim() || patchEmail;
+      if (pe && addrChanged) {
+        apiFetch('/api/leads/' + encodeURIComponent(pe) + '/regeocode', { method: 'POST' })
+          .then(async (rg) => {
+            if (!rg.ok) return;
+            const gj = await rg.json().catch(() => ({}));
+            if (!gj.lead) return;
+            const em = String(gj.lead[COL.email] || gj.lead.email || '').trim().toLowerCase();
+            const tgt = allLeads.find((l) => String(l[COL.email] || '').trim().toLowerCase() === em && !l.__pvlLegacy);
+            if (tgt) {
+              tgt.latitude = gj.lead.latitude;
+              tgt.longitude = gj.lead.longitude;
+              tgt.last_updated = gj.lead.last_updated || tgt.last_updated;
+            }
+            renderMarkers();
+            refreshHeaderStats();
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       showToast('Netzwerkfehler beim Speichern: ' + (e.message || String(e)), 'err');
     } finally {
       btn.disabled = false;
-    }
-  }
-
-  // ── Archive lead ──────────────────────────────────────────────────────────
-  async function doArchive() {
-    if (!activeEmail) return;
-    if (activeIsLegacy) {
-      showToast('Archiv-Leads hier nicht archivierbar.', 'info');
-      return;
-    }
-    const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr && !l.__pvlLegacy);
-    if (!confirm(`"${lead?.[COL.name] || activeEmail}" archivieren und aus der Liste entfernen?`)) return;
-
-    const btn = document.getElementById('btn-archive');
-    btn.disabled = true;
-    btn.textContent = 'Wird archiviert…';
-
-    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
-    if (!apiEmail) {
-      showToast('Keine E-Mail – Archivieren nicht möglich.', 'err');
-      btn.disabled = false;
-      btn.textContent = '✓ Abgearbeitet';
-      return;
-    }
-    const res = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/archive`, { method: 'POST' });
-    if (res.ok) {
-      allLeads = allLeads.filter((l) => leadKey(l) !== activeLeadKeyStr);
-      closeSidebarDetail();
-      renderStats();
-      renderMarkers();
-    } else {
-      const j = await res.json().catch(() => ({}));
-      showToast('Archivieren fehlgeschlagen: ' + (j.error || res.statusText || String(res.status)), 'err');
-      btn.disabled = false;
-      btn.textContent = '✓ Abgearbeitet';
     }
   }
 
@@ -998,12 +1561,28 @@
       const j = await r.json();
       const el = document.getElementById('session-user');
       if (!el) return;
-      if (j.user) el.textContent = j.user.username + (j.user.role === 'admin' ? ' · Admin' : '');
-      else el.textContent = '';
+      if (j.user) {
+        calendarPartnerName = String(j.user.username || '').trim() || '';
+        el.textContent = j.user.username + (j.user.role === 'admin' ? ' · Admin' : '');
+        userCalendarPreference = j.user.calendarPreference || 'google';
+        const nav = document.getElementById('nav-cal-pref');
+        if (nav) nav.value = userCalendarPreference;
+      } else {
+        calendarPartnerName = '';
+        el.textContent = '';
+      }
     } catch {
       document.getElementById('session-user').textContent = '';
     }
   }
+
+  document.getElementById('header-warn-missing')?.addEventListener('click', () => {
+    const b = document.getElementById('header-warn-missing');
+    if (b && b.classList.contains('ok-state')) return;
+    openMissingCoordsModal();
+  });
+  document.getElementById('modal-missing-close')?.addEventListener('click', () => { closeMissingCoordsModal(); });
+  document.getElementById('modal-missing-backdrop')?.addEventListener('click', () => { closeMissingCoordsModal(); });
 
   document.getElementById('logout-link').addEventListener('click', async (e) => {
     e.preventDefault();
@@ -1013,7 +1592,26 @@
     window.location.href = '/login.html';
   });
 
+  document.getElementById('nav-cal-pref')?.addEventListener('change', async () => {
+    const nav = document.getElementById('nav-cal-pref');
+    if (!nav) return;
+    try {
+      const r = await apiFetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calendarPreference: nav.value }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      userCalendarPreference = nav.value;
+      showToast('Kalender-Einstellung gespeichert', 'ok');
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
+  });
+
   // ── Boot ──────────────────────────────────────────────────────────────────
+  initStatusBar();
   refreshSessionUi();
   loadVertrieblerNames().then(() => loadLeads().then(() => refreshSessionUi()));
   setInterval(loadLeads, 5 * 60 * 1000);

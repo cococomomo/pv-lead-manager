@@ -1,6 +1,6 @@
 # PV Lead Manager
 
-Pipeline: IMAP → KI-Extraktion → Google Sheets → optional Google Kalender + Mailbestätigung → Web-Dashboard (Leaflet-Karte, CRM-Felder, „Betreut durch“ aus Benutzernamen, Status, Google-Kalender-Link).
+Pipeline: IMAP → KI-Extraktion → **SQLite** (`data/leads.db`) → Web-Dashboard (Leaflet-Karte, CRM-Felder, „Betreut durch“ aus Benutzernamen, Status). Ausgehende Mails (Zugangsdaten, Kundenbestätigung) per **SMTP**.
 
 ## DNS ist da (z. B. wie beim Roof Identifier) – warum geht `pvl` trotzdem nicht?
 
@@ -14,11 +14,11 @@ Für **PV Lead Manager** brauchst du **denselben Server**, aber **eine eigene Ke
 **Localhost** meint immer den **Rechner, auf dem der Browser bzw. der Befehl läuft**:
 
 - Auf deinem **Entwicklungs-PC**: `npm start` im Projekt → `http://localhost:3080` (nur wenn Node dort läuft).
-- Die **Installation auf Hetzner** erreichst du von deinem PC mit **`http://pvl.lifeco.at`** (besser HTTPS) – **nicht** mit `localhost` auf dem Laptop (das wäre dein eigener PC, nicht der Server).
+- Die **Installation auf Hetzner** erreichst du von deinem PC mit `**http://pvl.lifeco.at`** (besser HTTPS) – **nicht** mit `localhost` auf dem Laptop (das wäre dein eigener PC, nicht der Server).
 
 ## `.env` und Passwort – „verschlüsselt“?
 
-- Die **`.env` auf dem Server** sollte nur für den Deploy-User lesbar sein (`chmod 600 .env`, Besitzer z. B. der PM2-User). **Normale Website-Besucher** können sie **nicht** auslesen; sie liegt nicht im Webroot.
+- Die `**.env` auf dem Server** sollte nur für den Deploy-User lesbar sein (`chmod 600 .env`, Besitzer z. B. der PM2-User). **Normale Website-Besucher** können sie **nicht** auslesen; sie liegt nicht im Webroot.
 - Trotzdem: **Kein Klartext-Passwort** in der `.env` auf Produktion. Stattdessen **bcrypt-Hash** nutzen:
   ```bash
   npm run hash-basic-password -- 'dein-passwort'
@@ -29,11 +29,11 @@ Für **PV Lead Manager** brauchst du **denselben Server**, aber **eine eigene Ke
 
 - **Anthropic (Claude):** weiterhin Standard (`LLM_PROVIDER=anthropic`). Für reine E-Mail-Extraktion reicht meist ein kleines Modell; Kosten bleiben überschaubar bei moderaten Mailvolumina.
 - **DeepSeek & Co.:** günstige Alternative über dieselbe Chat-API wie OpenAI. In `.env` z. B.  
-  `LLM_PROVIDER=openai-compatible`  
-  `OPENAI_BASE_URL=https://api.deepseek.com`  
-  `OPENAI_API_KEY=…`  
-  `LLM_MODEL=deepseek-chat`  
-  Es wird nur Text aus der Mail geschickt – kein großer Kontext, dadurch wenig Tokenverbrauch.
+`LLM_PROVIDER=openai-compatible`  
+`OPENAI_BASE_URL=https://api.deepseek.com`  
+`OPENAI_API_KEY=…`  
+`LLM_MODEL=deepseek-chat`  
+Es wird nur Text aus der Mail geschickt – kein großer Kontext, dadurch wenig Tokenverbrauch.
 - **OpenRouter** o. Ä.: gleiches Schema, `OPENAI_BASE_URL` auf deren Base-URL setzen und passendes `LLM_MODEL` wählen.
 
 ## Setup
@@ -55,47 +55,43 @@ cp .env.example .env
 
 ### 3b. Benutzer-Logins (statt einem gemeinsamen Basic-Auth)
 
-1. In `.env` **`SESSION_SECRET`** setzen (mind. 16 zufällige Zeichen). Optional **`SESSION_COOKIE_SECURE=1`** hinter HTTPS.
-2. **`APP_BASE_URL`** z. B. `https://pvl.lifeco.at` (für Links in Einladungs-Mails).
+1. In `.env` `**SESSION_SECRET**` setzen (mind. 16 zufällige Zeichen). Optional `**SESSION_COOKIE_SECURE=1**` hinter HTTPS.
+2. `**APP_BASE_URL**` z. B. `https://pvl.lifeco.at` (für Links in Einladungs-Mails).
 3. **Ersten Admin** anlegen:
-   - **A)** Einmalig `SETUP_TOKEN` in `.env`, dann auf `/login.html` unten „Erstes Admin-Konto“ ausfüllen, **oder**
-   - **B)** Auf dem Server: `npm run create-admin -- <user> <passwort> [email]`
-4. Weitere Nutzer: als Admin einloggen → **`/admin.html`**. Optional **E-Mail senden**: entweder **SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `MAIL_FROM`) oder **Gmail über Google-OAuth** (`MY_EMAIL` + gültiges `auth/google-token.json`).
+  - **A)** Einmalig `SETUP_TOKEN` in `.env`, dann auf `/login.html` unten „Erstes Admin-Konto“ ausfüllen, **oder**
+  - **B)** Auf dem Server: `npm run create-admin -- <user> <passwort> [email]`
+4. Weitere Nutzer: als Admin einloggen → `**/admin.html`**. Optional **E-Mail senden**: **SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `MAIL_FROM`).
 5. Wenn `SESSION_SECRET` gesetzt ist, entfällt die **Basic-Auth**-Abfrage für die App (Basic greift dann nicht mehr). Für Notfall-API weiterhin `ADMIN_TOKEN` (Bearer) möglich.
 
 Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.json`.
 
-### 4. Google OAuth2
+### 4. Leads-Datenbank (SQLite)
 
-1. [Google Cloud Console](https://console.cloud.google.com) – Projekt, **Gmail API**, **Google Sheets API**, **Google Calendar API** aktivieren  
-2. OAuth-Client (Desktop) → `auth/google-credentials.json`  
-3. Einmaliger OAuth-Flow → `auth/google-token.json` (z. B. `node scripts/oauth-setup.js` falls vorhanden)
+- Datei: `**data/leads.db`** (anlegbar per erstem Serverstart oder Import). Optional `**SQLITE_LEADS_DB**` in der `.env` für einen absoluten Pfad.
+- **Schema** entspricht der Export-CSV (Spalten u. a. `anfrage`, `namen`, `telefon`, `email`, …, `col_14` für eine leere Kopfspalte) plus CRM-Felder `status`, `nachfass_bis`, `termin` und `archived_at` für Archivieren in der App.
+- **CSV-Import** (Duplikate nach `anfrage` werden ignoriert):
+  ```bash
+  npm run import-leads-csv -- "pfad/zur/datei.csv"
+  ```
+  Optional `--dry-run` nur prüfen. Umgebungsvariable **`LEADS_CSV_PATH`** statt Argument möglich.
+- Diagnose: `**/api/debug/leads-sheet`** (Name aus Kompatibilität) liefert u. a. `backend: sqlite`, `dbPath`, Zeilenanzahlen.
 
-**`invalid_grant`:** Refresh-Token ungültig (Passwort geändert, Zugriff widerrufen, Token zu alt). Lösung: in Google-Konto **Drittanbieterzugriff** prüfen, ggf. `auth/google-token.json` löschen und **OAuth erneut** ausführen (`prompt: 'consent'` ist im Script bereits sinnvoll). Ohne gültiges Google-Token funktionieren **Sheets/Kalender** nicht; **E-Mail-Versand** kann trotzdem über **SMTP** laufen (siehe `.env.example`).
+### 5. IMAP (nur **Empfang** für den Poller)
 
-### 5. Google Sheet
-
-- Tabellen-ID **nur** in `GOOGLE_SPREADSHEET_ID` (und ggf. `GOOGLE_ARCHIVE_SPREADSHEET_ID` für Archiv) in der **`.env`** — im Repository **keine** IDs im Quelltext; die App liest ausschließlich `process.env` (siehe `src/sheets.js`).
-- **`GOOGLE_SHEET_NAME`** (oder `GOOGLE_SHEET_TAB`): **Blattname** der Lead-Tabelle (Default: `Sheet1`). Groß-/Kleinschreibung wird angeglichen. Existiert der konfigurierte Name in der Mappe nicht, wählt die App bei **genau einem** Blatt automatisch dieses Blatt (hilft bei veralteter Server-`.env`). Diagnose: `/api/debug/leads-sheet` → `sheetTabs`, `sheetTabResolved`, `sheetTabEnvMatches`.
-- **`GOOGLE_SHEET_LEGACY_NAME`**: optionales **zweites Blatt** derselben Mappe (z. B. alte Leads). Diese Zeilen erscheinen **nur zur Ansicht** auf der Karte (weißer Pin-Ring); **Speichern, Archivieren und IMAP-Duplikat-Prüfung** beziehen sich nur auf **`GOOGLE_SHEET_NAME`**.
-- **`GOOGLE_ARCHIVE_SHEET_NAME`** (oder `GOOGLE_ARCHIVE_SHEET_TAB`): Ziel-Tab in **`GOOGLE_ARCHIVE_SPREADSHEET_ID`** fürs Archivieren (wenn unset: `Cosimo` wie bisher).
-- **Eigenes Spreadsheet nur für neue Leads** (ab jetzt): später per zweiter `GOOGLE_SPREADSHEET_ID` + Anpassung von `poller.js`/`appendLead` möglich – aktuell ein Sheet mit zwei Blättern ist der einfache Weg.
-- Im Leads-Tab diese **Spaltenüberschriften** ergänzen, damit CRM & Kalender sauber speichern:
-  - `Status` (z. B. Neu, Angerufen, Nachfassen, Termin, Verloren)
-  - `Nachfass bis` (Datum)
-  - `Termin` (Datum/Uhrzeit, Freitext oder `YYYY-MM-DDTHH:mm`)
-
-### 6. IMAP (nur **Empfang** für den Poller)
-
-Ordner z. B. `INBOX.Leads` / `Leads` je nach Server; in `.env` `IMAP_FOLDER` setzen. **Ausgehende** Mails (Zugangsdaten, Kundenbestätigung) gehen **nicht** über IMAP, sondern über **SMTP** oder **Gmail-API/OAuth** (siehe oben).
+Ordner z. B. `INBOX.Leads` / `Leads` je nach Server; in `.env` `IMAP_FOLDER` setzen. **Ausgehende** Mails gehen über **SMTP** (siehe `.env.example`).
 
 ## Deploy (GitHub → Server, live)
 
-1. Lokal (oder CI): `git push origin master` — Stand ist auf GitHub.
-2. Auf dem **Hetzner-Server** im Klon-Verzeichnis (SSH):  
-   `chmod +x scripts/on-server-update.sh && ./scripts/on-server-update.sh`  
-   (zieht `master`, `npm ci`, startet bzw. startet **PM2** `pv-lead-manager` aus `ecosystem.config.cjs`.)
-3. `.env` dort: **`APP_BASE_URL=https://pvl.lifeco.at`**, **`SESSION_COOKIE_SECURE=1`**, SMTP/Google wie nötig; **Nginx** → `proxy_pass http://127.0.0.1:3080` für `pvl.lifeco.at`.
+Von hier aus gibt es **keinen direkten Zugriff** auf `pvl.lifeco.at` — du führst die Schritte per **SSH auf dem Server** aus.
+
+1. **Code:** Lokal committen/pushen (`git push origin master` o. Ä.).
+2. **Server (SSH):** ins Projektverzeichnis, dann
+  `chmod +x scripts/on-server-update.sh && ./scripts/on-server-update.sh`  
+   Das Skript macht `git pull`, `npm ci`, `**pm2 restart`** für `pv-lead-manager` (oder älter `pvl-manager`) und `**pv-lead-poll**`, sonst `**pm2 start ecosystem.config.cjs**` (liegt im Repo-Root).
+3. `**.env` auf dem Server:** u. a. `**APP_BASE_URL=https://pvl.lifeco.at`**, bei HTTPS `**SESSION_COOKIE_SECURE=1**`, `SESSION_SECRET`, SMTP/IMAP, optional `SQLITE_LEADS_DB`.
+4. **Nginx:** `server_name pvl.lifeco.at` → `proxy_pass http://127.0.0.1:3080` (Port wie `PORT` in `.env`, Standard **3080**), danach `**sudo nginx -t && sudo systemctl reload nginx`**.
+5. **HTTPS:** z. B. Certbot für `pvl.lifeco.at` — erst dann Login/Session sinnvoll mit `SESSION_COOKIE_SECURE=1`.
+6. **Smoke-Test:** `https://pvl.lifeco.at` öffnen, Login, Karte; optional `curl -I https://pvl.lifeco.at/api/stats` (mit Session-Cookie / Basic je nach Setup).
 
 ## Lokal starten
 
@@ -126,10 +122,10 @@ Typisch fehlt **mindestens eines** von: DNS, Firewall, laufender Node-Prozess, R
 
 1. **DNS** beim Domain-Anbieter: Host `pvl` (oder `@` wenn Subdomain anders) als **A-Record** auf die **öffentliche IPv4** des Hetzner-Servers. Warten bis `nslookup pvl.lifeco.at` die richtige IP zeigt (oft wenige Minuten bis Stunden).
 2. **Firewall** (z. B. `ufw allow 80` und `ufw allow 443` / Hetzner Cloud Firewall): Traffic zum Webserver erlauben.
-3. **App auf dem Server**: Repo klonen oder deployen, `npm ci`, `.env` ausfüllen (inkl. Google `auth/`-Dateien), `PORT=3080`.
-4. **Passwortschutz (HTTP Basic Auth)** in `.env` auf dem Server (nicht ins Git):  
-   `BASIC_AUTH_USER=cosimo`  
-   Passwort **gehasht**: `npm run hash-basic-password -- '…'` → Zeile `BASIC_AUTH_PASS_BCRYPT=…` in die `.env`, **`BASIC_AUTH_PASS` auf Produktion weglassen**.  
+3. **App auf dem Server**: Repo klonen oder deployen, `npm ci`, `.env` ausfüllen, Leads per `**npm run import-leads-csv`** einspielen, `PORT=3080`.
+4. **Passwortschutz (HTTP Basic Auth)** in `.env` auf dem Server (nicht ins Git):
+  `BASIC_AUTH_USER=cosimo`  
+   Passwort **gehasht**: `npm run hash-basic-password -- '…'` → Zeile `BASIC_AUTH_PASS_BCRYPT=…` in die `.env`, `**BASIC_AUTH_PASS` auf Produktion weglassen**.  
    Nur für lokale Tests ohne Hash: `BASIC_AUTH_USER` + `BASIC_AUTH_PASS`.  
    Ohne User+Passwort/Hash ist die App **ohne** Login erreichbar.
 5. **Prozesse**: `pm2 start src/server.js --name pv-lead-web` und `pm2 start src/poller.js --name pv-lead-poll` (Poller für E-Mail), `pm2 save`.
@@ -158,9 +154,20 @@ server {
 ## Dashboard (Kurz)
 
 - Karte: Leads mit Status **Termin** oder **Verloren** erscheinen nicht (keine Doppel-Anrufe). Optional: Checkbox „Abgeschlossene anzeigen“ in der Liste.
-- **tel:**-Links für Android (und andere) zum Wählen.
-- **Google Kalender …** öffnet die Google-„Termin anlegen“-Maske im **eingeloggten** Google-Konto (mit Adresse, Maps-Link im Text).
-- „Betreut durch“-Chips: Namen kommen aus **`/api/vertriebler`** (= alle **Benutzer**-Logins aus `data/users.json`), Pflege nur noch unter **`/admin.html`** (Benutzer anlegen).
+- **Warn-Badge** (gelb): Leads ohne gültigen Kartenpunkt (Koordinaten NULL oder 0) — Klick öffnet die Verwaltungsliste mit Adresse korrigieren, **Geocoding**, **tel:** und Status/Archiv.
+- **CSV Export** (Header-Link): `GET /api/export/leads.csv` — alle Zeilen inkl. Archiv (`leads_export.csv`).
+- **tel:**-Links in Liste, Popup und Detailansicht.
+- **Google Kalender …** (Button): sofortiger Google-Link (Standardslot), ohne Pflicht auf Terminfelder.
+- „Betreut durch“-Chips: `**/api/vertriebler`** (= Benutzer-Logins), Pflege unter `**/admin.html**`.
+
+## Deploy-Routine (Server)
+
+1. **CSV vs. SQLite:** `npm run compare-csv-sqlite -- "pfad/leads.csv"` — vergleicht nicht-leere CSV-Zeilen mit der Zeilenanzahl in `leads` (Hinweis im Log).
+2. **Re-Geocoding:** `npm run geocode-leads-db` — Nominatim-Kaskade (AT, 1,5 s Pause) für aktive Leads ohne Koordinaten. Archivierte mit einbeziehen: `node scripts/geocode-leads-db.js --include-archived`
+  Zielkorrektur nur fehlende Punkte inkl. hartem Wien-Fallback-Log: `**npm run fix-missing-coords`** (`scripts/fix-missing-coords.js`, optional `--dry-run` / `--include-archived`).
+3. **SQL-Schnellcheck (latitude):** `sqlite3 data/leads.db "SELECT COUNT(*) FROM leads WHERE latitude IS NULL OR latitude = 0;"` — Ziel **0** (Hinweis: die App prüft zusätzlich **longitude**).
+4. **Checks:** `npm run deploy-check`
+5. **Neustart:** `pm2 restart pvl-manager --update-env`
 
 ## Projektstruktur
 
@@ -169,14 +176,22 @@ pv-lead-manager/
 ├── src/
 │   ├── poller.js
 │   ├── extractor.js   # anthropic oder openai-compatible (DeepSeek, …)
-│   ├── sheets.js
-│   ├── calendar.js
+│   ├── database.js     # SQLite data/leads.db
+│   ├── sheets.js     # Leads aus SQLite (API wie zuvor)
+│   ├── calendar.js   # nur noch Mail-Hinweis nach neuem Lead (SMTP)
 │   └── server.js
+├── ecosystem.config.cjs   # PM2: pv-lead-manager + pv-lead-poll
+├── scripts/
+│   ├── import-csv.js
+│   ├── geocode-leads-db.js
+│   ├── fix-missing-coords.js
+│   ├── compare-csv-sqlite.js
+│   └── on-server-update.sh
 ├── public/
 │   ├── index.html
 │   └── admin.html
-├── data/               # users.json, sessions/ (lokal, gitignored)
-├── auth/               # nur lokal, gitignored
+├── data/               # users.json, leads.db, sessions/ (lokal, gitignored)
 ├── .env.example
 └── package.json
 ```
+

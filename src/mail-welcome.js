@@ -2,16 +2,15 @@
 
 require('./load-env');
 const { getMailSender } = require('./mail-transport');
-const { getAuth } = require('./calendar');
 
 /**
- * Zugangsdaten per E-Mail: bevorzugt SMTP (SMTP_*), sonst Gmail über dasselbe OAuth wie Kalender/Sheets.
+ * Zugangsdaten per E-Mail über SMTP (SMTP_* in der .env).
  */
 async function sendLoginCredentialsEmail(toEmail, loginUrl, username, passwordPlain) {
   const addr = String(toEmail || '').trim();
   if (!addr) return { skipped: true, reason: 'no_email' };
 
-  const { transporter, from } = await getMailSender(getAuth);
+  const { transporter, from } = await getMailSender();
 
   const text = [
     'Hallo,',
