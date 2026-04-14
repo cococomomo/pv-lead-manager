@@ -12,7 +12,7 @@ function getProfileRow(username) {
   if (!u) return null;
   const db = getDb();
   return db.prepare(`
-    SELECT username, voller_name, telefon, email_kontakt,
+    SELECT id, username, voller_name, telefon, email_kontakt,
       smtp_host, smtp_port, smtp_user, smtp_pass
     FROM users WHERE lower(username) = lower(?)
   `).get(u) || null;
@@ -29,6 +29,7 @@ function getProfile(username) {
     && String(row.smtp_user || '').trim()
     && String(row.smtp_pass || '').trim());
   return {
+    id: row.id != null ? Number(row.id) : null,
     username: row.username,
     voller_name: String(row.voller_name ?? '').trim(),
     telefon: String(row.telefon ?? '').trim(),
@@ -131,6 +132,26 @@ function upsertProfile(username, fields) {
   `).run(u, voller_name, telefon, email_kontakt, smtp_host, smtp_port, smtp_user, smtp_pass);
 }
 
+/** Leere SQLite-Zeile für Login (nach JSON-Anlage); id wird automatisch vergeben. */
+function ensureSqliteUserStub(username) {
+  const u = String(username || '').trim();
+  if (!u) return;
+  const db = getDb();
+  const ex = db.prepare('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)').get(u);
+  if (ex) return;
+  db.prepare(`
+    INSERT INTO users (username, voller_name, telefon, email_kontakt, smtp_host, smtp_port, smtp_user, smtp_pass)
+    VALUES (?, '', '', '', '', '587', '', '')
+  `).run(u);
+}
+
+function deleteSqliteUserByUsername(username) {
+  const u = String(username || '').trim();
+  if (!u) return;
+  const db = getDb();
+  db.prepare('DELETE FROM users WHERE lower(username) = lower(?)').run(u);
+}
+
 module.exports = {
   getProfile,
   getProfileRow,
@@ -139,4 +160,6 @@ module.exports = {
   upsertProfile,
   getProfileForMailSend,
   userSmtpFullyConfigured,
+  ensureSqliteUserStub,
+  deleteSqliteUserByUsername,
 };

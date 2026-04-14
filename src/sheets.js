@@ -4,6 +4,8 @@ require('./load-env');
 const { getDb, getDbPath } = require('./database');
 const { geocodeAddressCascade } = require('./geocode-address-cascade');
 const { syncReonicAfterTerminVereinbart } = require('./reonic-sync');
+const { getProfile } = require('./user-profile');
+const { readUsers, normalizeUserRole } = require('./users');
 
 function trimCell(v) {
   return String(v ?? '').trim().replace(/\u00a0/g, ' ');
@@ -107,6 +109,9 @@ function dbRowToApiLead(row) {
     archived_at: row.archived_at == null ? '' : String(row.archived_at),
     latitude: lat,
     longitude: lng,
+    assigned_to_user_id: row.assigned_to_user_id != null && row.assigned_to_user_id !== ''
+      ? Number(row.assigned_to_user_id)
+      : null,
     __pvlLegacy: false,
   };
   const out = applyCanonicalFieldAliases(base);
@@ -497,6 +502,54 @@ async function getLeadByEmail(email) {
   return row ? dbRowToApiLead(row) : null;
 }
 
+/**
+ * Vertriebler-Zuweisung (SQLite `users.id`); setzt `betreuer` auf Anzeigename.
+ * @param {string|null|undefined} email — Lead-E-Mail
+ * @param {number|null|undefined} sqliteUserId — `users.id` oder null zum Entfernen
+ */
+async function setLeadAssignedToUserId(email, sqliteUserId) {
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  if (!e) throw new Error('E-Mail erforderlich');
+  const row = db.prepare(`
+    SELECT id FROM leads
+    WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(e);
+  if (!row) throw new Error('Lead nicht gefunden');
+
+  if (sqliteUserId == null || sqliteUserId === '' || Number.isNaN(Number(sqliteUserId))) {
+    db.prepare(`
+      UPDATE leads SET assigned_to_user_id = NULL, last_updated = datetime('now') WHERE id = ?
+    `).run(row.id);
+    return { ok: true, assigned_to_user_id: null };
+  }
+
+  const idNum = parseInt(String(sqliteUserId), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Benutzer-Id');
+
+  const urow = db.prepare('SELECT username FROM users WHERE id = ?').get(idNum);
+  if (!urow || !urow.username) throw new Error('Benutzer nicht gefunden');
+
+  const jsonUsers = await readUsers();
+  const ju = jsonUsers.find((x) => String(x.username).toLowerCase() === String(urow.username).toLowerCase());
+  if (!ju) throw new Error('Benutzer nicht in der Anmeldungsliste');
+  const r = normalizeUserRole(ju.role);
+  if (r !== 'sales' && r !== 'admin') {
+    throw new Error('Nur Vertrieb (sales) oder Admin zuweisbar');
+  }
+
+  const prof = getProfile(urow.username) || {};
+  const bet = String(prof.voller_name || '').trim() || String(urow.username).trim();
+
+  db.prepare(`
+    UPDATE leads SET assigned_to_user_id = ?, betreuer = ?, last_updated = datetime('now') WHERE id = ?
+  `).run(idNum, bet, row.id);
+
+  return { ok: true, assigned_to_user_id: idNum, betreuer: bet };
+}
+
 async function getLeadsSheetDebug() {
   const dbPath = getDbPath();
   try {
@@ -638,7 +691,7 @@ function buildLeadsExportCsv() {
   const rows = db.prepare(`
     SELECT id, anfrage, namen, telefon, email, strasse, plz, ort, land, quelle,
       anfragezeitpunkt, info, betreuer, notizen, col_14, status, nachfass_bis, termin,
-      termin_typ, meet_link, reonic_synced,
+      termin_typ, meet_link, reonic_synced, assigned_to_user_id,
       archived_at, created_at, last_updated, latitude, longitude
     FROM leads
     ORDER BY id ASC
@@ -646,7 +699,7 @@ function buildLeadsExportCsv() {
   const headers = [
     'id', 'anfrage', 'namen', 'telefon', 'email', 'strasse', 'plz', 'ort', 'land', 'quelle',
     'anfragezeitpunkt', 'info', 'betreuer', 'notizen', 'col_14', 'status', 'nachfass_bis', 'termin',
-    'termin_typ', 'meet_link', 'reonic_synced',
+    'termin_typ', 'meet_link', 'reonic_synced', 'assigned_to_user_id',
     'archived_at', 'created_at', 'last_updated', 'latitude', 'longitude',
   ];
   const lines = [headers.join(',')];
@@ -668,6 +721,7 @@ module.exports = {
   getLeadsSheetDebug,
   setLeadStatus,
   getLeadByEmail,
+  setLeadAssignedToUserId,
   countLeadsMissingMapCoords,
   getLeadsMissingMapCoordsList,
   updateLeadAddressAndGeocodeById,

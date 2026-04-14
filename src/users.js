@@ -3,9 +3,23 @@
 const fs = require('fs').promises;
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const { getProfile, isProfileComplete } = require('./user-profile');
+const {
+  getProfile,
+  isProfileComplete,
+  upsertProfile,
+  ensureSqliteUserStub,
+  deleteSqliteUserByUsername,
+} = require('./user-profile');
+const { getDb } = require('./database');
 
 const USERS_PATH = path.join(__dirname, '../data/users.json');
+
+function normalizeUserRole(role) {
+  const r = String(role || '').trim().toLowerCase();
+  if (r === 'admin') return 'admin';
+  if (r === 'setter') return 'setter';
+  return 'sales';
+}
 
 async function readUsers() {
   try {
@@ -44,22 +58,51 @@ async function verifyLogin(username, password) {
   }
   return {
     username: u.username,
-    role: u.role === 'admin' ? 'admin' : 'sales',
+    role: normalizeUserRole(u.role),
     email: u.email || '',
     calendarPreference: normalizeCalendarPreference(u.calendarPreference),
   };
 }
 
-async function listUsersSafe() {
-  return (await readUsers()).map((u) => ({
-    username: u.username,
-    role: u.role === 'admin' ? 'admin' : 'sales',
-    email: u.email || '',
-    calendarPreference: normalizeCalendarPreference(u.calendarPreference),
-  }));
+/** Für Admin-Konsole: Login, Rolle, Kontakt aus SQLite-Profil + numerische User-Id. */
+async function listUsersAdminDetail() {
+  const jsonUsers = await readUsers();
+  const db = getDb();
+  const out = [];
+  for (const u of jsonUsers) {
+    const un = String(u.username || '').trim();
+    if (!un) continue;
+    ensureSqliteUserStub(un);
+    const row = db.prepare('SELECT id FROM users WHERE lower(username) = lower(?)').get(un);
+    const prof = getProfile(un) || {};
+    out.push({
+      id: row && row.id != null ? Number(row.id) : null,
+      username: un,
+      role: normalizeUserRole(u.role),
+      email: String(u.email || '').trim(),
+      voller_name: String(prof.voller_name || '').trim(),
+      telefon: String(prof.telefon || '').trim(),
+      email_kontakt: String(prof.email_kontakt || '').trim(),
+    });
+  }
+  out.sort((a, b) => a.username.localeCompare(b.username, 'de'));
+  return out;
 }
 
-async function createUser({ username, password, email, role = 'sales' }) {
+async function getUserRole(username) {
+  const u = await findUser(username);
+  return u ? normalizeUserRole(u.role) : null;
+}
+
+async function createUser({
+  username,
+  password,
+  email,
+  role = 'sales',
+  voller_name,
+  telefon,
+  email_kontakt,
+}) {
   const name = String(username || '').trim();
   if (!name || !password || String(password).length < 6) {
     throw new Error('username und Passwort (min. 6 Zeichen) erforderlich');
@@ -72,23 +115,53 @@ async function createUser({ username, password, email, role = 'sales' }) {
     username: name,
     passwordHash: bcrypt.hashSync(String(password), 12),
     email: String(email || '').trim(),
-    role: role === 'admin' ? 'admin' : 'sales',
+    role: normalizeUserRole(role),
     calendarPreference: 'google',
   });
   await writeUsers(users);
+  ensureSqliteUserStub(name);
+  upsertProfile(name, {
+    voller_name: voller_name !== undefined ? String(voller_name ?? '').trim() : '',
+    telefon: telefon !== undefined ? String(telefon ?? '').trim() : '',
+    email_kontakt: email_kontakt !== undefined ? String(email_kontakt ?? '').trim() : '',
+  });
+}
+
+/**
+ * Admin: JSON-Felder + Profil aktualisieren (ohne Passwort).
+ * @param {string} username
+ * @param {{ email?: string, role?: string, voller_name?: string, telefon?: string, email_kontakt?: string }} patch
+ */
+async function updateUserAdminFields(username, patch) {
+  const name = String(username || '').trim();
+  if (!name) throw new Error('Benutzername fehlt');
+  const users = await readUsers();
+  const idx = users.findIndex((x) => String(x.username).toLowerCase() === name.toLowerCase());
+  if (idx < 0) throw new Error('Benutzer nicht gefunden');
+  if (patch.email !== undefined) users[idx].email = String(patch.email ?? '').trim();
+  if (patch.role !== undefined) users[idx].role = normalizeUserRole(patch.role);
+  await writeUsers(users);
+  ensureSqliteUserStub(name);
+  const p = {};
+  if (patch.voller_name !== undefined) p.voller_name = patch.voller_name;
+  if (patch.telefon !== undefined) p.telefon = patch.telefon;
+  if (patch.email_kontakt !== undefined) p.email_kontakt = patch.email_kontakt;
+  if (Object.keys(p).length) upsertProfile(name, p);
 }
 
 async function getUserPublic(username) {
   const u = await findUser(username);
   if (!u) return null;
+  ensureSqliteUserStub(u.username);
   const prof = getProfile(u.username) || {};
   const voller_name = String(prof.voller_name ?? '').trim();
   const telefon = String(prof.telefon ?? '').trim();
   const email_kontakt = String(prof.email_kontakt ?? '').trim();
   return {
     username: u.username,
-    role: u.role === 'admin' ? 'admin' : 'sales',
+    role: normalizeUserRole(u.role),
     calendarPreference: normalizeCalendarPreference(u.calendarPreference),
+    id: prof.id != null ? Number(prof.id) : null,
     voller_name,
     telefon,
     email_kontakt,
@@ -117,12 +190,14 @@ async function deleteUser(username, actorUsername) {
   if (String(users[idx].username).toLowerCase() === String(actorUsername).toLowerCase()) {
     throw new Error('Eigenes Konto nicht löschbar');
   }
-  const admins = users.filter((x) => x.role === 'admin');
-  if (users[idx].role === 'admin' && admins.length <= 1) {
+  const admins = users.filter((x) => normalizeUserRole(x.role) === 'admin');
+  if (normalizeUserRole(users[idx].role) === 'admin' && admins.length <= 1) {
     throw new Error('Letzter Admin kann nicht gelöscht werden');
   }
+  const removed = users[idx].username;
   users.splice(idx, 1);
   await writeUsers(users);
+  deleteSqliteUserByUsername(removed);
 }
 
 async function userCount() {
@@ -144,12 +219,15 @@ async function resetUserPassword(username, newPassword) {
 module.exports = {
   readUsers,
   verifyLogin,
-  listUsersSafe,
+  listUsersAdminDetail,
+  getUserRole,
   createUser,
+  updateUserAdminFields,
   deleteUser,
   userCount,
   resetUserPassword,
   getUserPublic,
   updateCalendarPreference,
   normalizeCalendarPreference,
+  normalizeUserRole,
 };

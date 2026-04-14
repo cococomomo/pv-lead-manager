@@ -315,6 +315,7 @@
     .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.76rem; cursor: pointer; font-family: inherit; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
     .chip:hover { background: #e0e7ff; border-color: #6366f1; }
     .chip:active { transform: scale(0.97); }
+    .chip.chip-active { background: #1a56db; border-color: #1a56db; color: #fff; }
     .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
     .btn-gcal:hover { background: #eef2ff; }
     .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
@@ -504,7 +505,12 @@
           <label>Google Meet-Link (optional, z. B. nach dem Speichern des Kalendereintrags)</label>
           <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
         </div>
-        <div class="field-group">
+        <div class="field-group" id="sd-setter-assign-wrap" style="display:none">
+          <label>Betreut durch</label>
+          <p style="font-size:0.74rem;color:#64748b;margin:0 0 0.4rem 0;line-height:1.4">Vertriebler zuweisen (NOORTEC) — ein Klick setzt den zuständigen Vertrieb für Terminbestätigung und Kunden-E-Mail.</p>
+          <div class="chip-row" id="sd-setter-sales-chips" aria-label="Vertriebler per Login zuweisen"></div>
+        </div>
+        <div class="field-group" id="sd-betreut-field-wrap">
           <label>Betreut Durch</label>
           <input type="text" id="sd-betreut" placeholder="Name des Vertrieblers" />
         </div>
@@ -524,7 +530,7 @@
           <label>Termin (Datum &amp; Uhrzeit)</label>
           <input type="datetime-local" id="sd-termin" step="900" title="Zeit in 15-Minuten-Schritten" />
         </div>
-        <div class="field-group">
+        <div class="field-group" id="sd-betreut-chips-wrap">
           <label>Betreut durch (Benutzer)</label>
           <div class="chip-row" id="sd-betreut-chips"></div>
         </div>
@@ -949,10 +955,13 @@
     document.getElementById('sd-termin-wrap').style.display = st === 'Termin vereinbart' ? 'block' : 'none';
     const rowLead = activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null;
     const arch = rowLead && isCrmArchived(rowLead);
+    const suN = window.__pvlSessionUser;
+    const setterNeedsAssign = !!(suN && suN.role === 'setter' && rowLead
+      && !(Number(rowLead.assigned_to_user_id) > 0));
     const calBtn = document.getElementById('btn-cal-appointment');
-    if (calBtn) calBtn.disabled = !!activeIsLegacy || !!arch;
+    if (calBtn) calBtn.disabled = !!activeIsLegacy || !!arch || setterNeedsAssign;
     const notifyBtn = document.getElementById('btn-notify-customer');
-    if (notifyBtn) notifyBtn.disabled = !!activeIsLegacy || !!arch;
+    if (notifyBtn) notifyBtn.disabled = !!activeIsLegacy || !!arch || setterNeedsAssign;
   }
 
   function normalizeLocalDatetime(v) {
@@ -1026,6 +1035,71 @@
       if (!Array.isArray(vertrieblerList)) vertrieblerList = [];
     } catch {
       vertrieblerList = [];
+    }
+  }
+
+  async function loadSalesAssignees() {
+    try {
+      const r = await apiFetch('/api/sales-assignees');
+      if (!r.ok) return [];
+      const j = await r.json();
+      return Array.isArray(j) ? j : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function renderSetterSalesChips(lead) {
+    const row = document.getElementById('sd-setter-sales-chips');
+    if (!row) return;
+    row.replaceChildren();
+    const list = await loadSalesAssignees();
+    const curId = lead && lead.assigned_to_user_id != null ? Number(lead.assigned_to_user_id) : null;
+    for (const s of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (curId === s.id ? ' chip-active' : '');
+      b.textContent = s.username;
+      b.addEventListener('click', () => submitLeadSalesAssign(s.id));
+      row.appendChild(b);
+    }
+    const clr = document.createElement('button');
+    clr.type = 'button';
+    clr.className = 'chip';
+    clr.textContent = 'Zuweisung entfernen';
+    clr.addEventListener('click', () => submitLeadSalesAssign(null));
+    row.appendChild(clr);
+  }
+
+  async function submitLeadSalesAssign(userId) {
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const em = rowLead && String(rowLead[COL.email] || '').trim();
+    if (!em) {
+      showToast('Keine Lead-E-Mail.', 'err');
+      return;
+    }
+    try {
+      const r = await apiFetch(`/api/leads/${encodeURIComponent(em)}/assign-sales`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedToUserId: userId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Zuweisung fehlgeschlagen', 'err');
+        return;
+      }
+      if (rowLead) {
+        rowLead.assigned_to_user_id = j.assigned_to_user_id == null ? null : Number(j.assigned_to_user_id);
+        if (j.betreuer != null) rowLead[COL.betreut] = j.betreuer;
+      }
+      const inp = document.getElementById('sd-betreut');
+      if (inp) inp.value = j.betreuer || (rowLead && rowLead[COL.betreut]) || '';
+      showToast(userId == null ? 'Zuweisung entfernt.' : 'Vertriebler zugewiesen (NOORTEC).', 'ok');
+      await renderSetterSalesChips(rowLead);
+      renderList();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
     }
   }
 
@@ -1216,7 +1290,12 @@
       return;
     }
     const su = window.__pvlSessionUser;
-    if (!su || su.profileComplete === false) {
+    const hasSalesAssign = rowLead && Number(rowLead.assigned_to_user_id) > 0;
+    if (su && su.role === 'setter' && !hasSalesAssign) {
+      showToast('NOORTEC: Bitte zuerst einen Vertriebler unter „Betreut durch“ zuweisen.', 'info');
+      return;
+    }
+    if (!hasSalesAssign && (!su || su.profileComplete === false)) {
       showToast('Bitte Profil (Name, Telefon, Kontakt-E-Mail) unter „Profil“ vervollständigen.', 'info');
       return;
     }
@@ -1984,6 +2063,14 @@
       chipRow.style.pointerEvents = readOnly ? 'none' : '';
       chipRow.style.opacity = readOnly ? '0.55' : '';
     }
+    const suSetter = window.__pvlSessionUser || {};
+    const isSetterUi = !readOnly && suSetter.role === 'setter';
+    const setterWrap = document.getElementById('sd-setter-assign-wrap');
+    const betFieldWrap = document.getElementById('sd-betreut-field-wrap');
+    const betChipsWrap = document.getElementById('sd-betreut-chips-wrap');
+    if (setterWrap) setterWrap.style.display = isSetterUi ? 'block' : 'none';
+    if (betFieldWrap) betFieldWrap.style.display = isSetterUi ? 'none' : 'block';
+    if (betChipsWrap) betChipsWrap.style.display = isSetterUi ? 'none' : 'block';
 
     const color = getMarkerColorForLead(lead);
     const titleEl = document.getElementById('sd-name');
@@ -2049,6 +2136,7 @@
     syncStatusBarHighlight();
     syncNachfassTerminVisibility();
     renderBetreutChips();
+    renderSetterSalesChips(lead);
     document.getElementById('save-hint').style.display = 'none';
     syncTempFocusMarker(lead);
   }

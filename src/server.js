@@ -19,6 +19,7 @@ const {
   getLeadsSheetDebug,
   setLeadStatus,
   getLeadByEmail,
+  setLeadAssignedToUserId,
   countLeadsMissingMapCoords,
   getLeadsMissingMapCoordsList,
   updateLeadStreetPlzOrtById,
@@ -29,19 +30,23 @@ const {
 } = require('./sheets');
 const {
   verifyLogin,
-  listUsersSafe,
+  readUsers,
   createUser,
+  updateUserAdminFields,
   deleteUser,
   userCount,
   resetUserPassword,
   getUserPublic,
+  getUserRole,
+  listUsersAdminDetail,
   updateCalendarPreference,
 } = require('./users');
-const { sendLoginCredentialsEmail } = require('./mail-welcome');
+const { sendLoginCredentialsEmail, sendNoortecWelcomeOnboardingEmail } = require('./mail-welcome');
+const { getDb } = require('./database');
 const { sendAppointmentConfirmationEmail, buildLeadAddressLine, formatTerminDe, looksLikeEmail } = require('./mail-appointment-confirm');
 const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-transport');
 const { resolveBetreuerContact } = require('./sales-contact');
-const { upsertProfile } = require('./user-profile');
+const { upsertProfile, ensureSqliteUserStub } = require('./user-profile');
 const { getDashboardStats } = require('./stats');
 
 const app = express();
@@ -156,6 +161,26 @@ function allowAdmin(req) {
     if (verifyBasicCreds(creds)) return true;
   }
   return false;
+}
+
+/** Setter oder Admin: Lead einem Vertriebler (sales) zuweisen. */
+function allowSalesAssign(req) {
+  if (!sessionOn || !req.session?.user) return false;
+  if (req.session.user.role === 'setter' || req.session.user.role === 'admin') return true;
+  return false;
+}
+
+/** Termin-Mail / Kalender: bei zugewiesenem Vertriebler dessen Login nutzen, sonst Session-User. */
+async function resolveActingSalesUsername(lead, sessionUsername) {
+  const raw = lead && lead.assigned_to_user_id;
+  const id = raw == null || raw === '' ? NaN : Number(raw);
+  if (!Number.isFinite(id) || id < 1) return String(sessionUsername || '').trim();
+  const db = getDb();
+  const urow = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
+  if (!urow || !urow.username) return String(sessionUsername || '').trim();
+  const role = await getUserRole(String(urow.username).trim());
+  if (role === 'sales' || role === 'admin') return String(urow.username).trim();
+  return String(sessionUsername || '').trim();
 }
 
 function requireApiSession(req, res, next) {
@@ -494,14 +519,13 @@ app.post('/api/calendar/build', async (req, res) => {
       return res.status(400).json({ error: 'Ungültiges Datum' });
     }
     let partnerName = process.env.MY_NAME || 'Vertrieb';
-    if (req.session?.user?.username) {
-      try {
-        const pub = await getUserPublic(req.session.user.username);
-        if (pub) {
-          partnerName = String(pub.voller_name || '').trim() || pub.username || partnerName;
-        }
-      } catch (_) { /* ignore */ }
-    }
+    const actingCal = await resolveActingSalesUsername(lead, req.session?.user?.username || '');
+    try {
+      const pubA = actingCal ? await getUserPublic(actingCal) : null;
+      if (pubA) {
+        partnerName = String(pubA.voller_name || '').trim() || pubA.username || partnerName;
+      }
+    } catch (_) { /* ignore */ }
     const leadForCal = { ...lead };
     if (meetLink != null) leadForCal['Meet-Link'] = String(meetLink || '').trim();
     const assignedContact = await resolveBetreuerContact(lead['Betreut Durch'] || lead.betreuer || '');
@@ -524,16 +548,19 @@ app.post('/api/calendar/build', async (req, res) => {
 app.post('/api/leads/:email/notify-appointment', async (req, res) => {
   if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
   try {
-    const pub = await getUserPublic(req.session.user.username);
-    if (!pub || !pub.profileComplete) {
-      return res.status(400).json({ error: 'Profil unvollständig: Name, Telefon und Kontakt-E-Mail unter /profile speichern.' });
-    }
     const lead = await getLeadByEmail(decodeURIComponent(req.params.email));
     if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
+    const actingUn = await resolveActingSalesUsername(lead, req.session.user.username);
+    const pub = await getUserPublic(actingUn);
+    if (!pub || !pub.profileComplete) {
+      return res.status(400).json({
+        error: 'Profil unvollständig: zugewiesener Vertriebler (oder Sie) braucht Name, Telefon und Kontakt-E-Mail unter /profile.',
+      });
+    }
     const to = String(lead['E-Mail'] || '').trim();
     if (!looksLikeEmail(to)) return res.status(400).json({ error: 'Lead ohne gültige E-Mail' });
-    if (!canSendMail(req.session.user.username)) {
-      return res.status(503).json({ error: 'Kein Versand möglich: persönliches SMTP im Profil oder zentraler SMTP in der .env (vertrieb@noortec.at) hinterlegen.' });
+    if (!canSendMail(actingUn)) {
+      return res.status(503).json({ error: 'Kein Versand möglich: SMTP des zugewiesenen Vertrieblers oder zentraler SMTP in der .env (NOORTEC).' });
     }
     const body = req.body || {};
     const terminRaw = String(body.termin != null ? body.termin : lead.Termin || '').trim();
@@ -544,6 +571,7 @@ app.post('/api/leads/:email/notify-appointment', async (req, res) => {
     const { dateStr, timeStr } = formatTerminDe(terminRaw);
     const kunde = String(lead['Nachname + Vorname'] || '').trim() || to.split('@')[0];
     const addressLine = buildLeadAddressLine(lead);
+    const sigFooter = String(process.env.EMAIL_SIGNATURE || '').trim();
     await sendAppointmentConfirmationEmail({
       to,
       customerName: kunde,
@@ -555,7 +583,8 @@ app.post('/api/leads/:email/notify-appointment', async (req, res) => {
       userEmail: String(pub.email_kontakt || '').trim(),
       addressLine,
       meetUrl: terminTyp === 'online' ? meetUrl : '',
-      smtpUsername: req.session.user.username,
+      smtpUsername: actingUn,
+      footerLine: sigFooter || undefined,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -585,11 +614,19 @@ app.post('/api/leads/:email/restore', async (req, res) => {
   }
 });
 
-/** Namen für „Betreut durch“-Chips = alle Benutzer (Login-Namen), sortiert */
+/** Namen für „Betreut durch“-Chips: Login-Namen von Vertrieb & Admin (ohne Setter), sortiert */
 async function readBetreutChipNames() {
   try {
-    const users = await listUsersSafe();
-    const names = [...new Set(users.map((u) => String(u.username || '').trim()).filter(Boolean))];
+    const users = await readUsers();
+    const names = [...new Set(
+      users
+        .filter((u) => {
+          const r = String(u.role || 'sales').toLowerCase();
+          return r === 'sales' || r === 'admin';
+        })
+        .map((u) => String(u.username || '').trim())
+        .filter(Boolean),
+    )];
     names.sort((a, b) => a.localeCompare(b, 'de'));
     return names;
   } catch {
@@ -606,10 +643,50 @@ app.get('/api/vertriebler', async (req, res) => {
   }
 });
 
+/** Setter: Quick-Chips — nur `sales`, mit SQLite-`users.id` für Zuweisung. */
+app.get('/api/sales-assignees', async (req, res) => {
+  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  try {
+    const db = getDb();
+    const users = await readUsers();
+    const out = [];
+    for (const u of users) {
+      if (String(u.role || 'sales').toLowerCase() !== 'sales') continue;
+      const un = String(u.username || '').trim();
+      if (!un) continue;
+      ensureSqliteUserStub(un);
+      const row = db.prepare('SELECT id FROM users WHERE lower(username) = lower(?)').get(un);
+      if (row && row.id != null) out.push({ id: Number(row.id), username: un });
+    }
+    out.sort((a, b) => a.username.localeCompare(b.username, 'de'));
+    res.json(out);
+  } catch (err) {
+    console.error('GET /api/sales-assignees:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:email/assign-sales', async (req, res) => {
+  if (!allowSalesAssign(req)) return res.status(403).json({ error: 'Forbidden' });
+  const body = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(body, 'assignedToUserId')) {
+    return res.status(400).json({ error: 'assignedToUserId erforderlich (Zahl oder null)' });
+  }
+  try {
+    const out = await setLeadAssignedToUserId(
+      decodeURIComponent(req.params.email),
+      body.assignedToUserId,
+    );
+    res.json(out);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get('/api/admin/users', async (req, res) => {
   if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    res.json({ users: await listUsersSafe() });
+    res.json({ users: await listUsersAdminDetail() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -617,26 +694,64 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users', async (req, res) => {
   if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
-  const { username, password, email, role, sendEmail } = req.body || {};
+  const b = req.body || {};
+  const {
+    username, password, email, role, voller_name, telefon, email_kontakt, sendWelcomeEmail,
+  } = b;
+  const skipMail = sendWelcomeEmail === false;
   try {
     await createUser({
       username,
       password,
       email,
-      role: role === 'admin' ? 'admin' : 'sales',
+      role,
+      voller_name,
+      telefon,
+      email_kontakt,
     });
     const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
-    if (sendEmail && email) {
+    const toMail = String(email_kontakt || email || '').trim();
+    if (!skipMail && toMail) {
       try {
-        await sendLoginCredentialsEmail(email, `${base}/login.html`, username, password);
+        await sendNoortecWelcomeOnboardingEmail({
+          toEmail: toMail,
+          appUrl: base || 'https://pvl.lifeco.at',
+          loginUrl: `${base}/login.html`,
+          username,
+          passwordPlain: password,
+        });
       } catch (e) {
         console.error('Welcome mail failed:', e.message);
         return res.status(201).json({
           ok: true,
-          warning: `Benutzer angelegt, E-Mail-Versand fehlgeschlagen: ${e.message}`,
+          warning: `Benutzer angelegt, Willkommens-E-Mail fehlgeschlagen: ${e.message}`,
         });
       }
     }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/admin/users', async (req, res) => {
+  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const b = req.body || {};
+  const { username, email, role, voller_name, telefon, email_kontakt } = b;
+  if (!username) return res.status(400).json({ error: 'username erforderlich' });
+  try {
+    await updateUserAdminFields(username, { email, role, voller_name, telefon, email_kontakt });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/users/reset-password', async (req, res) => {
+  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const { username, newPassword } = req.body || {};
+  try {
+    await resetUserPassword(username, newPassword);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

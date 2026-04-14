@@ -6,59 +6,143 @@
   <title>NOORTEC — Administration</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; animation: adm-fade 0.35s ease-out; }
+    body { font-family: system-ui, sans-serif; max-width: 920px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; animation: adm-fade 0.35s ease-out; }
     @keyframes adm-fade { from { opacity: 0; } to { opacity: 1; } }
     h1 { font-size: 1.2rem; color: #1a56db; }
     p { font-size: 0.88rem; color: #64748b; line-height: 1.5; }
-    input[type="text"], input[type="password"], input[type="email"] { width: 100%; padding: 0.45rem; margin: 0.25rem 0 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
-    input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
+    input[type="text"], input[type="password"], input[type="email"], select { width: 100%; padding: 0.45rem; margin: 0.25rem 0 0.65rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+    input:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2); }
     label { font-size: 0.8rem; font-weight: 600; color: #475569; }
     button.primary { background: #1a56db; color: #fff; border: none; border-radius: 8px; padding: 0.45rem 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s ease, opacity 0.2s ease; }
     button.primary:hover:not(:disabled) { background: #1e40af; }
     button.primary:disabled { opacity: 0.65; cursor: wait; }
+    button.secondary { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.28rem 0.55rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; margin-right: 0.35rem; margin-bottom: 0.25rem; }
+    button.secondary:hover { background: #e2e8f0; }
     button.danger { background: #b91c1c; color: #fff; border: none; border-radius: 6px; padding: 0.25rem 0.5rem; font-size: 0.78rem; cursor: pointer; transition: background 0.15s ease, opacity 0.15s ease; }
     button.danger:hover { background: #991b1b; }
     .msg { margin-top: 0.6rem; font-size: 0.85rem; }
     .ok { color: #059669; }
     .err { color: #b91c1c; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.75rem; }
-    th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.75rem; }
+    th, td { text-align: left; padding: 0.4rem 0.45rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    th { color: #475569; font-weight: 600; }
     a { color: #1a56db; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.75rem; }
+    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+    #edit-panel { display: none; margin-top: 1rem; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
+    #edit-panel.open { display: block; }
     @media (prefers-reduced-motion: reduce) {
       body { animation: none; }
-      input, button.primary, button.danger { transition: none; }
+      input, button.primary, button.secondary, button.danger { transition: none; }
     }
   </style>
 </head>
 <body>
   <h1>NOORTEC — Administration</h1>
   <p>Nur für Admins (Session) oder mit <code>Authorization: Bearer ADMIN_TOKEN</code> bei API-Aufrufen.</p>
+  <p><strong>Login</strong> = kurzer Anmeldename (Chips, UI). <strong>Voller Name</strong> = offizielle Ansprache in E-Mails und Kalender.</p>
 
   <section id="sec-users">
-    <p>Benutzername = Login-Name (erscheint auch als Chip unter „Betreut durch“ in der Karte). Passwort mindestens 6 Zeichen. Optional E-Mail: Zugangsdaten werden verschickt, wenn „E-Mail senden“ aktiv ist (SMTP oder Gmail-OAuth, siehe Server-<code>.env</code>).</p>
     <p><label for="btoken">Bearer ADMIN_TOKEN (nur nötig ohne Admin-Session)</label></p>
     <input type="password" id="btoken" placeholder="optional" autocomplete="off" />
-    <label>Benutzername</label>
-    <input type="text" id="nu" autocomplete="off" />
-    <label>Passwort</label>
-    <input type="password" id="np" autocomplete="new-password" />
-    <label>E-Mail</label>
-    <input type="email" id="ne" autocomplete="off" />
-    <label>Rolle</label>
-    <select id="nr" style="width:100%;padding:0.45rem;margin-bottom:0.65rem;border-radius:6px;border:1px solid #cbd5e1">
-      <option value="sales">Vertrieb</option>
-      <option value="admin">Admin</option>
-    </select>
-    <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400">
-      <input type="checkbox" id="nsend" checked /> Zugangsdaten per E-Mail senden (wenn E-Mail gesetzt)
+
+    <h2 style="font-size:1rem;margin-top:1.1rem">Neuen Benutzer anlegen</h2>
+    <div class="grid2">
+      <div>
+        <label>Login (Benutzername)</label>
+        <input type="text" id="nu" autocomplete="off" />
+      </div>
+      <div>
+        <label>Voller Name</label>
+        <input type="text" id="nvn" autocomplete="name" />
+      </div>
+      <div>
+        <label>Passwort (mind. 6 Zeichen)</label>
+        <input type="password" id="np" autocomplete="new-password" />
+      </div>
+      <div>
+        <label>Telefon</label>
+        <input type="text" id="ntel" autocomplete="tel" />
+      </div>
+      <div>
+        <label>E-Mail Kontakt (Profil / Versand)</label>
+        <input type="email" id="nkc" autocomplete="email" />
+      </div>
+      <div>
+        <label>E-Mail Benachrichtigung (JSON, optional)</label>
+        <input type="email" id="ne" autocomplete="off" />
+      </div>
+      <div>
+        <label>Rolle</label>
+        <select id="nr">
+          <option value="sales">Vertrieb (sales)</option>
+          <option value="setter">Setter</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-top:0.25rem">
+      <input type="checkbox" id="nskipmail" /> Willkommens-E-Mail nicht senden
     </label>
-    <p><button type="button" class="primary" id="btn-create-user" onclick="createUser()">Benutzer anlegen</button></p>
+    <p><button type="button" class="primary" id="btn-create-user" onclick="createUser()">Benutzer speichern &amp; anlegen</button></p>
     <div class="msg" id="m-users"></div>
-    <h2 style="font-size:1rem;margin-top:1.25rem">Bestehende Benutzer</h2>
-    <table><thead><tr><th>Name</th><th>Rolle</th><th>E-Mail</th><th></th></tr></thead><tbody id="utb"></tbody></table>
+
+    <div id="edit-panel">
+      <h2 style="font-size:1rem;margin:0 0 0.5rem 0">Benutzer bearbeiten</h2>
+      <input type="hidden" id="eu-user" />
+      <label>Login</label>
+      <input type="text" id="eu-login" disabled />
+      <div class="grid2">
+        <div>
+          <label>Voller Name</label>
+          <input type="text" id="eu-vn" />
+        </div>
+        <div>
+          <label>Telefon</label>
+          <input type="text" id="eu-tel" />
+        </div>
+        <div>
+          <label>E-Mail Kontakt</label>
+          <input type="email" id="eu-kc" />
+        </div>
+        <div>
+          <label>E-Mail (JSON)</label>
+          <input type="email" id="eu-em" />
+        </div>
+        <div>
+          <label>Rolle</label>
+          <select id="eu-role">
+            <option value="sales">Vertrieb (sales)</option>
+            <option value="setter">Setter</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <p>
+        <button type="button" class="primary" onclick="saveEditUser()">Änderungen speichern</button>
+        <button type="button" class="secondary" onclick="closeEdit()">Abbrechen</button>
+      </p>
+      <div class="msg" id="m-edit"></div>
+    </div>
+
+    <h2 style="font-size:1rem;margin-top:1.25rem">Alle Benutzer</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Id</th>
+          <th>Login</th>
+          <th>Voller Name</th>
+          <th>Telefon</th>
+          <th>Kontakt-E-Mail</th>
+          <th>Rolle</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="utb"></tbody>
+    </table>
   </section>
 
-  <p style="margin-top:1.5rem"><a href="/">← Zurück zur Karte</a> · <a href="#" onclick="logout();return false">Abmelden</a></p>
+  <p style="margin-top:1.5rem"><a href="/">← Zurück zum NOORTEC Vertriebs-Dashboard</a> · <a href="#" onclick="logout();return false">Abmelden</a></p>
 
   <script>
     const cred = { credentials: 'same-origin' };
@@ -70,30 +154,108 @@
       return h;
     }
 
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
     async function loadUsers() {
       const r = await fetch('/api/admin/users', { ...cred, headers: { ...authHeaders() } });
       const tb = document.getElementById('utb');
       tb.innerHTML = '';
       if (!r.ok) {
-        tb.innerHTML = '<tr><td colspan="4">Keine Berechtigung oder nicht angemeldet.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="7">Keine Berechtigung oder nicht angemeldet.</td></tr>';
         return;
       }
       const { users } = await r.json();
       for (const u of users) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(u.username)}</td><td>${escapeHtml(u.role)}</td><td>${escapeHtml(u.email || '')}</td><td></td>`;
+        tr.innerHTML =
+          '<td>' + escapeHtml(String(u.id != null ? u.id : '—')) + '</td>' +
+          '<td>' + escapeHtml(u.username) + '</td>' +
+          '<td>' + escapeHtml(u.voller_name || '') + '</td>' +
+          '<td>' + escapeHtml(u.telefon || '') + '</td>' +
+          '<td>' + escapeHtml(u.email_kontakt || '') + '</td>' +
+          '<td>' + escapeHtml(u.role) + '</td>' +
+          '<td></td>';
         const td = tr.lastElementChild;
-        const b = document.createElement('button');
-        b.className = 'danger';
-        b.textContent = 'Löschen';
-        b.onclick = () => delUser(u.username);
-        td.appendChild(b);
+        const b1 = document.createElement('button');
+        b1.className = 'secondary';
+        b1.textContent = 'Bearbeiten';
+        b1.onclick = () => openEdit(u);
+        td.appendChild(b1);
+        const b2 = document.createElement('button');
+        b2.className = 'secondary';
+        b2.textContent = 'Passwort setzen';
+        b2.onclick = () => resetPw(u.username);
+        td.appendChild(b2);
+        const b3 = document.createElement('button');
+        b3.className = 'danger';
+        b3.textContent = 'Löschen';
+        b3.onclick = () => delUser(u.username);
+        td.appendChild(b3);
         tb.appendChild(tr);
       }
     }
 
-    function escapeHtml(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    function closeEdit() {
+      const p = document.getElementById('edit-panel');
+      p.classList.remove('open');
+      document.getElementById('m-edit').textContent = '';
+    }
+
+    function openEdit(u) {
+      document.getElementById('eu-user').value = u.username;
+      document.getElementById('eu-login').value = u.username;
+      document.getElementById('eu-vn').value = u.voller_name || '';
+      document.getElementById('eu-tel').value = u.telefon || '';
+      document.getElementById('eu-kc').value = u.email_kontakt || '';
+      document.getElementById('eu-em').value = u.email || '';
+      document.getElementById('eu-role').value = u.role === 'admin' ? 'admin' : (u.role === 'setter' ? 'setter' : 'sales');
+      document.getElementById('m-edit').textContent = '';
+      document.getElementById('edit-panel').classList.add('open');
+      document.getElementById('edit-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function saveEditUser() {
+      const msg = document.getElementById('m-edit');
+      msg.textContent = '';
+      const username = document.getElementById('eu-user').value.trim();
+      try {
+        const r = await fetch('/api/admin/users', {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            username,
+            voller_name: document.getElementById('eu-vn').value.trim(),
+            telefon: document.getElementById('eu-tel').value.trim(),
+            email_kontakt: document.getElementById('eu-kc').value.trim(),
+            email: document.getElementById('eu-em').value.trim(),
+            role: document.getElementById('eu-role').value,
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+        msg.textContent = r.ok ? 'Gespeichert.' : (j.error || r.statusText);
+        if (r.ok) loadUsers();
+      } catch (e) {
+        msg.className = 'msg err';
+        msg.textContent = e.message || String(e);
+      }
+    }
+
+    async function resetPw(username) {
+      const pw = prompt('Neues Passwort für ' + username + ' (mind. 6 Zeichen):');
+      if (!pw || pw.length < 6) return;
+      const r = await fetch('/api/admin/users/reset-password', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ username, newPassword: pw }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) alert(j.error || r.statusText);
+      else alert('Passwort gespeichert.');
     }
 
     async function createUser() {
@@ -106,8 +268,11 @@
           username: document.getElementById('nu').value.trim(),
           password: document.getElementById('np').value,
           email: document.getElementById('ne').value.trim(),
+          voller_name: document.getElementById('nvn').value.trim(),
+          telefon: document.getElementById('ntel').value.trim(),
+          email_kontakt: document.getElementById('nkc').value.trim(),
           role: document.getElementById('nr').value,
-          sendEmail: document.getElementById('nsend').checked,
+          sendWelcomeEmail: !document.getElementById('nskipmail').checked,
         };
         const r = await fetch('/api/admin/users', {
           method: 'POST',
@@ -117,11 +282,14 @@
         });
         const j = await r.json().catch(() => ({}));
         msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
-        msg.textContent = r.ok ? (j.warning || 'Benutzer angelegt.') : (j.error || r.statusText);
+        msg.textContent = r.ok ? (j.warning || 'Benutzer angelegt. Willkommens-E-Mail über NOORTEC-System-SMTP gesendet (falls Empfänger-E-Mail gesetzt und SMTP ok).') : (j.error || r.statusText);
         if (r.ok) {
           document.getElementById('nu').value = '';
           document.getElementById('np').value = '';
           document.getElementById('ne').value = '';
+          document.getElementById('nvn').value = '';
+          document.getElementById('ntel').value = '';
+          document.getElementById('nkc').value = '';
           loadUsers();
         }
       } finally {

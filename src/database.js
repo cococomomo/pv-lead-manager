@@ -7,7 +7,8 @@ const Database = require('better-sqlite3');
 
 const USERS_DDL = `
 CREATE TABLE IF NOT EXISTS users (
-  username TEXT PRIMARY KEY COLLATE NOCASE,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   voller_name TEXT NOT NULL DEFAULT '',
   telefon TEXT NOT NULL DEFAULT '',
   email_kontakt TEXT NOT NULL DEFAULT '',
@@ -17,6 +18,40 @@ CREATE TABLE IF NOT EXISTS users (
   smtp_pass TEXT NOT NULL DEFAULT ''
 );
 `;
+
+/** Alte Installationen: `users` nur mit username-PK → numerische id für Lead-Zuweisung. */
+function migrateUsersAddNumericId(db) {
+  let exists;
+  try {
+    exists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get();
+  } catch (_) {
+    return;
+  }
+  if (!exists) return;
+  const cols = db.prepare('PRAGMA table_info(users)').all();
+  const names = new Set(cols.map((c) => c.name));
+  if (names.has('id')) return;
+  db.exec(`
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      voller_name TEXT NOT NULL DEFAULT '',
+      telefon TEXT NOT NULL DEFAULT '',
+      email_kontakt TEXT NOT NULL DEFAULT '',
+      smtp_host TEXT NOT NULL DEFAULT '',
+      smtp_port TEXT NOT NULL DEFAULT '587',
+      smtp_user TEXT NOT NULL DEFAULT '',
+      smtp_pass TEXT NOT NULL DEFAULT ''
+    )
+  `);
+  db.exec(`
+    INSERT INTO users_new (username, voller_name, telefon, email_kontakt, smtp_host, smtp_port, smtp_user, smtp_pass)
+    SELECT username, voller_name, telefon, email_kontakt, smtp_host, smtp_port, smtp_user, smtp_pass
+    FROM users
+  `);
+  db.exec('DROP TABLE users');
+  db.exec('ALTER TABLE users_new RENAME TO users');
+}
 
 function migrateUsersTable(db) {
   db.exec(USERS_DDL);
@@ -77,7 +112,8 @@ CREATE TABLE IF NOT EXISTS leads (
   longitude REAL,
   termin_typ TEXT NOT NULL DEFAULT 'vor_ort',
   meet_link TEXT NOT NULL DEFAULT '',
-  reonic_synced INTEGER NOT NULL DEFAULT 0
+  reonic_synced INTEGER NOT NULL DEFAULT 0,
+  assigned_to_user_id INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_anfrage ON leads(anfrage)
   WHERE anfrage IS NOT NULL AND length(trim(anfrage)) > 0;
@@ -114,6 +150,9 @@ function migrateLeadsTable(db) {
   if (!names.has('reonic_synced')) {
     db.exec(`ALTER TABLE leads ADD COLUMN reonic_synced INTEGER NOT NULL DEFAULT 0`);
   }
+  if (!names.has('assigned_to_user_id')) {
+    db.exec('ALTER TABLE leads ADD COLUMN assigned_to_user_id INTEGER');
+  }
   db.prepare(`UPDATE leads SET status = 'Neu' WHERE status IS NULL OR trim(status) = ''`).run();
 }
 
@@ -140,6 +179,7 @@ function getDb() {
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
   initSchema(_db);
+  migrateUsersAddNumericId(_db);
   migrateLeadsTable(_db);
   ensureLeadsSecondaryIndexes(_db);
   migrateUsersTable(_db);

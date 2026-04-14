@@ -51,6 +51,7 @@ async function sendAppointmentConfirmationEmail(p) {
     : (String(p.meetUrl || '').trim() || 'Den Google Meet-Link entnehmen Sie bitte der Kalendereinladung.');
   const smtpUser = String(p.smtpUsername || '').trim();
 
+  const footer = String(p.footerLine || '').trim() || '— NOORTEC Vertriebs-Dashboard';
   const detailLines = [
     `Termin-Typ: ${typWort}`,
     `Datum: ${p.dateStr}`,
@@ -61,7 +62,7 @@ async function sendAppointmentConfirmationEmail(p) {
     '',
     `Guten Tag ${kundenname}, Ihr ${typWort}-Termin am ${p.dateStr} um ${p.timeStr} ist bestätigt. Ihr Ansprechpartner ${ansprech} ist unter ${tel} erreichbar. ${addrOrLink}`,
     '',
-    '— NOORTEC Vertriebs-Dashboard',
+    footer,
   ].filter(Boolean).join('\n');
 
   const { transporter, from, replyTo } = await getMailSender(smtpUser ? { username: smtpUser } : {});
