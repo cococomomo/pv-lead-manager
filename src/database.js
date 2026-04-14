@@ -5,11 +5,22 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'leads.db');
+const PROJECT_ROOT = path.join(__dirname, '..');
+const DEFAULT_DB_PATH = path.join(PROJECT_ROOT, 'data', 'leads.db');
 
+/**
+ * SQLite-Datei — immer relativ zum Projektroot aufgelöst (wichtig für PM2 / beliebiges cwd).
+ * Ohne SQLITE_LEADS_DB: `<repo>/data/leads.db`.
+ */
 function getDbPath() {
-  const p = String(process.env.SQLITE_LEADS_DB || DEFAULT_DB_PATH).trim();
-  return p || DEFAULT_DB_PATH;
+  const raw = String(process.env.SQLITE_LEADS_DB || '').trim();
+  if (!raw) return DEFAULT_DB_PATH;
+  if (path.isAbsolute(raw)) return raw;
+  return path.resolve(PROJECT_ROOT, raw);
+}
+
+function getProjectRoot() {
+  return PROJECT_ROOT;
 }
 
 /** CSV-Spalten (sheet1) + CRM-Felder + Metadaten */
@@ -89,4 +100,4 @@ function initDb() {
   return getDb();
 }
 
-module.exports = { getDb, getDbPath, initDb };
+module.exports = { getDb, getDbPath, getProjectRoot, initDb };

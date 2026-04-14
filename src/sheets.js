@@ -96,6 +96,7 @@ function dbRowToApiLead(row) {
     Termin: row.termin ?? '',
     last_updated: row.last_updated || '',
     created_at: row.created_at || '',
+    archived_at: row.archived_at == null ? '' : String(row.archived_at),
     latitude: lat,
     longitude: lng,
     __pvlLegacy: false,
@@ -203,11 +204,15 @@ function nextAnfrageNr(db) {
   return m + 1;
 }
 
-async function getAllLeads() {
+async function getAllLeads(opts = {}) {
+  const includeArchived = !!(opts && opts.includeArchived);
   const db = getDb();
+  const whereArchived = includeArchived
+    ? ''
+    : 'WHERE archived_at IS NULL OR archived_at = \'\'';
   const rows = db.prepare(`
     SELECT * FROM leads
-    WHERE archived_at IS NULL OR archived_at = ''
+    ${whereArchived}
     ORDER BY datetime(COALESCE(NULLIF(trim(last_updated), ''), created_at)) DESC, id DESC
   `).all();
   const leads = rows.map(dbRowToApiLead);
@@ -403,6 +408,25 @@ async function archiveLead(email) {
   `).run(e);
 }
 
+/** CRM-Archiv zurücknehmen: Zeile wieder aktiv, Status „Neu“. */
+async function restoreArchivedLead(email) {
+  const db = getDb();
+  const e = String(email || '').trim().toLowerCase();
+  if (!e) throw new Error('E-Mail erforderlich');
+  const info = db.prepare(`
+    UPDATE leads SET archived_at = NULL, status = 'Neu', last_updated = datetime('now')
+    WHERE id = (
+      SELECT id FROM leads
+      WHERE lower(trim(email)) = ?
+        AND archived_at IS NOT NULL AND trim(archived_at) != ''
+      ORDER BY id DESC
+      LIMIT 1
+    )
+  `).run(e);
+  if (!info.changes) return { ok: false };
+  return { ok: true };
+}
+
 async function getLeadByEmail(email) {
   const db = getDb();
   const e = String(email || '').trim().toLowerCase();
@@ -424,13 +448,23 @@ async function getLeadsSheetDebug() {
     const archived = db.prepare('SELECT COUNT(*) AS c FROM leads WHERE archived_at IS NOT NULL AND archived_at != \'\'').get().c;
     return {
       backend: 'sqlite',
+      storage: 'sqlite',
+      table: 'leads',
+      /** Pfadname nur aus Kompatibilität; gleiche Daten wie `GET /api/debug/leads-db`. */
+      legacyUrlNote: '/api/debug/leads-sheet bleibt erreichbar; Quelle ist immer SQLite-Tabelle `leads`.',
       dbPath,
       totalRowCount: total,
       activeRowCount: active,
       archivedRowCount: archived,
     };
   } catch (err) {
-    return { backend: 'sqlite', dbPath, error: err.message };
+    return {
+      backend: 'sqlite',
+      storage: 'sqlite',
+      table: 'leads',
+      dbPath,
+      error: err.message,
+    };
   }
 }
 
@@ -565,6 +599,7 @@ module.exports = {
   updateLeadField,
   updateLeadFieldsBulk,
   archiveLead,
+  restoreArchivedLead,
   getLeadsSheetDebug,
   setLeadStatus,
   getLeadByEmail,

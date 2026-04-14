@@ -211,6 +211,30 @@
     .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
     .btn-gcal:hover { background: #eef2ff; }
     .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
+    .filter-archive-btn {
+      width: 100%;
+      margin-top: 0.35rem;
+      padding: 0.38rem 0.65rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #334155;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .filter-archive-btn:hover { background: #f8fafc; }
+    .filter-archive-btn[aria-pressed="true"] {
+      background: #e0e7ff;
+      border-color: #818cf8;
+      color: #312e81;
+    }
+    .lead-item.lead-archived {
+      opacity: 0.72;
+      color: #64748b;
+    }
+    .lead-item.lead-archived .lead-name { color: #64748b; }
     .status-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
     .status-btn {
       padding: 0.32rem 0.55rem; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc;
@@ -325,6 +349,7 @@
         <input type="checkbox" id="show-completed" onchange="onToggleCompleted()" />
         Abgeschlossene anzeigen (Termin vereinbart / Lead verloren)
       </label>
+      <button type="button" id="toggle-show-archive" class="filter-archive-btn" aria-pressed="false" onclick="onToggleArchiveView()">Archiv anzeigen</button>
     </div>
     <div id="geo-status"></div>
     <div id="lead-list"></div>
@@ -372,6 +397,7 @@
         </div>
         <div class="detail-actions" style="flex-wrap:wrap">
           <button type="button" class="btn btn-cal" id="btn-cal-appointment" onclick="openCalendarAppointment()">Termin und Kalender</button>
+          <button type="button" class="btn btn-save" id="btn-restore-archive" style="display:none;background:#15803d" onclick="restoreLeadFromArchive()">Wiederherstellen</button>
           <button type="button" class="btn btn-save" id="btn-save" onclick="saveFields()">Speichern</button>
           <span class="save-hint" id="save-hint">Gespeichert!</span>
         </div>
@@ -603,6 +629,17 @@
     return s === 'termin vereinbart' || s === 'lead verloren' || s === 'termin' || s === 'verloren';
   }
 
+  function isCrmArchived(lead) {
+    const a = lead && lead.archived_at;
+    return !!(a && String(a).trim());
+  }
+
+  /** In der Liste CRM-archivierter Leads als „Archivieren“ darstellen (entspricht dem Archiv-Workflow). */
+  function listStatusLabel(lead) {
+    if (isCrmArchived(lead)) return 'Archivieren';
+    return lead[COL.status] || '';
+  }
+
   const STATUS_OPTIONS = ['Neu', 'Nicht erreicht', 'Angerufen', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren'];
   let detailCurrentStatus = '';
   let userCalendarPreference = 'google';
@@ -668,10 +705,20 @@
   }
 
   function mapLeadsSubset() {
-    return allLeads.filter((l) => !isHiddenStatus(l));
+    return allLeads.filter((l) => !isCrmArchived(l) && !isHiddenStatus(l));
   }
 
   function onToggleCompleted() {
+    renderList();
+    renderStats();
+    renderMarkers();
+  }
+
+  function onToggleArchiveView() {
+    const btn = document.getElementById('toggle-show-archive');
+    if (!btn) return;
+    const on = btn.getAttribute('aria-pressed') === 'true';
+    btn.setAttribute('aria-pressed', on ? 'false' : 'true');
     renderList();
     renderStats();
     renderMarkers();
@@ -695,8 +742,10 @@
     const st = normalizeStatusDisplay(detailCurrentStatus);
     document.getElementById('sd-nachfass-wrap').style.display = st === 'Nachfassen' ? 'block' : 'none';
     document.getElementById('sd-termin-wrap').style.display = st === 'Termin vereinbart' ? 'block' : 'none';
+    const rowLead = activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null;
+    const arch = rowLead && isCrmArchived(rowLead);
     const calBtn = document.getElementById('btn-cal-appointment');
-    if (calBtn) calBtn.disabled = !!activeIsLegacy;
+    if (calBtn) calBtn.disabled = !!activeIsLegacy || !!arch;
   }
 
   function normalizeLocalDatetime(v) {
@@ -786,6 +835,10 @@
 
   async function openCalendarAppointment() {
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (rowLead && isCrmArchived(rowLead)) {
+      showToast('Archivierter Lead: Kalender nach Wiederherstellung verfügbar.', 'info');
+      return;
+    }
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     const { start, end } = resolveCalendarSlotFromForm();
     const pref = (document.getElementById('nav-cal-pref') && document.getElementById('nav-cal-pref').value) || userCalendarPreference || 'google';
@@ -843,12 +896,48 @@
     }
   }
 
+  async function restoreLeadFromArchive() {
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
+    if (!apiEmail) {
+      showToast('Keine E-Mail – Wiederherstellen nicht möglich.', 'err');
+      return;
+    }
+    if (!rowLead || !isCrmArchived(rowLead)) return;
+    try {
+      const r = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/restore`, { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Wiederherstellen fehlgeschlagen', 'err');
+        return;
+      }
+      showToast('Lead wiederhergestellt (Status: Neu).', 'ok');
+      await loadLeads();
+      const em = String(apiEmail).trim().toLowerCase();
+      const lead = allLeads.find((l) => String(l[COL.email] || '').trim().toLowerCase() === em && !l.__pvlLegacy);
+      if (lead) {
+        activeEmail = lead[COL.email] || activeEmail;
+        activeLeadKeyStr = leadKey(lead);
+        openSidebarDetail(lead);
+      } else {
+        closeSidebarDetail();
+      }
+      refreshHeaderStats();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
+  }
+
   async function applyStatus(status) {
     if (activeIsLegacy) {
       showToast('Legacy-Lead: Status hier nicht änderbar.', 'info');
       return;
     }
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (rowLead && isCrmArchived(rowLead)) {
+      showToast('Archivierter Lead: bitte „Wiederherstellen“ nutzen.', 'info');
+      return;
+    }
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     if (!apiEmail) {
       showToast('Keine E-Mail – Status nicht speicherbar.', 'err');
@@ -869,10 +958,8 @@
         return;
       }
       if (j.archived) {
-        allLeads = allLeads.filter((l) => leadKey(l) !== activeLeadKeyStr);
+        await loadLeads();
         closeSidebarDetail();
-        renderStats();
-        renderMarkers();
         showToast('Lead archiviert.', 'ok');
         refreshHeaderStats();
         return;
@@ -1106,7 +1193,7 @@
     layout?.classList.add('app-loading');
     rb?.classList.add('spin');
     try {
-      const res = await apiFetch('/api/leads');
+      const res = await apiFetch('/api/leads?includeArchived=1');
       const data = await res.json();
       if (res.status === 401 && data.error === 'login_required') {
         window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
@@ -1131,7 +1218,7 @@
       hideLoadError();
       allLeads = data;
       if (data.length === 0) {
-        showLoadError('Keine Leads geladen. SQLite prüfen: data/leads.db existiert und enthält Zeilen (Import: npm run import-leads-csv). Diagnose: /api/debug/leads-sheet');
+        showLoadError('Keine Leads geladen. Auf dem Server: Ordner data/, SQLite mit Zeilen (Import z. B. npm run import-leads-csv -- "auto_leads - sheet1.csv"). Diagnose: /api/debug/leads-db (Alias: /api/debug/leads-sheet)');
       }
       renderStats();
       renderList();
@@ -1152,22 +1239,25 @@
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   function renderStats() {
-    const done = allLeads.filter(isHiddenStatus).length;
-    document.getElementById('stat-total').textContent   = allLeads.length;
-    document.getElementById('stat-active').textContent  = allLeads.length - done;
+    const pool = allLeads.filter((l) => !isCrmArchived(l));
+    const done = pool.filter(isHiddenStatus).length;
+    document.getElementById('stat-total').textContent   = pool.length;
+    document.getElementById('stat-active').textContent  = pool.length - done;
     document.getElementById('stat-done').textContent    = done;
     const active = (l) => !isHiddenStatus(l);
     const stNeu = (l) => !String(l[COL.status] || '').trim() || normalizeStatusDisplay(l[COL.status]) === 'Neu';
-    document.getElementById('stat-new').textContent     = allLeads.filter((l) => active(l) && stNeu(l)).length;
-    document.getElementById('stat-betreut').textContent = allLeads.filter((l) => active(l) && l[COL.betreut]).length;
+    document.getElementById('stat-new').textContent     = pool.filter((l) => active(l) && stNeu(l)).length;
+    document.getElementById('stat-betreut').textContent = pool.filter((l) => active(l) && l[COL.betreut]).length;
   }
 
   // ── Filter ────────────────────────────────────────────────────────────────
   function getFiltered() {
     const q = document.getElementById('search-input').value.toLowerCase();
     const showDone = document.getElementById('show-completed')?.checked;
+    const showArch = document.getElementById('toggle-show-archive')?.getAttribute('aria-pressed') === 'true';
     const sortMode = document.getElementById('sort-leads')?.value || 'last_updated_desc';
     let rows = allLeads.filter((l) => {
+      if (isCrmArchived(l) && !showArch) return false;
       if (!showDone && isHiddenStatus(l)) return false;
       const matchQ = !q || [l[COL.name], l[COL.email], l[COL.city], l[COL.street]].some((v) => v?.toLowerCase().includes(q));
       return matchQ;
@@ -1185,7 +1275,9 @@
       const color = getMarkerColorForLead(l);
       const lk = encodeURIComponent(leadKey(l));
       const act = leadKey(l) === activeLeadKeyStr;
-      return `<div class="lead-item${act ? ' active' : ''}"
+      const arch = isCrmArchived(l);
+      const stShow = listStatusLabel(l);
+      return `<div class="lead-item${act ? ' active' : ''}${arch ? ' lead-archived' : ''}"
            data-lk="${lk}"
            style="border-left-color:${color}"
            onclick="selectLead('${lk}')">
@@ -1194,7 +1286,7 @@
         </div>
         <div class="lead-meta">
           ${esc(l[COL.city] || '')}${l[COL.zip] ? ' ' + esc(l[COL.zip]) : ''}
-          &nbsp;·&nbsp;${esc(l[COL.date] || '')}${l[COL.status] ? ` · <span style="font-weight:600">${esc(l[COL.status])}</span>` : ''}
+          &nbsp;·&nbsp;${esc(l[COL.date] || '')}${stShow ? ` · <span style="font-weight:600">${esc(stShow)}</span>` : ''}
         </div>
         ${leadListPhoneHtml(l)}
         ${l[COL.betreut] ? `<div class="lead-betreut">Betreut: ${esc(l[COL.betreut])}</div>` : ''}
@@ -1367,13 +1459,22 @@
     document.getElementById('sidebar-detail').classList.add('open');
 
     const legacy = !!lead.__pvlLegacy;
+    const arch = isCrmArchived(lead);
+    const readOnly = legacy || arch;
     document.getElementById('sd-legacy-banner').style.display = legacy ? 'block' : 'none';
+    const restoreBtn = document.getElementById('btn-restore-archive');
+    if (restoreBtn) restoreBtn.style.display = arch && lead[COL.email] ? 'inline-block' : 'none';
     ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city'].forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.disabled = legacy;
+      if (el) el.disabled = readOnly;
     });
-    document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = legacy; });
-    document.getElementById('btn-save').disabled = legacy;
+    document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = readOnly; });
+    document.getElementById('btn-save').disabled = readOnly;
+    const chipRow = document.getElementById('sd-betreut-chips');
+    if (chipRow) {
+      chipRow.style.pointerEvents = readOnly ? 'none' : '';
+      chipRow.style.opacity = readOnly ? '0.55' : '';
+    }
 
     const color = getMarkerColorForLead(lead);
     const titleEl = document.getElementById('sd-name');
@@ -1388,7 +1489,7 @@
       ['Quelle',      getSource(lead)],
       ['Datum',       lead[COL.date]],
       ['Info',        lead[COL.info]],
-      ['Status',      lead[COL.status]],
+      ['Status',      arch ? 'Archivieren' : lead[COL.status]],
       ['Nachfass bis', lead[COL.nachfass]],
       ['Termin',      lead[COL.termin]],
     ].filter(([, v]) => v);
@@ -1412,7 +1513,7 @@
     initStatusBar();
     document.getElementById('sd-betreut').value = lead[COL.betreut] || '';
     document.getElementById('sd-notizen').value = lead[COL.notes]   || '';
-    detailCurrentStatus = normalizeStatusDisplay(lead[COL.status]);
+    detailCurrentStatus = arch ? 'Archivieren' : normalizeStatusDisplay(lead[COL.status]);
     document.getElementById('sd-nachfass').value = (lead[COL.nachfass] || '').trim().slice(0, 10);
     document.getElementById('sd-termin').value = normalizeLocalDatetime(lead[COL.termin]);
     syncStatusBarHighlight();
@@ -1425,6 +1526,8 @@
     restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
     document.getElementById('lead-list').style.display = 'block';
+    const restoreBtn = document.getElementById('btn-restore-archive');
+    if (restoreBtn) restoreBtn.style.display = 'none';
     activeEmail = null;
     activeIsLegacy = false;
     activeLeadKeyStr = null;
@@ -1436,6 +1539,11 @@
     document.getElementById('btn-save').disabled = false;
     const calBtn = document.getElementById('btn-cal-appointment');
     if (calBtn) calBtn.disabled = false;
+    const chipRow = document.getElementById('sd-betreut-chips');
+    if (chipRow) {
+      chipRow.style.pointerEvents = '';
+      chipRow.style.opacity = '';
+    }
     renderList();
   }
 
@@ -1447,6 +1555,10 @@
       return;
     }
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (rowLead && isCrmArchived(rowLead)) {
+      showToast('Archivierter Lead: bitte zuerst wiederherstellen.', 'info');
+      return;
+    }
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     if (!apiEmail) {
       showToast('Keine E-Mail in der Zeile – Speichern nicht möglich.', 'err');

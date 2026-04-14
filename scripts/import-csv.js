@@ -11,7 +11,7 @@ require('../src/load-env');
 const fs = require('fs');
 const path = require('path');
 const { parse } = require('csv-parse/sync');
-const { initDb } = require('../src/database');
+const { initDb, getDbPath } = require('../src/database');
 const { geocodeAddressCascade } = require('../src/geocode-address-cascade');
 
 const IMPORT_ERROR_LOG = path.join(__dirname, '..', 'data', 'import_errors.log');
@@ -94,6 +94,43 @@ const DB_COLUMNS = [
   'anfragezeitpunkt', 'info', 'betreuer', 'notizen', 'col_14',
 ];
 
+/**
+ * CSV-Header (nach normalizeHeaders: klein + BOM weg) → kanonische DB-Spalten.
+ * Deckt u. a. Google-Export / „auto_leads - sheet1“-Namen ab.
+ */
+function canonicalCsvRow(rec) {
+  const pick = (...keys) => {
+    for (const key of keys) {
+      const v = rec[key];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return '';
+  };
+  return {
+    ...rec,
+    anfrage: pick('anfrage', 'anfrage nr', 'anfrage_nr', 'anfragenr', 'anfrage-nr', 'anfrage id'),
+    namen: pick('namen', 'nachname + vorname', 'nachname+vorname', 'name', 'kunde'),
+    telefon: pick('telefon', 'tel', 'handy', 'telefonnummer', 'phone'),
+    email: pick('email', 'e-mail', 'e mail', 'mail'),
+    strasse: pick('strasse', 'straße', 'street', 'adresse'),
+    plz: pick('plz', 'postleitzahl', 'post code', 'postcode', 'zip'),
+    ort: pick('ort', 'stadt', 'wohnort', 'city', 'ortschaft'),
+    land: pick('land', 'country', 'staat'),
+    quelle: pick('quelle', 'leadquelle'),
+    anfragezeitpunkt: pick(
+      'anfragezeitpunkt',
+      'anfrage zeitpunkt',
+      'datum',
+      'datum anfrage',
+      'anfragedatum'
+    ),
+    info: pick('info', 'bemerkung', 'hinweis'),
+    betreuer: pick('betreuer', 'betreut durch', 'betreut_durch', 'vertrieb'),
+    notizen: pick('notizen', 'notiz', 'interne notizen'),
+    col_14: pick('col_14', 'col 14', 'spalte 14', 'leer', 'empty'),
+  };
+}
+
 function pickLatLng(rec) {
   const lat =
     parseCoord(rec.latitude) ??
@@ -165,6 +202,7 @@ async function main() {
 
   const headers = normalizeHeaders(rows[0]);
   const dataRows = rows.slice(1);
+  console.log('[import] CSV-Spalten (normalisiert):', headers.join(', '));
 
   const staged = [];
   for (let r = 0; r < dataRows.length; r += 1) {
@@ -177,12 +215,13 @@ async function main() {
   const batch = [];
   for (let i = 0; i < staged.length; i += 1) {
     const rec = staged[i];
+    const merged = canonicalCsvRow(rec);
     const n = i + 1;
     let lat;
     let lng;
     let logLine;
 
-    const fromCsv = pickLatLng(rec);
+    const fromCsv = pickLatLng(merged);
     if (fromCsv.lat != null && fromCsv.lng != null) {
       lat = fromCsv.lat;
       lng = fromCsv.lng;
@@ -196,16 +235,16 @@ async function main() {
           kind: 'SKIP_GEOCODE_NO_COORDS',
           rowN: n,
           total,
-          anfrage: rec.anfrage,
-          email: rec.email,
-          strasse: strVal(rec, 'strasse', 'straße', 'street', 'adresse'),
-          plz: strVal(rec, 'plz', 'postleitzahl'),
-          ort: strVal(rec, 'ort', 'stadt', 'wohnort'),
+          anfrage: merged.anfrage,
+          email: merged.email,
+          strasse: strVal(merged, 'strasse', 'straße', 'street', 'adresse'),
+          plz: strVal(merged, 'plz', 'postleitzahl'),
+          ort: strVal(merged, 'ort', 'stadt', 'wohnort'),
           detail: logLine,
         });
       }
     } else {
-      const g = await geocodeLeadWithCascade(rec);
+      const g = await geocodeLeadWithCascade(merged);
       lat = g.lat;
       lng = g.lon;
       logLine = `Lead ${n}/${total}: ${g.label}`;
@@ -214,20 +253,25 @@ async function main() {
           kind: 'NOMINATIM_MISS_FALLBACK',
           rowN: n,
           total,
-          anfrage: rec.anfrage,
-          email: rec.email,
-          strasse: strVal(rec, 'strasse', 'straße', 'street', 'adresse'),
-          plz: strVal(rec, 'plz', 'postleitzahl'),
-          ort: strVal(rec, 'ort', 'stadt', 'wohnort'),
+          anfrage: merged.anfrage,
+          email: merged.email,
+          strasse: strVal(merged, 'strasse', 'straße', 'street', 'adresse'),
+          plz: strVal(merged, 'plz', 'postleitzahl'),
+          ort: strVal(merged, 'ort', 'stadt', 'wohnort'),
           detail: g.label,
         });
       }
     }
     if (!dry) console.log(logLine);
 
-    const az = strVal(rec, 'anfragezeitpunkt', 'datum', 'anfrage datum');
-    const createdAtIso = createdAtIsoFromCell(az || rec.anfragezeitpunkt);
-    batch.push(toInsertRow(rec, { createdAtIso, lat, lng }));
+    if (n === 1 && !dry) {
+      const keys = ['anfrage', 'namen', 'telefon', 'email', 'strasse', 'plz', 'ort', 'land'];
+      const preview = keys.map((k) => `${k}=${(merged[k] || '').slice(0, 40)}`).join(' | ');
+      console.log('[import] erste Zeile (kanonisch):', preview);
+    }
+    const az = strVal(merged, 'anfragezeitpunkt', 'datum', 'anfrage datum');
+    const createdAtIso = createdAtIsoFromCell(az || merged.anfragezeitpunkt);
+    batch.push(toInsertRow(merged, { createdAtIso, lat, lng }));
   }
 
   if (skipGeocode && !dry) {
@@ -278,7 +322,7 @@ async function main() {
     }
   });
   run(batch);
-  const dbPath = process.env.SQLITE_LEADS_DB || 'data/leads.db';
+  const dbPath = getDbPath();
   const activeInDb = db.prepare(`
     SELECT COUNT(*) AS c FROM leads
     WHERE archived_at IS NULL OR archived_at = ''

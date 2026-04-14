@@ -15,6 +15,7 @@ const {
   updateLeadField,
   updateLeadFieldsBulk,
   archiveLead,
+  restoreArchivedLead,
   getLeadsSheetDebug,
   setLeadStatus,
   getLeadByEmail,
@@ -232,7 +233,9 @@ app.use((req, res, next) => {
 
 app.get('/api/leads', async (req, res) => {
   try {
-    res.json(await getAllLeads());
+    const q = req.query && req.query.includeArchived;
+    const includeArchived = q === '1' || q === 'true';
+    res.json(await getAllLeads({ includeArchived }));
   } catch (err) {
     console.error('GET /api/leads error:', err.message);
     res.status(500).json({ error: formatLeadsApiError(err) });
@@ -304,20 +307,25 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
-app.get('/api/debug/leads-sheet', async (req, res) => {
+async function sendLeadsStorageDebug(req, res) {
   try {
     const dbg = await getLeadsSheetDebug();
-    const leads = await getAllLeads();
+    const leads = await getAllLeads({ includeArchived: true });
     res.json({ ...dbg, leadRowCount: leads.length });
   } catch (err) {
-    console.error('GET /api/debug/leads-sheet error:', err.message);
+    console.error('GET leads storage debug error:', err.message);
     let dbg = {};
     try {
       dbg = await getLeadsSheetDebug();
     } catch (_) { /* ignore */ }
     res.status(500).json({ ...dbg, error: formatLeadsApiError(err) });
   }
-});
+}
+
+/** Diagnose: SQLite `leads` (Pfad, Zeilen). */
+app.get('/api/debug/leads-db', sendLeadsStorageDebug);
+/** @deprecated Name — identisch zu `/api/debug/leads-db`. */
+app.get('/api/debug/leads-sheet', sendLeadsStorageDebug);
 
 app.patch('/api/leads/:email/field', async (req, res) => {
   const { column, value } = req.body;
@@ -400,6 +408,17 @@ app.post('/api/leads/:email/archive', async (req, res) => {
   } catch (err) {
     console.error('POST archive error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:email/restore', async (req, res) => {
+  try {
+    const out = await restoreArchivedLead(decodeURIComponent(req.params.email));
+    if (!out.ok) return res.status(404).json({ error: 'Archivierter Lead nicht gefunden' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST restore error:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
   }
 });
 
