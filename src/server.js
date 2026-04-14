@@ -121,6 +121,17 @@ function formatLeadsApiError(err) {
   return (err && err.message) ? String(err.message) : String(err);
 }
 
+/** Query-Parameter `includeArchived` robust auswerten (String, Array, Großschreibung). */
+function parseIncludeArchivedFlag(req) {
+  const raw = req.query && req.query.includeArchived;
+  const parts = Array.isArray(raw) ? raw : [raw];
+  for (const p of parts) {
+    const s = String(p == null ? '' : p).trim().toLowerCase();
+    if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
+  }
+  return false;
+}
+
 function basicAuthMiddleware(req, res, next) {
   if (sessionOn) return next();
   if (!basicAuthConfigured()) return next();
@@ -233,9 +244,25 @@ app.use((req, res, next) => {
 
 app.get('/api/leads', async (req, res) => {
   try {
-    const q = req.query && req.query.includeArchived;
-    const includeArchived = q === '1' || q === 'true';
-    res.json(await getAllLeads({ includeArchived }));
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    const includeArchived = parseIncludeArchivedFlag(req);
+    const leads = await getAllLeads({ includeArchived });
+    if (leads.length === 0) {
+      try {
+        const dbg = await getLeadsSheetDebug();
+        if ((dbg.totalRowCount || 0) > 0) {
+          console.warn('GET /api/leads: leere Antwort obwohl SQLite Zeilen hat', {
+            includeArchived,
+            totalRowCount: dbg.totalRowCount,
+            activeRowCount: dbg.activeRowCount,
+            archivedRowCount: dbg.archivedRowCount,
+            dbPath: dbg.dbPath,
+          });
+        }
+      } catch (_) { /* ignore */ }
+    }
+    res.json(leads);
   } catch (err) {
     console.error('GET /api/leads error:', err.message);
     res.status(500).json({ error: formatLeadsApiError(err) });

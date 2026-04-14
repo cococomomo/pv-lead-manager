@@ -56,7 +56,7 @@
     </details>
   </div>
   <script>
-    const cred = { credentials: 'same-origin' };
+    const cred = { credentials: 'include' };
 
     async function checkSession() {
       const r = await fetch('/api/auth/me', cred);

@@ -156,9 +156,19 @@
     .lead-item { padding: 0.6rem 0.9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.18s ease, border-left-color 0.2s ease, transform 0.15s ease; border-left: 4px solid transparent; }
     .lead-item:hover { background: #f8fafc; transform: translateX(2px); }
     .lead-item.active { background: #eef2ff; }
-    .lead-name { font-weight: 600; font-size: 0.87rem; }
+    .lead-name {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 0.28rem;
+      font-weight: 600; font-size: 0.87rem;
+    }
     .lead-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
     .lead-betreut { font-size: 0.7rem; color: #059669; font-weight: 500; margin-top: 1px; }
+    .lead-map-warn-icon {
+      flex-shrink: 0;
+      font-size: 0.82rem;
+      line-height: 1;
+      color: #ca8a04;
+      cursor: help;
+    }
 
     /* Sidebar detail panel (replaces list) */
     #sidebar-detail { display: none; flex-direction: column; flex: 1; overflow: hidden; }
@@ -189,10 +199,22 @@
     .refresh-btn:hover:not(:disabled) { background: #1e40af; }
     .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
 
-    /* Geocoding progress */
-    #geo-status { font-size: 0.7rem; color: #64748b; padding: 0.3rem 0.9rem; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; display: none; }
+    #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
+    .sd-map-warn {
+      display: none;
+      margin: 0 0 0.65rem 0;
+      padding: 0.55rem 0.7rem;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      color: #92400e;
+      font-size: 0.8rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    .sd-map-warn.show { display: block; }
 
     /* Leaflet popup overrides */
     .leaflet-popup-content { margin: 10px 14px; min-width: 220px; max-width: 300px; }
@@ -230,6 +252,7 @@
       border-color: #818cf8;
       color: #312e81;
     }
+    .filter-archive-btn.is-hidden { display: none !important; }
     .lead-item.lead-archived {
       opacity: 0.72;
       color: #64748b;
@@ -350,6 +373,8 @@
         Abgeschlossene anzeigen (Termin vereinbart / Lead verloren)
       </label>
       <button type="button" id="toggle-show-archive" class="filter-archive-btn" aria-pressed="false" onclick="onToggleArchiveView()">Archiv anzeigen</button>
+      <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()">✕ Filter „ohne Kartenpunkt“ aufheben</button>
+      <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
     </div>
     <div id="geo-status"></div>
     <div id="lead-list"></div>
@@ -360,6 +385,7 @@
       <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem zweiten Lead-Blatt (Legacy) — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
       <div class="detail-body">
         <div class="detail-title" id="sd-name"></div>
+        <div id="sd-map-warn" class="sd-map-warn" role="alert"></div>
         <div class="detail-info" id="sd-info"></div>
         <div class="field-group" id="sd-contact-wrap">
           <label>Kontakt &amp; Adresse bearbeiten</label>
@@ -423,9 +449,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
-  /** same-origin: Session-Cookie und ggf. Basic-Auth */
+  /** Session-Cookie + ggf. HTTP-Basic: `include` stellt sicher, dass Auth-Header zuverlässig mitgeschickt werden. */
   function apiFetch(url, opts = {}) {
-    return fetch(url, { ...opts, credentials: 'same-origin' });
+    return fetch(url, { ...opts, credentials: 'include' });
   }
 
   let _toastTimer;
@@ -489,21 +515,21 @@
     : L.layerGroup()
   ).addTo(map);
 
-  /** Kartenansicht vor Lead-Fokus (State-Memory für Zoom zurück). Global für Debugging. */
-  var lastMapState = null;
+  /** Kartenansicht vor Lead-Fokus (`previousViewState`) — für „Klick ins Leere → zurück“. */
+  var previousViewState = null;
 
   function captureLastMapStateIfNeeded() {
     const detail = document.getElementById('sidebar-detail');
     if (!detail || detail.classList.contains('open')) return;
     const c = map.getCenter();
-    lastMapState = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+    previousViewState = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
   }
 
   function restoreLastMapState() {
-    if (!lastMapState) return;
-    const { lat, lng, zoom } = lastMapState;
+    if (!previousViewState) return;
+    const { lat, lng, zoom } = previousViewState;
     map.flyTo([lat, lng], zoom, { duration: 0.55, animate: true });
-    lastMapState = null;
+    previousViewState = null;
   }
 
   function isMapClickOnLeadUi(ev) {
@@ -613,6 +639,10 @@
   let activeIsLegacy = false;
   let activeLeadKeyStr = null;
   let markerMap   = {}; // leadKey → leaflet marker
+  /** Nur Leads ohne gültige DB-Koordinaten (entspricht Header-Warnung). */
+  let filterMissingMapCoordsOnly = false;
+  /** Verhindert, dass ein langsamer /api/leads-Request ein neueres Ergebnis überschreibt. */
+  let loadLeadsSeq = 0;
   let vertrieblerList = [];
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -982,37 +1012,6 @@
     }
   }
 
-  // ── Geocoding with cache + throttle ──────────────────────────────────────
-  let geoCache = {};
-  try { geoCache = JSON.parse(localStorage.getItem('pvgeo') || '{}'); } catch {}
-
-  let geoQueueRunning = false;
-  const geoQueue = [];
-
-  function enqueueGeocode(q, resolve) { geoQueue.push({ q, resolve }); processGeoQueue(); }
-
-  async function processGeoQueue() {
-    if (geoQueueRunning) return;
-    geoQueueRunning = true;
-    while (geoQueue.length) {
-      const { q, resolve } = geoQueue.shift();
-      if (q in geoCache) { resolve(geoCache[q]); continue; }
-      await new Promise(r => setTimeout(r, 1500)); // Nominatim: konservativ 1,5 s
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=at`,
-          { headers: { 'Accept-Language': 'de' } }
-        );
-        const data = await res.json();
-        const coords = data[0] ? [parseFloat(data[0].lat), parseFloat(data[0].lon)] : null;
-        geoCache[q] = coords;
-        try { localStorage.setItem('pvgeo', JSON.stringify(geoCache)); } catch {}
-        resolve(coords);
-      } catch { resolve(null); }
-    }
-    geoQueueRunning = false;
-  }
-
   // ── Load leads ────────────────────────────────────────────────────────────
   function showLoadError(msg) {
     const el = document.getElementById('load-error');
@@ -1052,10 +1051,10 @@
         warnBtn.textContent = '⚠️ ' + miss + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt';
         if (miss > 0) {
           warnBtn.classList.remove('ok-state');
-          warnBtn.title = 'Klicken: Liste bearbeiten (Adresse, Geocoding, Anruf, Status)';
+          warnBtn.title = 'Klicken: Nur Leads ohne Kartenpunkt in der Liste anzeigen (Filter). Dialog: Filterleiste unten.';
         } else {
           warnBtn.classList.add('ok-state');
-          warnBtn.title = 'Alle aktiven Leads haben einen Kartenpunkt (Koordinaten vollständig).';
+          warnBtn.title = 'Alle aktiven Leads haben einen Kartenpunkt. Klicken: Kartenfilter aufheben (falls aktiv).';
         }
       }
     } catch {
@@ -1188,20 +1187,35 @@
   }
 
   async function loadLeads() {
+    const seq = ++loadLeadsSeq;
     const layout = document.querySelector('.layout');
     const rb = document.querySelector('.refresh-btn');
     layout?.classList.add('app-loading');
     rb?.classList.add('spin');
     try {
       const res = await apiFetch('/api/leads?includeArchived=1');
-      const data = await res.json();
-      if (res.status === 401 && data.error === 'login_required') {
+      if (seq !== loadLeadsSeq) return;
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        if (seq !== loadLeadsSeq) return;
+        console.error('loadLeads JSON:', parseErr);
+        allLeads = [];
+        showLoadError('Ungültige Server-Antwort (kein JSON).');
+        renderStats();
+        renderList();
+        renderMarkers();
+        return;
+      }
+      if (seq !== loadLeadsSeq) return;
+      if (res.status === 401 && data && data.error === 'login_required') {
         window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
         return;
       }
       if (!res.ok) {
         allLeads = [];
-        showLoadError(data.error || `API-Fehler (${res.status})`);
+        showLoadError((data && data.error) || `API-Fehler (${res.status})`);
         renderStats();
         renderList();
         renderMarkers();
@@ -1217,6 +1231,13 @@
       }
       hideLoadError();
       allLeads = data;
+      if (filterMissingMapCoordsOnly) {
+        const anyMiss = allLeads.some((l) => !isCrmArchived(l) && !coordsFromDb(l));
+        if (!anyMiss) {
+          filterMissingMapCoordsOnly = false;
+          document.getElementById('filter-clear-missing-coords')?.classList.add('is-hidden');
+        }
+      }
       if (data.length === 0) {
         showLoadError('Keine Leads geladen. Auf dem Server: Ordner data/, SQLite mit Zeilen (Import z. B. npm run import-leads-csv -- "auto_leads - sheet1.csv"). Diagnose: /api/debug/leads-db (Alias: /api/debug/leads-sheet)');
       }
@@ -1224,6 +1245,7 @@
       renderList();
       renderMarkers();
     } catch (e) {
+      if (seq !== loadLeadsSeq) return;
       console.error('Failed to load leads:', e);
       allLeads = [];
       showLoadError('Netzwerk- oder Serverfehler: ' + (e.message || String(e)));
@@ -1231,9 +1253,11 @@
       renderList();
       renderMarkers();
     } finally {
-      layout?.classList.remove('app-loading');
-      rb?.classList.remove('spin');
-      refreshHeaderStats();
+      if (seq === loadLeadsSeq) {
+        layout?.classList.remove('app-loading');
+        rb?.classList.remove('spin');
+        refreshHeaderStats();
+      }
     }
   }
 
@@ -1258,12 +1282,32 @@
     const sortMode = document.getElementById('sort-leads')?.value || 'last_updated_desc';
     let rows = allLeads.filter((l) => {
       if (isCrmArchived(l) && !showArch) return false;
-      if (!showDone && isHiddenStatus(l)) return false;
+      if (filterMissingMapCoordsOnly) {
+        if (coordsFromDb(l)) return false;
+      } else if (!showDone && isHiddenStatus(l)) {
+        return false;
+      }
       const matchQ = !q || [l[COL.name], l[COL.email], l[COL.city], l[COL.street]].some((v) => v?.toLowerCase().includes(q));
       return matchQ;
     });
     rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
     return rows;
+  }
+
+  function clearMissingCoordsMapFilter() {
+    filterMissingMapCoordsOnly = false;
+    document.getElementById('filter-clear-missing-coords')?.classList.add('is-hidden');
+    renderList();
+    renderMarkers();
+  }
+
+  function activateMissingCoordsMapFilter() {
+    filterMissingMapCoordsOnly = true;
+    document.getElementById('filter-clear-missing-coords')?.classList.remove('is-hidden');
+    const sd = document.getElementById('sidebar-detail');
+    if (sd && sd.classList.contains('open')) closeSidebarDetail();
+    else renderList();
+    renderMarkers();
   }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────
@@ -1277,11 +1321,15 @@
       const act = leadKey(l) === activeLeadKeyStr;
       const arch = isCrmArchived(l);
       const stShow = listStatusLabel(l);
+      const mapMiss = !coordsFromDb(l);
+      const warnIcon = mapMiss
+        ? '<span class="lead-map-warn-icon" title="Kein gültiger Kartenpunkt in der Datenbank — Adresse prüfen" aria-label="Warnung: keine Kartenkoordinaten">⚠️</span>'
+        : '';
       return `<div class="lead-item${act ? ' active' : ''}${arch ? ' lead-archived' : ''}"
            data-lk="${lk}"
            style="border-left-color:${color}"
            onclick="selectLead('${lk}')">
-        <div class="lead-name">${esc(l[COL.name] || '(kein Name)')}
+        <div class="lead-name">${warnIcon}${esc(l[COL.name] || '(kein Name)')}
           <span style="color:#94a3b8;font-weight:400;font-size:0.72rem"> #${esc(anfrageNr(l))}</span>
         </div>
         <div class="lead-meta">
@@ -1310,67 +1358,21 @@
     return null;
   }
 
-  function geocodeFullAddressQuery(lead) {
-    const st = String(lead[COL.street] || '').trim();
-    const zi = String(lead[COL.zip] || '').trim();
-    const ci = String(lead[COL.city] || '').trim();
-    if (!st) return null;
-    return `${st}, ${zi} ${ci}, Österreich`.replace(/\s+/g, ' ').replace(/ ,/g, ',').trim();
-  }
-
-  function geocodeCityQuery(lead) {
-    const zi = String(lead[COL.zip] || '').trim();
-    const ci = String(lead[COL.city] || '').trim();
-    if (!ci) return null;
-    return `${zi} ${ci}, Österreich`.replace(/\s+/g, ' ').trim();
-  }
-
-  function geocodeQueryString(q) {
-    if (!q) return Promise.resolve(null);
-    if (q in geoCache) return Promise.resolve(geoCache[q]);
-    return new Promise((resolve) => enqueueGeocode(q, resolve));
-  }
-
-  async function resolveCoordsForLead(lead) {
-    const d = coordsFromDb(lead);
-    if (d) return d;
-    const qA = geocodeFullAddressQuery(lead);
-    if (qA) {
-      const c = await geocodeQueryString(qA);
-      if (c) return c;
-    }
-    const qB = geocodeCityQuery(lead);
-    if (qB) {
-      const c = await geocodeQueryString(qB);
-      if (c) return c;
-    }
-    return [48.2082, 16.3738];
-  }
-
   let markerRenderGen = 0;
 
-  async function renderMarkers() {
+  /** Marker nur aus DB-Koordinaten — kein Browser-Geocoding (Performance / Nominatim-Fair-Use). */
+  function renderMarkers() {
     const gen = ++markerRenderGen;
-    const statusEl = document.getElementById('geo-status');
     markerLayer.clearLayers();
     markerMap = {};
     const subset = mapLeadsSubset();
-    const anyClientGeo = subset.some((l) => !coordsFromDb(l) && (geocodeFullAddressQuery(l) || geocodeCityQuery(l)));
-    if (anyClientGeo) {
-      statusEl.style.display = 'block';
-      statusEl.textContent = 'Karte: Adressen werden geladen…';
-    }
     for (let i = 0; i < subset.length; i += 1) {
       const lead = subset[i];
       if (gen !== markerRenderGen) return;
-      if (!coordsFromDb(lead) && (geocodeFullAddressQuery(lead) || geocodeCityQuery(lead))) {
-        statusEl.textContent = `Karte: Lead ${i + 1} / ${subset.length}…`;
-      }
-      const coords = await resolveCoordsForLead(lead);
-      if (gen !== markerRenderGen) return;
+      const coords = coordsFromDb(lead);
+      if (!coords) continue;
       placeMarker(lead, coords);
     }
-    if (anyClientGeo) statusEl.style.display = 'none';
   }
 
   // ── Individual pin ────────────────────────────────────────────────────────
@@ -1404,12 +1406,14 @@
       <div class="popup-row" style="color:#64748b">${esc(src)} · ${esc(lead[COL.date]||'')}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
       ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
       ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
-      <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(leadKey(lead))}')">
+      <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(leadKey(lead))}', { skipZoom: true })">
         Bearbeiten / Details
       </button>`;
 
     marker.on('click', (ev) => {
       if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
+      zoomMapToLead(lead);
+      selectLead(encodeURIComponent(leadKey(lead)), { skipZoom: true });
     });
     marker.bindPopup(popupContent, { maxWidth: 320 });
     marker.addTo(markerLayer);
@@ -1417,25 +1421,9 @@
     markerMap[leadKey(lead)] = marker;
   }
 
-  // ── Select lead (sidebar + optional map) ─────────────────────────────────
-  function selectLead(encodedKey) {
-    const raw = decodeURIComponent(encodedKey);
-    const { base, isLegacy } = parseLeadKey(raw);
-    const lead = allLeads.find((l) => {
-      const b = l[COL.email] || l[COL.name] || '';
-      return b === base && !!l.__pvlLegacy === isLegacy;
-    });
-    if (!lead) return;
-    activeEmail = lead[COL.email] || lead[COL.name] || '';
-    activeIsLegacy = !!lead.__pvlLegacy;
-    activeLeadKeyStr = leadKey(lead);
-
+  /** Zoom auf Lead-Position (max. Zoomstufe). Zuerst Karten-Zustand merken für „Klick ins Leere → zurück“. */
+  function zoomMapToLead(lead) {
     captureLastMapStateIfNeeded();
-
-    renderList();
-    const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
-    if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
     const marker = markerMap[leadKey(lead)];
     const target = getLeadFocusLatLng(lead);
     const rawZ = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 19;
@@ -1450,11 +1438,36 @@
     } else {
       flyMax();
     }
+  }
+
+  /**
+   * @param {string} encodedKey
+   * @param {{ skipZoom?: boolean }} [opts] — `skipZoom`: Zoom bereits z. B. durch Marker-Klick oder Popup-Button ausgeführt
+   */
+  function selectLead(encodedKey, opts) {
+    const skipZoom = !!(opts && opts.skipZoom);
+    const raw = decodeURIComponent(encodedKey);
+    const { base, isLegacy } = parseLeadKey(raw);
+    const lead = allLeads.find((l) => {
+      const b = l[COL.email] || l[COL.name] || '';
+      return b === base && !!l.__pvlLegacy === isLegacy;
+    });
+    if (!lead) return;
+    activeEmail = lead[COL.email] || lead[COL.name] || '';
+    activeIsLegacy = !!lead.__pvlLegacy;
+    activeLeadKeyStr = leadKey(lead);
+
+    if (!skipZoom) zoomMapToLead(lead);
+
+    renderList();
+    const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
+    if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     openSidebarDetail(lead);
   }
 
   function openSidebarDetail(lead) {
+    if (typeof map.closePopup === 'function') map.closePopup();
     document.getElementById('lead-list').style.display = 'none';
     document.getElementById('sidebar-detail').classList.add('open');
 
@@ -1480,6 +1493,17 @@
     const titleEl = document.getElementById('sd-name');
     titleEl.textContent = lead[COL.name] || '(kein Name)';
     titleEl.style.borderLeft = `4px solid ${color}`;
+
+    const mapWarn = document.getElementById('sd-map-warn');
+    if (mapWarn) {
+      if (!coordsFromDb(lead)) {
+        mapWarn.textContent = 'Achtung: Dieser Lead konnte nicht auf der Karte platziert werden. Bitte Adresse prüfen.';
+        mapWarn.classList.add('show');
+      } else {
+        mapWarn.textContent = '';
+        mapWarn.classList.remove('show');
+      }
+    }
 
     const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
     const infoRows = [
@@ -1581,6 +1605,7 @@
       || String(rowLead[COL.zip] || '').trim() !== contactUpdates['PLZ']
       || String(rowLead[COL.city] || '').trim() !== contactUpdates['Ort']
     );
+    const hadMissingCoords = !!(rowLead && !coordsFromDb(rowLead));
 
     const cols = [
       [COL.betreut, betreut],
@@ -1634,6 +1659,25 @@
         activeEmail = lead[COL.email] || activeEmail;
         activeLeadKeyStr = leadKey(lead);
       }
+      const pe = (document.getElementById('sd-c-email').value || '').trim() || patchEmail;
+      if (pe && addrChanged) {
+        const rg = await apiFetch('/api/leads/' + encodeURIComponent(pe) + '/regeocode', { method: 'POST' });
+        const gj = await rg.json().catch(() => ({}));
+        if (!rg.ok) {
+          showToast(gj.error || 'Geocoding nach Adressänderung fehlgeschlagen', 'err');
+        } else if (gj.lead) {
+          const em = String(gj.lead[COL.email] || gj.lead.email || '').trim().toLowerCase();
+          const tgt = allLeads.find((l) => String(l[COL.email] || '').trim().toLowerCase() === em && !l.__pvlLegacy);
+          if (tgt) {
+            tgt.latitude = gj.lead.latitude;
+            tgt.longitude = gj.lead.longitude;
+            tgt.last_updated = gj.lead.last_updated || tgt.last_updated;
+          }
+          if (hadMissingCoords && tgt && coordsFromDb(tgt)) {
+            showToast('Adresse gespeichert — Kartenpunkt gesetzt.', 'ok');
+          }
+        }
+      }
       hint.style.display = 'inline';
       hint.style.color = '';
       setTimeout(() => { hint.style.display = 'none'; }, 2000);
@@ -1641,24 +1685,16 @@
       renderList();
       renderMarkers();
       refreshHeaderStats();
-      const pe = (document.getElementById('sd-c-email').value || '').trim() || patchEmail;
-      if (pe && addrChanged) {
-        apiFetch('/api/leads/' + encodeURIComponent(pe) + '/regeocode', { method: 'POST' })
-          .then(async (rg) => {
-            if (!rg.ok) return;
-            const gj = await rg.json().catch(() => ({}));
-            if (!gj.lead) return;
-            const em = String(gj.lead[COL.email] || gj.lead.email || '').trim().toLowerCase();
-            const tgt = allLeads.find((l) => String(l[COL.email] || '').trim().toLowerCase() === em && !l.__pvlLegacy);
-            if (tgt) {
-              tgt.latitude = gj.lead.latitude;
-              tgt.longitude = gj.lead.longitude;
-              tgt.last_updated = gj.lead.last_updated || tgt.last_updated;
-            }
-            renderMarkers();
-            refreshHeaderStats();
-          })
-          .catch(() => {});
+      const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+      if (openLead && document.getElementById('sidebar-detail')?.classList.contains('open')) {
+        openSidebarDetail(openLead);
+      }
+      if (hadMissingCoords && addrChanged && openLead && coordsFromDb(openLead)) {
+        const c = coordsFromDb(openLead);
+        if (c) {
+          const zCur = typeof map.getZoom === 'function' ? map.getZoom() : 9;
+          map.flyTo(L.latLng(c[0], c[1]), Math.min(16, Math.max(zCur, 14)), { duration: 0.55, animate: true });
+        }
       }
     } catch (e) {
       showToast('Netzwerkfehler beim Speichern: ' + (e.message || String(e)), 'err');
@@ -1690,8 +1726,11 @@
 
   document.getElementById('header-warn-missing')?.addEventListener('click', () => {
     const b = document.getElementById('header-warn-missing');
-    if (b && b.classList.contains('ok-state')) return;
-    openMissingCoordsModal();
+    if (b && b.classList.contains('ok-state')) {
+      clearMissingCoordsMapFilter();
+      return;
+    }
+    activateMissingCoordsMapFilter();
   });
   document.getElementById('modal-missing-close')?.addEventListener('click', () => { closeMissingCoordsModal(); });
   document.getElementById('modal-missing-backdrop')?.addEventListener('click', () => { closeMissingCoordsModal(); });
