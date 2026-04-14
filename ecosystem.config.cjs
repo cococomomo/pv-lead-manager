@@ -1,6 +1,6 @@
 'use strict';
 
-/** PM2: Web-App + optional IMAP-Poller. Auf dem Server: `pm2 start ecosystem.config.cjs` */
+/** PM2: NOORTEC Web-App. IMAP-Import nur manuell (Dashboard POST /api/sync-leads oder `npm run poll`). */
 module.exports = {
   apps: [
     {
@@ -12,17 +12,6 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
-      env: { NODE_ENV: 'production' },
-    },
-    {
-      name: 'pv-lead-poll',
-      script: './scripts/pv-lead-poll.js',
-      cwd: __dirname,
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '256M',
       env: { NODE_ENV: 'production' },
     },
   ],

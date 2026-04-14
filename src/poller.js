@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * NOORTEC pv-lead-poll: IMAP → Lead-DB, danach \Seen + Verschieben nach Archiv-Ordner.
+ * NOORTEC IMAP → Lead-DB, danach \Seen + Verschieben nach Archiv-Ordner.
  * Archiv-Pfad: Standard `<Leads-Mailbox>.Archiv_Importiert>` (Punkt) bzw. Slash, wenn die Mailbox so benannt ist.
  * Archiv-Default: `Leads/Archiv_Importiert`. Überschreiben: IMAP_ARCHIVE_MAILBOX.
  * Alt: Unterordner der Lead-Mailbox → IMAP_ARCHIVE_RELATIVE_TO_LEADS=1 und ggf. IMAP_ARCHIVE_SUBFOLDER.
@@ -10,7 +10,6 @@
 require('./load-env');
 const imaps = require('imap-simple');
 const { simpleParser } = require('mailparser');
-const cron = require('node-cron');
 const { extractLead } = require('./extractor');
 const { appendLead, leadEmailExistsInDatabase } = require('./sheets');
 const { scheduleAppointment } = require('./calendar');
@@ -167,8 +166,13 @@ async function runInitialInboxArchiveCleanup(connection, leadsMailbox, archivePa
   }
 }
 
+/**
+ * Ein IMAP-Durchlauf: ungelesene Leads-Mails importieren, Archivierung, optional Kalender.
+ * @returns {Promise<{ importedCount: number }>}
+ */
 async function pollEmails() {
-  console.log(`[${new Date().toISOString()}] NOORTEC pv-lead-poll: Polling…`);
+  let importedCount = 0;
+  console.log(`[${new Date().toISOString()}] NOORTEC IMAP: Synchronisation…`);
   let connection;
 
   const leadsMailbox = leadsMailboxPath();
@@ -224,6 +228,7 @@ async function pollEmails() {
         }
 
         await appendLead(lead);
+        importedCount += 1;
         console.log(`Lead saved: ${lead.name} <${lead.email}>`);
 
         if (lead.email) {
@@ -241,12 +246,17 @@ async function pollEmails() {
     }
   } catch (err) {
     console.error('[NOORTEC] IMAP error:', err.message);
+    throw err;
   } finally {
     if (connection) connection.end();
   }
+  return { importedCount };
 }
 
-pollEmails();
-cron.schedule('0 8,18 * * *', pollEmails);
+module.exports = { pollEmails };
 
-console.log('NOORTEC Poller: einmal beim Start, dann 08:00 und 18:00 (Serverzeit). Archiv:', archiveMailboxPath(leadsMailboxPath()));
+/*
+ * Hintergrund-Cron entfernt — IMAP-Import auslösen per:
+ *   - Dashboard: POST /api/sync-leads
+ *   - CLI: npm run poll  (scripts/pv-lead-poll.js)
+ */

@@ -15,12 +15,8 @@ if command -v pm2 >/dev/null 2>&1; then
   else
     pm2 start ecosystem.config.cjs --only pv-lead-manager
   fi
-  # Poller (optional, wenn IMAP in .env)
-  if pm2 describe pv-lead-poll >/dev/null 2>&1; then
-    pm2 restart pv-lead-poll --update-env
-  else
-    pm2 start ecosystem.config.cjs --only pv-lead-poll 2>/dev/null || true
-  fi
+  # Früherer IMAP-Dauer-Poller (pv-lead-poll) entfällt — Sync im NOORTEC-Dashboard.
+  pm2 delete pv-lead-poll 2>/dev/null || true
   pm2 save 2>/dev/null || true
 else
   echo "PM2 nicht installiert — App manuell neu starten (z. B. systemctl oder node src/server.js)."

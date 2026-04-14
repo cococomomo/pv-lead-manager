@@ -266,6 +266,24 @@
     .refresh-btn:hover:not(:disabled) { background: #1e40af; }
     .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
 
+    .sync-leads-btn {
+      width: 100%;
+      margin-bottom: 0.35rem;
+      padding: 0.38rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      background: #0f766e;
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.18s ease, opacity 0.18s ease;
+    }
+    .sync-leads-btn:hover:not(:disabled) { background: #115e59; }
+    .sync-leads-btn:disabled { opacity: 0.72; cursor: wait; }
+    .sync-leads-btn.spin { animation: pvl-spin 0.75s linear infinite; }
+
     #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
@@ -365,6 +383,7 @@
       .lead-item { transition: none; }
       .lead-item:hover { transform: none; }
       .refresh-btn.spin { animation: none; }
+      .sync-leads-btn.spin { animation: none; }
       #sidebar-detail.open { animation: none; }
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
@@ -435,6 +454,7 @@
       <button type="button" class="sidebar-tab" id="tab-leads-done" role="tab" aria-selected="false" aria-controls="lead-list" onclick="setSidebarListTab('done')">Abgearbeitet</button>
     </div>
     <div class="filter-bar">
+      <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromImap()">🔄 Leads jetzt synchronisieren</button>
       <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList(); renderMarkers();" />
       <select id="sort-leads" onchange="renderList(); renderMarkers();">
         <option value="last_updated_desc">Sortierung: zuletzt bearbeitet (neu zuerst)</option>
@@ -959,6 +979,44 @@
     const H2 = Math.floor(snapped / 60) % 24;
     const M2 = ((snapped % 60) + 60) % 60;
     return `${datePart}T${String(H2).padStart(2, '0')}:${String(M2).padStart(2, '0')}`;
+  }
+
+  let syncLeadsInFlight = false;
+  async function syncLeadsFromImap() {
+    if (syncLeadsInFlight) return;
+    const btn = document.getElementById('btn-sync-leads');
+    syncLeadsInFlight = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('spin');
+    }
+    try {
+      const r = await apiFetch('/api/sync-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401 && j.error === 'login_required') {
+        window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+        return;
+      }
+      if (!r.ok || j.success === false) {
+        showToast(j.error || 'NOORTEC: Synchronisation fehlgeschlagen.', 'err');
+        return;
+      }
+      const n = parseInt(String(j.count ?? 0), 10) || 0;
+      showToast(`Sync erfolgreich: ${n} neue Leads importiert.`, 'ok');
+      await loadLeads();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    } finally {
+      syncLeadsInFlight = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('spin');
+      }
+    }
   }
 
   async function loadVertrieblerNames() {

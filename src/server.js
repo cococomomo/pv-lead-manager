@@ -329,6 +329,25 @@ app.get('/api/leads', async (req, res) => {
   }
 });
 
+/** NOORTEC: IMAP → SQLite, einmal pro Aufruf (nur mit Session-Login). */
+app.post('/api/sync-leads', async (req, res) => {
+  if (!sessionOn || !req.session?.user) {
+    return res.status(401).json({ error: 'login_required' });
+  }
+  try {
+    const { pollEmails } = require('./poller');
+    const { importedCount } = await pollEmails();
+    res.json({ success: true, count: importedCount });
+  } catch (err) {
+    console.error('POST /api/sync-leads:', err && err.message ? err.message : err);
+    res.status(500).json({
+      success: false,
+      count: 0,
+      error: (err && err.message) ? String(err.message) : String(err),
+    });
+  }
+});
+
 app.get('/api/leads/missing-coords/count', (req, res) => {
   try {
     res.json({ count: countLeadsMissingMapCoords() });
