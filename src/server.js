@@ -812,6 +812,11 @@ app.get(['/profile', '/profile/'], (req, res) => {
   res.sendFile(path.join(__dirname, '../public/profile.html'));
 });
 
+app.get(['/admin/users', '/admin/users/'], (req, res) => {
+  res.set('Cache-Control', 'no-store, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/admin.html'));
+});
+
 app.use(express.static(path.join(__dirname, '../public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) {
