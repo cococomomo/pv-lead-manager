@@ -15,7 +15,7 @@ async function sendLoginCredentialsEmail(toEmail, loginUrl, username, passwordPl
   const text = [
     'Hallo,',
     '',
-    'für den PV Lead Manager wurde ein Zugang für dich eingerichtet:',
+    'für das NOORTEC Vertriebs-Dashboard wurde ein Zugang für dich eingerichtet:',
     '',
     `Anmeldung: ${loginUrl}`,
     `Benutzername: ${username}`,
@@ -23,13 +23,13 @@ async function sendLoginCredentialsEmail(toEmail, loginUrl, username, passwordPl
     '',
     'Bitte das Passwort nach dem ersten Login aus Sicherheitsgründen ändern (über Admin, sobald verfügbar) bzw. geheim halten.',
     '',
-    process.env.EMAIL_SIGNATURE || `Mit freundlichen Grüßen,\n${process.env.MY_NAME || 'PV Lead Manager'}`,
+    process.env.EMAIL_SIGNATURE || `Mit freundlichen Grüßen,\n${process.env.MY_NAME || 'NOORTEC'}`,
   ].join('\n');
 
   await transporter.sendMail({
     from,
     to: addr,
-    subject: 'Zugang PV Lead Manager',
+    subject: 'Zugang NOORTEC Vertriebs-Dashboard',
     text,
   });
   console.log(`Welcome login mail sent to ${addr}`);

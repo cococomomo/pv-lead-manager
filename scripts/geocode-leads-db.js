@@ -20,7 +20,7 @@ async function main() {
     WHERE 1=1 ${archFilter}
       AND (
         latitude IS NULL OR longitude IS NULL
-        OR (latitude = 0 AND longitude = 0)
+        OR latitude = 0 OR longitude = 0
       )
     ORDER BY id ASC
   `).all();
@@ -41,6 +41,18 @@ async function main() {
     `Geocode fertig: ${rows.length} Zeilen aktualisiert (${wien}× ohne Nominatim-Treffer → Wien), ` +
       `archiv=${includeArchived ? 'einbezogen' : 'ausgeschlossen'}, db: ${process.env.SQLITE_LEADS_DB || 'data/leads.db'}`,
   );
+
+  const stillBad = db.prepare(`
+    SELECT COUNT(*) AS c
+    FROM leads
+    WHERE (archived_at IS NULL OR archived_at = '')
+      AND (
+        latitude IS NULL OR longitude IS NULL
+        OR (latitude = 0 AND longitude = 0)
+      )
+  `).get();
+  const n = stillBad && Number.isFinite(stillBad.c) ? stillBad.c : 0;
+  console.log(`${n} aktive Lead(s) ohne gültige Koordinaten`);
 }
 
 main().catch((e) => {

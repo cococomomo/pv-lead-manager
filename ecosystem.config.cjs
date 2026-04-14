@@ -16,7 +16,7 @@ module.exports = {
     },
     {
       name: 'pv-lead-poll',
-      script: './src/poller.js',
+      script: './scripts/pv-lead-poll.js',
       cwd: __dirname,
       instances: 1,
       exec_mode: 'fork',

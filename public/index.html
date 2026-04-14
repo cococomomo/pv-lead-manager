@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PV Lead Manager</title>
+  <title>NOORTEC Vertriebs-Dashboard</title>
   <!-- Favicon: Sonnen-Emoji ☀️ (SVG mit Text, damit alle Browser es zuverlässig anzeigen) -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -124,6 +124,9 @@
     .btn-mini-warn { background: #64748b; color: #fff; }
 
     .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 2.35rem); transition: opacity 0.25s ease; }
+    @media (min-width: 1100px) {
+      .layout { grid-template-columns: 1fr minmax(440px, 42vw); }
+    }
     .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
     /* Stats */
@@ -151,6 +154,10 @@
     .sidebar-tabs {
       display: flex; gap: 0; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
       background: #f8fafc;
+      position: sticky;
+      top: 0;
+      z-index: 12;
+      box-shadow: 0 1px 0 rgba(226, 232, 240, 0.95);
     }
     .sidebar-tab {
       flex: 1;
@@ -174,8 +181,45 @@
     .filter-bar { padding: 0.45rem 0.9rem; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
     .filter-bar input, .filter-bar select { width: 100%; padding: 0.35rem 0.55rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; margin-bottom: 0.35rem; }
 
+    /* Liste + Detail nebeneinander (Desktop) bzw. gestapelt (schmal) */
+    .sidebar-split {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
+    .sidebar-detail-open #lead-list { display: none !important; }
+    .sidebar-detail-open #sidebar-detail.open {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+    @media (min-width: 1024px) {
+      .sidebar-detail-open .sidebar-split {
+        flex-direction: row;
+        align-items: stretch;
+      }
+      .sidebar-detail-open #lead-list {
+        display: flex !important;
+        flex-direction: column;
+        flex: 0 0 clamp(200px, 34%, 300px);
+        max-width: 300px;
+        min-width: 200px;
+        border-right: 1px solid #e2e8f0;
+        overflow-y: auto;
+      }
+      .sidebar-detail-open #sidebar-detail.open {
+        flex: 1;
+        min-width: 0;
+        animation: none;
+      }
+    }
+
     /* Lead list */
-    #lead-list { overflow-y: auto; flex: 1; scroll-behavior: smooth; }
+    #lead-list { overflow-y: auto; flex: 1; scroll-behavior: smooth; min-height: 0; }
     .lead-item { padding: 0.6rem 0.9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.18s ease, border-left-color 0.2s ease, transform 0.15s ease; border-left: 4px solid transparent; }
     .lead-item:hover { background: #f8fafc; transform: translateX(2px); }
     .lead-item.active { background: #eef2ff; }
@@ -334,7 +378,7 @@
   <div class="header-brand">
     <span class="header-sun" aria-hidden="true">☀️</span>
     <div class="header-title-block">
-      <h1>PV Lead Manager</h1>
+      <h1>NOORTEC Vertriebs-Dashboard</h1>
       <div class="header-mini-stats" id="header-mini-stats" aria-live="polite"></div>
       <button type="button" class="header-warn-badge is-hidden" id="header-warn-missing" aria-label="Leads ohne Kartenpunkt"></button>
     </div>
@@ -348,6 +392,7 @@
       <option value="apple">Apple</option>
     </select>
     <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
+    <span style="font-size:0.74rem"><a href="/profile" style="color:#fff;text-decoration:underline">Profil</a></span>
     <span style="font-size:0.74rem"><a href="/admin.html" style="color:#fff;text-decoration:underline">Admin</a></span>
     <span style="font-size:0.74rem"><a href="#" id="logout-link" style="color:#fff;text-decoration:underline">Abmelden</a></span>
   </div>
@@ -379,19 +424,19 @@
   <!-- Map -->
   <div id="map"></div>
 
-  <!-- Sidebar -->
-  <div class="sidebar">
+  <!-- Sidebar (NOORTEC) -->
+  <div class="sidebar" id="sidebar-main" aria-label="NOORTEC Lead-Bereich">
     <div class="sidebar-header">
       <h2>Leads (<span id="lead-count">0</span>)</h2>
       <button class="refresh-btn" onclick="loadLeads()">↻</button>
     </div>
-    <div class="sidebar-tabs" role="tablist" aria-label="Lead-Listen">
+    <div class="sidebar-tabs" role="tablist" aria-label="NOORTEC Lead-Listen">
       <button type="button" class="sidebar-tab is-active" id="tab-leads-active" role="tab" aria-selected="true" aria-controls="lead-list" onclick="setSidebarListTab('active')">Aktive Leads</button>
       <button type="button" class="sidebar-tab" id="tab-leads-done" role="tab" aria-selected="false" aria-controls="lead-list" onclick="setSidebarListTab('done')">Abgearbeitet</button>
     </div>
     <div class="filter-bar">
-      <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList()" />
-      <select id="sort-leads" onchange="renderList()">
+      <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList(); renderMarkers();" />
+      <select id="sort-leads" onchange="renderList(); renderMarkers();">
         <option value="last_updated_desc">Sortierung: zuletzt bearbeitet (neu zuerst)</option>
         <option value="last_updated_asc">Sortierung: zuletzt bearbeitet (alt zuerst)</option>
         <option value="anfrage_desc">Sortierung: Anfragedatum (neu zuerst)</option>
@@ -404,14 +449,18 @@
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
     </div>
     <div id="geo-status"></div>
-    <div id="lead-list"></div>
+    <div class="sidebar-split" id="sidebar-split">
+    <div id="lead-list" role="tabpanel" aria-label="NOORTEC Lead-Liste"></div>
 
     <!-- Detail panel inside sidebar -->
     <div id="sidebar-detail">
-      <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste</div>
+      <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste · NOORTEC</div>
       <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem zweiten Lead-Blatt (Legacy) — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
       <div class="detail-body">
         <div class="detail-title" id="sd-name"></div>
+        <p style="margin:0 0 0.5rem 0">
+          <button type="button" class="btn" id="btn-copy-lead-plain" style="background:#475569;color:#fff;font-size:0.78rem;padding:0.32rem 0.65rem" onclick="copyLeadPlainNoLabels()">Lead-Daten kopieren (NOORTEC)</button>
+        </p>
         <div id="sd-map-warn" class="sd-map-warn" role="alert"></div>
         <div class="detail-info" id="sd-info"></div>
         <div class="field-group" id="sd-contact-wrap">
@@ -423,6 +472,17 @@
             <input type="text" id="sd-c-zip" placeholder="PLZ" autocomplete="postal-code" style="flex:0 0 38%" />
             <input type="text" id="sd-c-city" placeholder="Ort" autocomplete="address-level2" style="flex:1" />
           </div>
+        </div>
+        <div class="field-group" id="sd-termin-typ-wrap">
+          <label>Termintyp</label>
+          <div style="display:flex;flex-direction:column;gap:0.4rem;font-size:0.88rem">
+            <label style="font-weight:500;cursor:pointer"><input type="radio" name="sd-termin-typ" value="vor_ort" /> Vor-Ort-Termin (Adresse des Leads)</label>
+            <label style="font-weight:500;cursor:pointer"><input type="radio" name="sd-termin-typ" value="online" /> Online-Termin (Google Meet)</label>
+          </div>
+        </div>
+        <div class="field-group" id="sd-meet-wrap" style="display:none">
+          <label>Google Meet-Link (optional, z. B. nach dem Speichern des Kalendereintrags)</label>
+          <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
         </div>
         <div class="field-group">
           <label>Betreut Durch</label>
@@ -450,12 +510,14 @@
         </div>
         <div class="detail-actions" style="flex-wrap:wrap">
           <button type="button" class="btn btn-cal" id="btn-cal-appointment" onclick="openCalendarAppointment()">Termin und Kalender</button>
+          <button type="button" class="btn" id="btn-notify-customer" style="background:#7c3aed;color:#fff;border:none" onclick="notifyCustomerAppointment()">Kunden informieren</button>
           <button type="button" class="btn btn-save" id="btn-restore-archive" style="display:none;background:#15803d" onclick="restoreLeadFromArchive()">Wiederherstellen</button>
           <button type="button" class="btn btn-save" id="btn-save" onclick="saveFields()">Speichern</button>
           <span class="save-hint" id="save-hint">Gespeichert!</span>
         </div>
 
       </div>
+    </div>
     </div>
   </div>
 </div>
@@ -473,8 +535,8 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=pvl1.1"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js?v=pvl1.1"></script>
 <script>
   /** Session-Cookie + ggf. HTTP-Basic: `include` stellt sicher, dass Auth-Header zuverlässig mitgeschickt werden. */
   function apiFetch(url, opts = {}) {
@@ -490,6 +552,22 @@
     el.textContent = msg;
     requestAnimationFrame(() => el.classList.add('show'));
     _toastTimer = setTimeout(() => el.classList.remove('show'), kind === 'ok' ? 3200 : kind === 'info' ? 4000 : 5200);
+  }
+
+  /** Nach POST /status: REONIC-Erfolg kombiniert, Fehler diskret zweizeilig. */
+  function toastAfterLeadStatusSave(j, baseOkMsg) {
+    const r = j && j.reonic;
+    const base = baseOkMsg || 'Status gespeichert';
+    if (r && r.synced === true) {
+      showToast('Status aktualisiert & Lead an REONIC übertragen', 'ok');
+      return;
+    }
+    if (r && r.ok === false && r.discreetHint) {
+      showToast(base, 'ok');
+      setTimeout(() => showToast(r.discreetHint, 'info'), 480);
+      return;
+    }
+    showToast(base, 'ok');
   }
 
   // ── Map ───────────────────────────────────────────────────────────────────
@@ -542,6 +620,16 @@
     : L.layerGroup()
   ).addTo(map);
 
+  /** NOORTEC: eigene Pane über Cluster-Markern; Klicks gehen zur Karte (Detail schließen). */
+  const PVL_TEMP_FOCUS_PANE = 'pvlTempFocus';
+  if (!map.getPane(PVL_TEMP_FOCUS_PANE)) {
+    map.createPane(PVL_TEMP_FOCUS_PANE);
+    const p = map.getPane(PVL_TEMP_FOCUS_PANE);
+    p.style.zIndex = '700';
+    p.style.pointerEvents = 'none';
+  }
+  const tempFocusLayer = L.layerGroup().addTo(map);
+
   /** Kartenansicht vor Lead-Fokus (`previousViewState`) — für „Klick ins Leere → zurück“. */
   var previousViewState = null;
 
@@ -581,7 +669,18 @@
     country: 'Land', source: 'Quelle', date: 'Anfragezeitpunkt',
     info: 'Info', betreut: 'Betreut Durch', notes: 'Notizen',
     status: 'Status', nachfass: 'Nachfass bis', termin: 'Termin',
+    termintyp: 'Termintyp', meetLink: 'Meet-Link',
   };
+
+  function getSelectedTerminTyp() {
+    const c = document.querySelector('input[name="sd-termin-typ"]:checked');
+    return (c && c.value === 'online') ? 'online' : 'vor_ort';
+  }
+
+  function syncMeetLinkRow() {
+    const w = document.getElementById('sd-meet-wrap');
+    if (w) w.style.display = getSelectedTerminTyp() === 'online' ? 'block' : 'none';
+  }
 
   /** Sheet-Spalte heißt oft „Anfrage NR“ oder mit Leerzeichen — beides abdecken */
   function anfrageNr(lead) {
@@ -763,11 +862,6 @@
     return mode === 'last_updated_asc' ? ta - tb : tb - ta;
   }
 
-  /** Alle Lead-Marker mit Koordinaten (inkl. Abgearbeitet — dort dezenter Pin). */
-  function mapLeadsSubset() {
-    return allLeads.filter((l) => coordsFromDb(l));
-  }
-
   function isAbgearbeitetForMap(lead) {
     return isHiddenStatus(lead) || isCrmArchived(lead);
   }
@@ -779,6 +873,20 @@
       return true;
     }
     return isHiddenStatus(lead) || isCrmArchived(lead);
+  }
+
+  /** Gleiche Filter wie Lead-Liste (Tabs, Suche, „ohne Kartenpunkt“). */
+  function passesListFilters(lead) {
+    if (!passesSidebarTab(lead)) return false;
+    if (filterMissingMapCoordsOnly && coordsFromDb(lead)) return false;
+    const q = (document.getElementById('search-input')?.value || '').toLowerCase();
+    if (!q) return true;
+    return [lead[COL.name], lead[COL.email], lead[COL.city], lead[COL.street]].some((v) => String(v || '').toLowerCase().includes(q));
+  }
+
+  /** Nur sichtbare Listen-Leads mit gültigen DB-Koordinaten (Karte = Sidebar-Ansicht). */
+  function mapLeadsSubset() {
+    return allLeads.filter((l) => passesListFilters(l) && coordsFromDb(l));
   }
 
   function setSidebarListTab(tab) {
@@ -794,7 +902,10 @@
       d.classList.toggle('is-active', tab === 'done');
       d.setAttribute('aria-selected', tab === 'done' ? 'true' : 'false');
     }
-    renderList();
+    const detail = document.getElementById('sidebar-detail');
+    const hadOpenDetail = !!(detail && detail.classList.contains('open'));
+    if (hadOpenDetail) closeSidebarDetail();
+    if (!hadOpenDetail) renderList();
     renderMarkers();
   }
 
@@ -820,6 +931,8 @@
     const arch = rowLead && isCrmArchived(rowLead);
     const calBtn = document.getElementById('btn-cal-appointment');
     if (calBtn) calBtn.disabled = !!activeIsLegacy || !!arch;
+    const notifyBtn = document.getElementById('btn-notify-customer');
+    if (notifyBtn) notifyBtn.disabled = !!activeIsLegacy || !!arch;
   }
 
   function normalizeLocalDatetime(v) {
@@ -892,10 +1005,11 @@
   }
 
   /**
-   * Beschreibung wie `buildLeadCalendarDescription` in `src/calendar-links.js` — bei Text-Änderungen beide pflegen.
+   * Beschreibung analog `buildLeadCalendarDescription` in `src/calendar-links.js` (Server ist führend bei API-Pfad).
    * URL-Encoding übernimmt `URLSearchParams` (details/text/location).
    */
-  function buildLeadCalendarDescriptionClient(leadObj, partnerName) {
+  function buildLeadCalendarDescriptionClient(leadObj, partnerName, terminTyp, meetUrl, betreutRaw, sessionUser) {
+    const kunde = String(leadObj['Nachname + Vorname'] ?? '').trim();
     const tel = String(leadObj.Telefon ?? '').trim();
     const email = String(leadObj['E-Mail'] ?? '').trim();
     const st = String(leadObj['Straße'] ?? '').trim();
@@ -909,20 +1023,47 @@
     const info = String(leadObj.Info ?? '').trim();
     const detailsBlock = [info || null, notizen || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
     const partner = String(partnerName || '').trim() || '—';
+    const extras = (terminTyp === 'online' && String(meetUrl || '').trim())
+      ? [`Google Meet: ${String(meetUrl).trim()}`]
+      : [];
+    const bet = String(betreutRaw || '').trim();
+    const su = sessionUser || {};
+    const salesLines = [];
+    const bq = bet.toLowerCase();
+    const un = String(su.username || '').trim().toLowerCase();
+    const vn = String(su.voller_name || '').trim().toLowerCase();
+    const looksAssigned = !bet
+      || (un && (bq === un || bq.includes(un)))
+      || (vn && (bq === vn || bq.includes(vn) || vn.includes(bq)));
+    if (looksAssigned && (su.telefon || su.email_kontakt || su.voller_name)) {
+      salesLines.push(
+        '---',
+        'NOORTEC Vertrieb (Betreuung):',
+        `Name: ${String(su.voller_name || su.username || '').trim() || '—'}`,
+        `Tel: ${String(su.telefon || '').trim() || '—'}`,
+        `E-Mail: ${String(su.email_kontakt || '').trim() || '—'}`,
+      );
+    } else if (bet) {
+      salesLines.push('---', `Betreut durch: ${bet}`);
+    }
     return [
+      `👤 Kunde: ${kunde || '—'}`,
       `📞 Tel: ${tel || '—'}`,
       `✉️ E-Mail: ${email || '—'}`,
       `📍 Adresse: ${addressStr || '—'}`,
       '---',
-      '📝 Anfrage-Details:',
+      '📝 Anfrage-Details & Notizen:',
       detailsBlock,
       '',
-      `Vertriebspartner: ${partner}`,
+      ...extras,
+      ...salesLines,
+      '---',
+      `NOORTEC Kalender / Ansprechpartner: ${partner}`,
     ].join('\n');
   }
 
   /** Google Calendar „action=TEMPLATE“ — gleiches Format wie Server (`calendar-links.js`). */
-  function buildGoogleCalendarUrlClient({ title, location, description, start, end }) {
+  function buildGoogleCalendarUrlClient({ title, location, description, start, end, addEmail, withGoogleMeet }) {
     const params = new URLSearchParams({
       action: 'TEMPLATE',
       text: title,
@@ -930,7 +1071,11 @@
       location,
       dates: `${googleCalendarUtcChunk(start)}/${googleCalendarUtcChunk(end)}`,
     });
-    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    const guest = String(addEmail || '').trim();
+    if (guest) params.append('add', guest);
+    let qs = params.toString();
+    if (withGoogleMeet) qs += '&conferenceDataVersion=1';
+    return `https://calendar.google.com/calendar/render?${qs}`;
   }
 
   function resolveCalendarSlotFromForm() {
@@ -954,6 +1099,95 @@
     return { start, end };
   }
 
+  /** Nur Inhalte, keine Spaltennamen oder internen IDs (NOORTEC). */
+  function copyLeadPlainNoLabels() {
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const nameEl = document.getElementById('sd-name');
+    const name = (nameEl && nameEl.textContent.trim()) || (rowLead && rowLead[COL.name]) || '';
+    const tel = document.getElementById('sd-c-phone')?.value.trim() || '';
+    const em = document.getElementById('sd-c-email')?.value.trim() || '';
+    const st = document.getElementById('sd-c-street')?.value.trim() || '';
+    const zi = document.getElementById('sd-c-zip')?.value.trim() || '';
+    const ci = document.getElementById('sd-c-city')?.value.trim() || '';
+    const addr = [st, zi, ci].filter(Boolean).join(', ').trim();
+    const betreut = document.getElementById('sd-betreut')?.value.trim() || '';
+    const notizen = document.getElementById('sd-notizen')?.value.trim() || '';
+    const status = detailCurrentStatus || (rowLead && rowLead[COL.status]) || '';
+    const nachf = document.getElementById('sd-nachfass')?.value.trim() || '';
+    const termin = document.getElementById('sd-termin')?.value.trim() || '';
+    const meet = document.getElementById('sd-meet-link')?.value.trim() || '';
+    const lines = [name, tel, em, addr, betreut, notizen, status, nachf, termin, meet].filter((x) => x && String(x).trim());
+    const text = lines.join('\n');
+    if (!text) {
+      showToast('NOORTEC: nichts zu kopieren.', 'info');
+      return;
+    }
+    const done = () => showToast('NOORTEC: Lead-Daten kopiert.', 'ok');
+    const fail = () => showToast('Kopieren fehlgeschlagen.', 'err');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(fail);
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        done();
+      } catch (_) {
+        fail();
+      }
+    }
+  }
+
+  async function notifyCustomerAppointment() {
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (rowLead && isCrmArchived(rowLead)) {
+      showToast('Archivierter Lead: zuerst wiederherstellen.', 'info');
+      return;
+    }
+    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
+    if (!apiEmail) {
+      showToast('Keine E-Mail beim Lead.', 'err');
+      return;
+    }
+    const termin = document.getElementById('sd-termin').value;
+    if (!termin || !String(termin).trim()) {
+      showToast('Bitte Termin (Datum & Uhrzeit) setzen.', 'info');
+      return;
+    }
+    const su = window.__pvlSessionUser;
+    if (!su || su.profileComplete === false) {
+      showToast('Bitte Profil (Name, Telefon, Kontakt-E-Mail) unter „Profil“ vervollständigen.', 'info');
+      return;
+    }
+    const btn = document.getElementById('btn-notify-customer');
+    if (btn) btn.disabled = true;
+    try {
+      const r = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/notify-appointment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          terminTyp: getSelectedTerminTyp(),
+          meetUrl: (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '',
+          termin,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Versand fehlgeschlagen', 'err');
+        return;
+      }
+      showToast('Bestätigungsmail gesendet.', 'ok');
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    } finally {
+      if (btn) btn.disabled = false;
+      syncNachfassTerminVisibility();
+    }
+  }
+
   async function openCalendarAppointment() {
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     if (rowLead && isCrmArchived(rowLead)) {
@@ -963,14 +1197,17 @@
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     const { start, end } = resolveCalendarSlotFromForm();
     const pref = (document.getElementById('nav-cal-pref') && document.getElementById('nav-cal-pref').value) || userCalendarPreference || 'google';
+    const terminTyp = getSelectedTerminTyp();
+    const meetL = (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '';
 
     const customerName = (document.getElementById('sd-name') && document.getElementById('sd-name').textContent) || (rowLead && rowLead[COL.name]) || '';
     const st = (document.getElementById('sd-c-street') && document.getElementById('sd-c-street').value) || '';
     const zi = (document.getElementById('sd-c-zip') && document.getElementById('sd-c-zip').value) || '';
     const ci = (document.getElementById('sd-c-city') && document.getElementById('sd-c-city').value) || '';
     const location = [st, zi, ci].map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+    const locClient = terminTyp === 'online' ? 'Google Meet (Online-Termin)' : location;
     const partner = calendarPartnerName || 'Vertrieb';
-    const title = `PV - ${String(customerName || 'Kunde').trim() || 'Kunde'}`;
+    const title = `NOORTEC — ${String(customerName || 'Kunde').trim() || 'Kunde'}`;
 
     if (apiEmail) {
       try {
@@ -981,6 +1218,8 @@
             email: apiEmail,
             start: start.toISOString(),
             end: end.toISOString(),
+            terminTyp,
+            meetLink: meetL,
           }),
         });
         const j = await r.json().catch(() => ({}));
@@ -1016,7 +1255,9 @@
     }
 
     if (pref === 'google') {
+      const addEmail = (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value.trim()) || '';
       const leadObj = {
+        'Nachname + Vorname': String(customerName || '').trim(),
         Telefon: (document.getElementById('sd-c-phone') && document.getElementById('sd-c-phone').value) || '',
         'E-Mail': (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value) || '',
         'Straße': st,
@@ -1025,9 +1266,19 @@
         Land: (rowLead && rowLead[COL.country]) ? String(rowLead[COL.country]) : '',
         Notizen: (document.getElementById('sd-notizen') && document.getElementById('sd-notizen').value) || '',
         Info: (rowLead && rowLead[COL.info]) ? String(rowLead[COL.info]) : '',
+        'Meet-Link': meetL,
       };
-      const description = buildLeadCalendarDescriptionClient(leadObj, partner);
-      const url = buildGoogleCalendarUrlClient({ title, location, description, start, end });
+      const betRaw = (document.getElementById('sd-betreut') && document.getElementById('sd-betreut').value) || '';
+      const description = buildLeadCalendarDescriptionClient(leadObj, partner, terminTyp, meetL, betRaw, window.__pvlSessionUser || null);
+      const url = buildGoogleCalendarUrlClient({
+        title,
+        location: locClient,
+        description,
+        start,
+        end,
+        addEmail,
+        withGoogleMeet: terminTyp === 'online',
+      });
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -1108,13 +1359,14 @@
       if (lead) {
         lead[COL.status] = status;
         lead.last_updated = new Date().toISOString();
+        if (j.reonic && j.reonic.synced === true) lead.reonic_synced = 1;
       }
       syncStatusBarHighlight();
       syncNachfassTerminVisibility();
       renderStats();
       renderList();
       renderMarkers();
-      showToast('Status gespeichert', 'ok');
+      toastAfterLeadStatusSave(j, 'Status gespeichert');
       refreshHeaderStats();
     } catch (e) {
       showToast(e.message || String(e), 'err');
@@ -1286,7 +1538,8 @@
         showToast(j.error || 'Status speichern fehlgeschlagen', 'err');
         return;
       }
-      showToast(j.archived ? 'Archiviert.' : 'Status gespeichert.', 'ok');
+      if (j.archived) showToast('Archiviert.', 'ok');
+      else toastAfterLeadStatusSave(j, 'Status gespeichert.');
       await loadLeads();
       await refreshMissingModalBody();
       refreshHeaderStats();
@@ -1385,14 +1638,8 @@
 
   // ── Filter ────────────────────────────────────────────────────────────────
   function getFiltered() {
-    const q = document.getElementById('search-input').value.toLowerCase();
     const sortMode = document.getElementById('sort-leads')?.value || 'last_updated_desc';
-    let rows = allLeads.filter((l) => {
-      if (!passesSidebarTab(l)) return false;
-      if (filterMissingMapCoordsOnly && coordsFromDb(l)) return false;
-      const matchQ = !q || [l[COL.name], l[COL.email], l[COL.city], l[COL.street]].some((v) => v?.toLowerCase().includes(q));
-      return matchQ;
-    });
+    let rows = allLeads.filter(passesListFilters);
     rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
     return rows;
   }
@@ -1418,6 +1665,14 @@
     const list  = document.getElementById('lead-list');
     const leads = getFiltered();
     document.getElementById('lead-count').textContent = leads.length;
+    if (leads.length === 0 && allLeads.length > 0) {
+      list.innerHTML = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:#64748b;font-size:0.82rem;line-height:1.45">Keine Einträge in dieser Ansicht. Prüfen Sie den Tab <strong>Aktive Leads</strong> / <strong>Abgearbeitet</strong>, die Suche, <strong>Archiv anzeigen</strong> oder den Filter „Leads ohne Kartenpunkt“.</p>';
+      return;
+    }
+    if (leads.length === 0) {
+      list.innerHTML = '';
+      return;
+    }
       list.innerHTML = leads.map(l => {
       const color = getMarkerColorForLead(l);
       const lk = encodeURIComponent(leadKey(l));
@@ -1446,10 +1701,16 @@
     }).join('');
   }
 
+  function parseLeadCoord(v) {
+    if (v == null || v === '') return null;
+    const n = typeof v === 'number' ? v : parseFloat(String(v).trim().replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
   function coordsFromDb(lead) {
-    const la = parseFloat(lead.latitude);
-    const lo = parseFloat(lead.longitude);
-    if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+    const la = parseLeadCoord(lead.latitude);
+    const lo = parseLeadCoord(lead.longitude);
+    if (la == null || lo == null) return null;
     if (la === 0 || lo === 0) return null;
     return [la, lo];
   }
@@ -1467,7 +1728,11 @@
   /** Marker nur aus DB-Koordinaten — kein Browser-Geocoding (Performance / Nominatim-Fair-Use). */
   function renderMarkers() {
     const gen = ++markerRenderGen;
-    markerLayer.clearLayers();
+    try {
+      markerLayer.clearLayers();
+    } catch (e) {
+      console.warn('[NOORTEC] Karte: clearLayers fehlgeschlagen', e && e.message);
+    }
     markerMap = {};
     const subset = mapLeadsSubset();
     for (let i = 0; i < subset.length; i += 1) {
@@ -1475,8 +1740,13 @@
       if (gen !== markerRenderGen) return;
       const coords = coordsFromDb(lead);
       if (!coords) continue;
-      placeMarker(lead, coords);
+      try {
+        placeMarker(lead, coords);
+      } catch (e) {
+        console.warn('[NOORTEC] Karte: Marker übersprungen (ungültige Daten)', e && e.message);
+      }
     }
+    if (gen === markerRenderGen) refreshTempFocusAfterMarkers();
   }
 
   // ── Individual pin ────────────────────────────────────────────────────────
@@ -1532,17 +1802,71 @@
     markerMap[leadKey(lead)] = marker;
   }
 
-  /** Zoom auf Lead-Position (max. Zoomstufe). Zuerst Karten-Zustand merken für „Klick ins Leere → zurück“. */
+  /** NOORTEC: hervorgehobener Pin für abgearbeitete Leads solange Detail offen (siehe `syncTempFocusMarker`). */
+  function tempAbgearbeitetFocusIcon() {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="-4 -4 40 50">
+      <path d="M16 0C7.16 0 0 7.16 0 16c0 12.5 16 30 16 30S32 28.5 32 16C32 7.16 24.84 0 16 0z"
+            fill="#1a56db" stroke="#f59e0b" stroke-width="3" paint-order="stroke fill"/>
+      <path d="M16 0C7.16 0 0 7.16 0 16c0 12.5 16 30 16 30S32 28.5 32 16C32 7.16 24.84 0 16 0z"
+            fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.2"/>
+      <circle cx="16" cy="16" r="5.5" fill="#fff" fill-opacity="0.92"/>
+    </svg>`;
+    return L.divIcon({
+      html: svg,
+      className: 'pvl-noortec-temp-focus-marker',
+      iconSize: [40, 50],
+      iconAnchor: [20, 48],
+      popupAnchor: [0, -46],
+    });
+  }
+
+  function clearTempFocusMarker() {
+    try {
+      tempFocusLayer.clearLayers();
+    } catch (e) {
+      console.warn('[NOORTEC] Karte: temporärer Fokus-Marker konnte nicht entfernt werden', e && e.message);
+    }
+  }
+
+  /** Temporärer Marker nur für abgearbeitete Leads (Tab + Status/CRM-Archiv), mit gültigen Koordinaten. */
+  function syncTempFocusMarker(lead) {
+    clearTempFocusMarker();
+    if (!lead || !isAbgearbeitetForMap(lead)) return;
+    const coords = coordsFromDb(lead);
+    if (!coords) return;
+    try {
+      L.marker(coords, {
+        icon: tempAbgearbeitetFocusIcon(),
+        pane: PVL_TEMP_FOCUS_PANE,
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 5000,
+      }).addTo(tempFocusLayer);
+    } catch (e) {
+      console.warn('[NOORTEC] Karte: temporärer Fokus-Marker', e && e.message);
+    }
+  }
+
+  function refreshTempFocusAfterMarkers() {
+    const detail = document.getElementById('sidebar-detail');
+    if (!detail || !detail.classList.contains('open') || !activeLeadKeyStr) return;
+    const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (lead) syncTempFocusMarker(lead);
+    else clearTempFocusMarker();
+  }
+
+  /** Zoom auf Lead-Position (NOORTEC: Ziel-Zoom 18, begrenzt durch Karten-max). */
   function zoomMapToLead(lead) {
     captureLastMapStateIfNeeded();
     const marker = markerMap[leadKey(lead)];
     const target = getLeadFocusLatLng(lead);
     const rawZ = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 19;
     const zMax = Number.isFinite(rawZ) && rawZ > 0 && rawZ < 99 ? rawZ : 19;
+    const zFly = Math.min(18, zMax);
     const flyMax = () => {
       if (!target) return;
       if (marker) marker.closePopup();
-      map.flyTo(target, zMax, { duration: 0.55, animate: true });
+      map.flyTo([target.lat, target.lng], zFly, { duration: 1.2, animate: true });
     };
     if (marker && typeof markerLayer.zoomToShowLayer === 'function') {
       markerLayer.zoomToShowLayer(marker, flyMax);
@@ -1579,7 +1903,7 @@
 
   function openSidebarDetail(lead) {
     if (typeof map.closePopup === 'function') map.closePopup();
-    document.getElementById('lead-list').style.display = 'none';
+    document.getElementById('sidebar-main')?.classList.add('sidebar-detail-open');
     document.getElementById('sidebar-detail').classList.add('open');
 
     const legacy = !!lead.__pvlLegacy;
@@ -1588,12 +1912,15 @@
     document.getElementById('sd-legacy-banner').style.display = legacy ? 'block' : 'none';
     const restoreBtn = document.getElementById('btn-restore-archive');
     if (restoreBtn) restoreBtn.style.display = arch && lead[COL.email] ? 'inline-block' : 'none';
-    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city'].forEach((id) => {
+    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city', 'sd-meet-link'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = readOnly;
     });
+    document.querySelectorAll('input[name="sd-termin-typ"]').forEach((inp) => { inp.disabled = readOnly; });
     document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = readOnly; });
     document.getElementById('btn-save').disabled = readOnly;
+    const notifyOpenBtn = document.getElementById('btn-notify-customer');
+    if (notifyOpenBtn) notifyOpenBtn.disabled = readOnly;
     const chipRow = document.getElementById('sd-betreut-chips');
     if (chipRow) {
       chipRow.style.pointerEvents = readOnly ? 'none' : '';
@@ -1608,7 +1935,7 @@
     const mapWarn = document.getElementById('sd-map-warn');
     if (mapWarn) {
       if (!coordsFromDb(lead)) {
-        mapWarn.textContent = 'Achtung: Dieser Lead konnte nicht auf der Karte platziert werden. Bitte Adresse prüfen.';
+        mapWarn.textContent = 'NOORTEC: Dieser Lead konnte nicht auf der Karte platziert werden. Bitte Adresse prüfen.';
         mapWarn.classList.add('show');
       } else {
         mapWarn.textContent = '';
@@ -1627,6 +1954,7 @@
       ['Status',      arch ? 'Archivieren' : lead[COL.status]],
       ['Nachfass bis', lead[COL.nachfass]],
       ['Termin',      lead[COL.termin]],
+      ['Termintyp', (String(lead[COL.termintyp] || lead.Termintyp || '').toLowerCase() === 'online') ? 'Online' : 'Vor-Ort'],
     ].filter(([, v]) => v);
 
     let infoHtml = infoRows.map(([l, v]) => `<b>${esc(l)}:</b><span>${esc(v)}</span>`).join('');
@@ -1646,7 +1974,16 @@
     document.getElementById('sd-c-city').value = lead[COL.city] || '';
 
     initStatusBar();
-    document.getElementById('sd-betreut').value = lead[COL.betreut] || '';
+    const storedTyp = String(lead[COL.termintyp] || lead.Termintyp || 'vor_ort').toLowerCase() === 'online' ? 'online' : 'vor_ort';
+    const tr = document.querySelector(`input[name="sd-termin-typ"][value="${storedTyp}"]`);
+    if (tr) tr.checked = true;
+    const ml = document.getElementById('sd-meet-link');
+    if (ml) ml.value = String(lead[COL.meetLink] || lead['Meet-Link'] || '').trim();
+    syncMeetLinkRow();
+    const su = window.__pvlSessionUser;
+    document.getElementById('sd-betreut').value = (lead[COL.betreut] && String(lead[COL.betreut]).trim())
+      ? lead[COL.betreut]
+      : (su ? String(su.voller_name || su.username || '').trim() : '');
     document.getElementById('sd-notizen').value = lead[COL.notes]   || '';
     detailCurrentStatus = arch ? 'Archivieren' : normalizeStatusDisplay(lead[COL.status]);
     document.getElementById('sd-nachfass').value = (lead[COL.nachfass] || '').trim().slice(0, 10);
@@ -1655,25 +1992,30 @@
     syncNachfassTerminVisibility();
     renderBetreutChips();
     document.getElementById('save-hint').style.display = 'none';
+    syncTempFocusMarker(lead);
   }
 
   function closeSidebarDetail() {
+    clearTempFocusMarker();
     restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
-    document.getElementById('lead-list').style.display = 'block';
+    document.getElementById('sidebar-main')?.classList.remove('sidebar-detail-open');
     const restoreBtn = document.getElementById('btn-restore-archive');
     if (restoreBtn) restoreBtn.style.display = 'none';
     activeEmail = null;
     activeIsLegacy = false;
     activeLeadKeyStr = null;
-    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city'].forEach((id) => {
+    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city', 'sd-meet-link'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = false;
     });
+    document.querySelectorAll('input[name="sd-termin-typ"]').forEach((inp) => { inp.disabled = false; });
     document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = false; });
     document.getElementById('btn-save').disabled = false;
     const calBtn = document.getElementById('btn-cal-appointment');
     if (calBtn) calBtn.disabled = false;
+    const nbtn = document.getElementById('btn-notify-customer');
+    if (nbtn) nbtn.disabled = false;
     const chipRow = document.getElementById('sd-betreut-chips');
     if (chipRow) {
       chipRow.style.pointerEvents = '';
@@ -1723,6 +2065,8 @@
       [COL.notes, notizen],
       [COL.nachfass, nachfass],
       [COL.termin, termin],
+      [COL.termintyp, getSelectedTerminTyp()],
+      [COL.meetLink, (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value) ? document.getElementById('sd-meet-link').value.trim() : ''],
     ];
 
     const btn = document.getElementById('btn-save');
@@ -1766,6 +2110,10 @@
         lead[COL.notes] = notizen;
         lead[COL.nachfass] = nachfass;
         lead[COL.termin] = termin;
+        lead[COL.termintyp] = getSelectedTerminTyp();
+        lead[COL.meetLink] = (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '';
+        lead.Termintyp = lead[COL.termintyp];
+        lead['Meet-Link'] = lead[COL.meetLink];
         lead.last_updated = new Date().toISOString();
         activeEmail = lead[COL.email] || activeEmail;
         activeLeadKeyStr = leadKey(lead);
@@ -1821,16 +2169,23 @@
       const el = document.getElementById('session-user');
       if (!el) return;
       if (j.user) {
-        calendarPartnerName = String(j.user.username || '').trim() || '';
+        window.__pvlSessionUser = j.user;
+        calendarPartnerName = String(j.user.voller_name || j.user.username || '').trim() || '';
         el.textContent = j.user.username + (j.user.role === 'admin' ? ' · Admin' : '');
         userCalendarPreference = j.user.calendarPreference || 'google';
         const nav = document.getElementById('nav-cal-pref');
         if (nav) nav.value = userCalendarPreference;
+        if (j.user.profileComplete === false && !/\/profile(\.html)?\/?$/i.test(location.pathname)) {
+          window.location.replace(`/profile?next=${encodeURIComponent(`${location.pathname}${location.search || ''}` || '/')}`);
+          return;
+        }
       } else {
+        window.__pvlSessionUser = null;
         calendarPartnerName = '';
         el.textContent = '';
       }
     } catch {
+      window.__pvlSessionUser = null;
       document.getElementById('session-user').textContent = '';
     }
   }
@@ -1873,9 +2228,16 @@
   });
 
   // ── Boot ──────────────────────────────────────────────────────────────────
-  initStatusBar();
-  refreshSessionUi();
-  loadVertrieblerNames().then(() => loadLeads().then(() => refreshSessionUi()));
+  document.querySelectorAll('input[name="sd-termin-typ"]').forEach((el) => {
+    el.addEventListener('change', syncMeetLinkRow);
+  });
+  (async function boot() {
+    initStatusBar();
+    await refreshSessionUi();
+    await loadVertrieblerNames();
+    await loadLeads();
+    await refreshSessionUi();
+  })();
   setInterval(loadLeads, 5 * 60 * 1000);
 </script>
 </body>

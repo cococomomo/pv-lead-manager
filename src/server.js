@@ -38,6 +38,10 @@ const {
   updateCalendarPreference,
 } = require('./users');
 const { sendLoginCredentialsEmail } = require('./mail-welcome');
+const { sendAppointmentConfirmationEmail, buildLeadAddressLine, formatTerminDe, looksLikeEmail } = require('./mail-appointment-confirm');
+const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-transport');
+const { resolveBetreuerContact } = require('./sales-contact');
+const { upsertProfile } = require('./user-profile');
 const { getDashboardStats } = require('./stats');
 
 const app = express();
@@ -137,7 +141,7 @@ function basicAuthMiddleware(req, res, next) {
   if (!basicAuthConfigured()) return next();
   const creds = parseBasicAuth(req.headers.authorization);
   if (!verifyBasicCreds(creds)) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="PV Lead Manager"');
+    res.setHeader('WWW-Authenticate', 'Basic realm="NOORTEC Vertriebs-Dashboard"');
     return res.status(401).send('Authentifizierung erforderlich');
   }
   next();
@@ -170,6 +174,16 @@ function requireWebSession(req, res, next) {
 app.use(basicAuthMiddleware);
 app.use(express.json({ limit: '128kb' }));
 
+app.get('/profil.html', (req, res) => {
+  res.redirect(302, req.originalUrl.replace(/\/profil\.html/i, '/profile'));
+});
+
+app.get('/profile.html', (req, res) => {
+  const i = req.originalUrl.indexOf('?');
+  const q = i >= 0 ? req.originalUrl.slice(i) : '';
+  res.redirect(302, `/profile${q}`);
+});
+
 // ── Auth (öffentlich wenn Session aktiv) ───────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   if (!sessionOn) {
@@ -179,14 +193,20 @@ app.post('/api/auth/login', async (req, res) => {
   const user = await verifyLogin(username, password);
   if (!user) return res.status(401).json({ error: 'invalid_credentials' });
   req.session.user = { username: user.username, role: user.role };
-  res.json({
-    ok: true,
-    user: {
-      username: user.username,
-      role: user.role,
-      calendarPreference: user.calendarPreference || 'google',
-    },
-  });
+  try {
+    const full = await getUserPublic(user.username);
+    res.json({ ok: true, user: full || { username: user.username, role: user.role, calendarPreference: user.calendarPreference || 'google', profileComplete: false } });
+  } catch (e) {
+    res.json({
+      ok: true,
+      user: {
+        username: user.username,
+        role: user.role,
+        calendarPreference: user.calendarPreference || 'google',
+        profileComplete: false,
+      },
+    });
+  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -223,6 +243,46 @@ app.patch('/api/auth/profile', async (req, res) => {
     res.json({ ok: true, user });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+app.patch('/api/auth/contact-profile', async (req, res) => {
+  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  const b = req.body || {};
+  try {
+    upsertProfile(req.session.user.username, {
+      voller_name: b.voller_name,
+      telefon: b.telefon,
+      email_kontakt: b.email_kontakt,
+      smtp_host: b.smtp_host,
+      smtp_port: b.smtp_port,
+      smtp_user: b.smtp_user,
+      smtp_pass: b.smtp_pass,
+    });
+    const user = await getUserPublic(req.session.user.username);
+    res.json({ ok: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/smtp-test', async (req, res) => {
+  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  const body = req.body || {};
+  try {
+    if (body.useSaved) {
+      await verifySavedUserSmtp(req.session.user.username);
+    } else {
+      await verifySmtpInline({
+        host: body.smtp_host,
+        port: body.smtp_port || 587,
+        user: body.smtp_user,
+        pass: body.smtp_pass,
+      });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message || String(err) });
   }
 });
 
@@ -358,8 +418,8 @@ app.patch('/api/leads/:email/field', async (req, res) => {
   const { column, value } = req.body;
   if (!column) return res.status(400).json({ error: 'column is required' });
   try {
-    await updateLeadField(decodeURIComponent(req.params.email), column, value ?? '');
-    res.json({ ok: true });
+    const extra = await updateLeadField(decodeURIComponent(req.params.email), column, value ?? '');
+    res.json({ ok: true, ...(extra && typeof extra === 'object' ? extra : {}) });
   } catch (err) {
     console.error('PATCH field error:', err.message);
     res.status(500).json({ error: err.message });
@@ -373,8 +433,8 @@ app.post('/api/leads/update', async (req, res) => {
     return res.status(400).json({ error: 'email und updates (Objekt) erforderlich' });
   }
   try {
-    await updateLeadFieldsBulk(String(email).trim(), updates);
-    res.json({ ok: true });
+    const extra = await updateLeadFieldsBulk(String(email).trim(), updates);
+    res.json({ ok: true, ...(extra && typeof extra === 'object' ? extra : {}) });
   } catch (err) {
     console.error('POST /api/leads/update error:', err.message);
     res.status(400).json({ error: err.message || String(err) });
@@ -405,7 +465,7 @@ app.post('/api/leads/:email/regeocode', async (req, res) => {
 
 app.post('/api/calendar/build', async (req, res) => {
   try {
-    const { email, start, end } = req.body || {};
+    const { email, start, end, terminTyp, meetLink } = req.body || {};
     if (!email || !start) return res.status(400).json({ error: 'email und start erforderlich' });
     const lead = await getLeadByEmail(String(email));
     if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
@@ -414,8 +474,22 @@ app.post('/api/calendar/build', async (req, res) => {
     if (Number.isNaN(startD.getTime()) || Number.isNaN(endD.getTime())) {
       return res.status(400).json({ error: 'Ungültiges Datum' });
     }
-    const partnerName = req.session?.user?.username || process.env.MY_NAME || 'Vertrieb';
-    const payload = generateCalendarLink(lead, partnerName, startD, endD);
+    let partnerName = process.env.MY_NAME || 'Vertrieb';
+    if (req.session?.user?.username) {
+      try {
+        const pub = await getUserPublic(req.session.user.username);
+        if (pub) {
+          partnerName = String(pub.voller_name || '').trim() || pub.username || partnerName;
+        }
+      } catch (_) { /* ignore */ }
+    }
+    const leadForCal = { ...lead };
+    if (meetLink != null) leadForCal['Meet-Link'] = String(meetLink || '').trim();
+    const assignedContact = await resolveBetreuerContact(lead['Betreut Durch'] || lead.betreuer || '');
+    const payload = generateCalendarLink(leadForCal, partnerName, startD, endD, {
+      terminTyp,
+      assignedContact,
+    });
     res.json({
       googleUrl: payload.googleUrl,
       outlookUrl: payload.outlookUrl,
@@ -425,6 +499,49 @@ app.post('/api/calendar/build', async (req, res) => {
   } catch (err) {
     console.error('POST /api/calendar/build error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/leads/:email/notify-appointment', async (req, res) => {
+  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  try {
+    const pub = await getUserPublic(req.session.user.username);
+    if (!pub || !pub.profileComplete) {
+      return res.status(400).json({ error: 'Profil unvollständig: Name, Telefon und Kontakt-E-Mail unter /profile speichern.' });
+    }
+    const lead = await getLeadByEmail(decodeURIComponent(req.params.email));
+    if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
+    const to = String(lead['E-Mail'] || '').trim();
+    if (!looksLikeEmail(to)) return res.status(400).json({ error: 'Lead ohne gültige E-Mail' });
+    if (!canSendMail(req.session.user.username)) {
+      return res.status(503).json({ error: 'Kein Versand möglich: persönliches SMTP im Profil oder zentraler SMTP in der .env (vertrieb@noortec.at) hinterlegen.' });
+    }
+    const body = req.body || {};
+    const terminRaw = String(body.termin != null ? body.termin : lead.Termin || '').trim();
+    if (!terminRaw) return res.status(400).json({ error: 'Bitte zuerst Termin (Datum & Uhrzeit) setzen.' });
+    const terminTypRaw = body.terminTyp != null ? body.terminTyp : (lead.Termintyp || lead.termin_typ || 'vor_ort');
+    const terminTyp = String(terminTypRaw).toLowerCase() === 'online' ? 'online' : 'vor_ort';
+    const meetUrl = String(body.meetUrl != null ? body.meetUrl : (lead['Meet-Link'] || '')).trim();
+    const { dateStr, timeStr } = formatTerminDe(terminRaw);
+    const kunde = String(lead['Nachname + Vorname'] || '').trim() || to.split('@')[0];
+    const addressLine = buildLeadAddressLine(lead);
+    await sendAppointmentConfirmationEmail({
+      to,
+      customerName: kunde,
+      terminTyp,
+      dateStr,
+      timeStr,
+      userName: String(pub.voller_name || pub.username || '').trim(),
+      userTel: String(pub.telefon || '').trim(),
+      userEmail: String(pub.email_kontakt || '').trim(),
+      addressLine,
+      meetUrl: terminTyp === 'online' ? meetUrl : '',
+      smtpUsername: req.session.user.username,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST notify-appointment:', err.message);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -529,8 +646,10 @@ app.post('/api/auth/bootstrap-admin', async (req, res) => {
   }
   try {
     await createUser({ username, password, email, role: 'admin' });
-    req.session.user = { username: String(username).trim(), role: 'admin' };
-    res.json({ ok: true });
+    const name = String(username).trim();
+    req.session.user = { username: name, role: 'admin' };
+    const full = await getUserPublic(name);
+    res.json({ ok: true, user: full });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -554,12 +673,24 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, '../public')));
+app.get(['/profile', '/profile/'], (req, res) => {
+  res.set('Cache-Control', 'no-store, max-age=0');
+  res.sendFile(path.join(__dirname, '../public/profile.html'));
+});
+
+app.use(express.static(path.join(__dirname, '../public'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+    }
+  },
+}));
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).type('text/plain').send('Not Found');
   }
+  res.set('Cache-Control', 'no-store, max-age=0');
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
@@ -570,9 +701,9 @@ app.listen(PORT, () => {
   const pub = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
   const local = `http://127.0.0.1:${PORT}`;
   if (pub) {
-    console.log(`PV Lead Manager listening ${local}${parts.length ? ` (${parts.join(', ')})` : ''} · live ${pub}`);
+    console.log(`NOORTEC Vertriebs-Dashboard listening ${local}${parts.length ? ` (${parts.join(', ')})` : ''} · live ${pub}`);
   } else {
-    console.log(`PV Lead Manager ${local}${parts.length ? ` (${parts.join(', ')})` : ''} — set APP_BASE_URL=https://pvl.lifeco.at for production links`);
+    console.log(`NOORTEC Vertriebs-Dashboard ${local}${parts.length ? ` (${parts.join(', ')})` : ''} — set APP_BASE_URL=https://pvl.lifeco.at for production links`);
   }
 });
 

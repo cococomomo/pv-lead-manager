@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "poll": "node src/poller.js",
+    "poll": "node scripts/pv-lead-poll.js",
     "hash-basic-password": "node scripts/hash-basic-password.js",
     "create-admin": "node scripts/create-admin.js",
     "reset-password": "node scripts/reset-password.js",

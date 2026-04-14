@@ -3,6 +3,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { getProfile, isProfileComplete } = require('./user-profile');
 
 const USERS_PATH = path.join(__dirname, '../data/users.json');
 
@@ -80,10 +81,22 @@ async function createUser({ username, password, email, role = 'sales' }) {
 async function getUserPublic(username) {
   const u = await findUser(username);
   if (!u) return null;
+  const prof = getProfile(u.username) || {};
+  const voller_name = String(prof.voller_name ?? '').trim();
+  const telefon = String(prof.telefon ?? '').trim();
+  const email_kontakt = String(prof.email_kontakt ?? '').trim();
   return {
     username: u.username,
     role: u.role === 'admin' ? 'admin' : 'sales',
     calendarPreference: normalizeCalendarPreference(u.calendarPreference),
+    voller_name,
+    telefon,
+    email_kontakt,
+    smtp_host: String(prof.smtp_host ?? '').trim(),
+    smtp_port: String(prof.smtp_port ?? '587').trim() || '587',
+    smtp_user: String(prof.smtp_user ?? '').trim(),
+    smtp_pass_configured: !!prof.smtp_pass_configured,
+    profileComplete: isProfileComplete(u.username),
   };
 }
 
@@ -129,6 +142,7 @@ async function resetUserPassword(username, newPassword) {
 }
 
 module.exports = {
+  readUsers,
   verifyLogin,
   listUsersSafe,
   createUser,

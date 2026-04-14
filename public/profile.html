@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NOORTEC — Profil</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; margin: 0; padding: 1.25rem; }
+    .wrap { max-width: 480px; margin: 0 auto; }
+    h1 { font-size: 1.2rem; margin: 0 0 0.35rem; color: #fff; }
+    p.sub { font-size: 0.82rem; color: #94a3b8; margin: 0 0 1.25rem; }
+    h2 { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; color: #cbd5e1; }
+    label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.25rem; }
+    input { width: 100%; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #f8fafc; font-size: 0.95rem; margin-bottom: 0.85rem; }
+    button { padding: 0.55rem 0.85rem; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; font-size: 0.9rem; cursor: pointer; }
+    button.secondary { background: #475569; }
+    button:hover:not(:disabled) { filter: brightness(1.08); }
+    button:disabled { opacity: 0.65; cursor: wait; }
+    .row-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .err { color: #fca5a5; font-size: 0.82rem; margin-top: 0.5rem; min-height: 1.2em; }
+    .ok { color: #86efac; font-size: 0.82rem; margin-top: 0.5rem; }
+    a { color: #93c5fd; }
+    .hint { font-size: 0.72rem; color: #64748b; margin: -0.5rem 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>NOORTEC — Kontakt &amp; SMTP</h1>
+    <p class="sub">Name, Telefon und E-Mail sind Pflicht. Persönliches SMTP ist optional — sonst wird der zentrale Versand (z. B. vertrieb@noortec.at) aus der Server-<code>.env</code> genutzt.</p>
+    <form id="f">
+      <h2>Kontakt</h2>
+      <label for="voller_name">Voller Name</label>
+      <input id="voller_name" name="voller_name" autocomplete="name" required />
+      <label for="telefon">Telefon</label>
+      <input id="telefon" name="telefon" type="tel" autocomplete="tel" required />
+      <label for="email_kontakt">E-Mail (Kontakt / Absender bei persönlichem SMTP)</label>
+      <input id="email_kontakt" name="email_kontakt" type="email" autocomplete="email" required />
+
+      <h2>Persönliches SMTP (optional)</h2>
+      <p class="hint">SMTP-Passwort wird verschlüsselt gespeichert (PVL_ENCRYPTION_KEY oder SESSION_SECRET). Leer lassen = unverändert; nur Leerzeichen im Passwortfeld löschen = Passwort entfernen.</p>
+      <label for="smtp_host">SMTP-Host</label>
+      <input id="smtp_host" name="smtp_host" autocomplete="off" placeholder="z. B. mail.noortec.at" />
+      <label for="smtp_port">SMTP-Port</label>
+      <input id="smtp_port" name="smtp_port" type="number" min="1" max="65535" placeholder="587" />
+      <label for="smtp_user">SMTP-Benutzer</label>
+      <input id="smtp_user" name="smtp_user" autocomplete="username" />
+      <label for="smtp_pass">SMTP-Passwort</label>
+      <input id="smtp_pass" name="smtp_pass" type="password" autocomplete="new-password" placeholder="nur bei Änderung ausfüllen" />
+
+      <div class="row-actions">
+        <button type="button" class="secondary" id="btn-test-inline">SMTP testen (Formular)</button>
+        <button type="button" class="secondary" id="btn-test-saved">SMTP testen (gespeichert)</button>
+        <button type="button" class="secondary" id="btn-clear-smtp">Persönliches SMTP entfernen</button>
+      </div>
+
+      <button type="submit" id="btn">Speichern</button>
+    </form>
+    <div class="err" id="err"></div>
+    <div class="ok" id="ok"></div>
+    <p style="margin-top:1.25rem;font-size:0.82rem"><a href="/">Zurück zum NOORTEC Vertriebs-Dashboard</a></p>
+  </div>
+  <script>
+    const cred = { credentials: 'include' };
+
+    async function load() {
+      document.getElementById('err').textContent = '';
+      const r = await fetch('/api/auth/me', cred);
+      const j = await r.json();
+      if (!j.user) {
+        location.replace('/login.html?next=' + encodeURIComponent('/profile'));
+        return;
+      }
+      document.getElementById('voller_name').value = j.user.voller_name || '';
+      document.getElementById('telefon').value = j.user.telefon || '';
+      document.getElementById('email_kontakt').value = j.user.email_kontakt || '';
+      document.getElementById('smtp_host').value = j.user.smtp_host || '';
+      document.getElementById('smtp_port').value = j.user.smtp_port || '587';
+      document.getElementById('smtp_user').value = j.user.smtp_user || '';
+      document.getElementById('smtp_pass').value = '';
+        document.getElementById('smtp_pass').placeholder = j.user.smtp_pass_configured
+        ? '•••• hinterlegt — leer lassen oder neu eingeben'
+        : 'nur bei Änderung ausfüllen';
+      window._hadSmtpPass = !!j.user.smtp_pass_configured;
+    }
+    load();
+
+    async function postJson(url, body) {
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body || {}),
+      });
+    }
+
+    document.getElementById('btn-test-inline').onclick = async () => {
+      document.getElementById('err').textContent = '';
+      document.getElementById('ok').textContent = '';
+      const btn = document.getElementById('btn-test-inline');
+      btn.disabled = true;
+      try {
+        const r = await postJson('/api/auth/smtp-test', {
+          smtp_host: document.getElementById('smtp_host').value.trim(),
+          smtp_port: document.getElementById('smtp_port').value.trim() || 587,
+          smtp_user: document.getElementById('smtp_user').value.trim(),
+          smtp_pass: document.getElementById('smtp_pass').value,
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          document.getElementById('err').textContent = j.error || r.statusText;
+          return;
+        }
+        document.getElementById('ok').textContent = 'SMTP-Verbindung OK (Formularwerte).';
+      } catch (e) {
+        document.getElementById('err').textContent = e.message || String(e);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('btn-clear-smtp').onclick = async () => {
+      if (!confirm('Persönliches SMTP wirklich entfernen? (Danach gilt der zentrale Versand aus der .env)')) return;
+      document.getElementById('smtp_host').value = '';
+      document.getElementById('smtp_port').value = '587';
+      document.getElementById('smtp_user').value = '';
+      document.getElementById('smtp_pass').value = '';
+      document.getElementById('f').dispatchEvent(new Event('submit', { cancelable: true }));
+    };
+
+    document.getElementById('btn-test-saved').onclick = async () => {
+      document.getElementById('err').textContent = '';
+      document.getElementById('ok').textContent = '';
+      const btn = document.getElementById('btn-test-saved');
+      btn.disabled = true;
+      try {
+        const r = await postJson('/api/auth/smtp-test', { useSaved: true });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          document.getElementById('err').textContent = j.error || r.statusText;
+          return;
+        }
+        document.getElementById('ok').textContent = 'SMTP-Verbindung OK (gespeicherte Zugangsdaten).';
+      } catch (e) {
+        document.getElementById('err').textContent = e.message || String(e);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('f').onsubmit = async (e) => {
+      e.preventDefault();
+      document.getElementById('err').textContent = '';
+      document.getElementById('ok').textContent = '';
+      const btn = document.getElementById('btn');
+      btn.disabled = true;
+      try {
+        const passEl = document.getElementById('smtp_pass');
+        const body = {
+          voller_name: document.getElementById('voller_name').value.trim(),
+          telefon: document.getElementById('telefon').value.trim(),
+          email_kontakt: document.getElementById('email_kontakt').value.trim(),
+          smtp_host: document.getElementById('smtp_host').value.trim(),
+          smtp_port: String(document.getElementById('smtp_port').value || '587').trim(),
+          smtp_user: document.getElementById('smtp_user').value.trim(),
+        };
+        if (passEl.value.length > 0) body.smtp_pass = passEl.value;
+        else if (!document.getElementById('smtp_host').value.trim() && !document.getElementById('smtp_user').value.trim()) {
+          body.smtp_pass = '';
+        }
+
+        const r = await fetch('/api/auth/contact-profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          document.getElementById('err').textContent = j.error || r.statusText;
+          return;
+        }
+        passEl.value = '';
+        document.getElementById('ok').textContent = 'Gespeichert.';
+        if (j.user && j.user.profileComplete) {
+          const q = new URLSearchParams(location.search);
+          const next = q.get('next');
+          if (next && next.startsWith('/')) {
+            location.replace(next);
+          }
+        }
+        load();
+      } catch (err) {
+        document.getElementById('err').textContent = err.message || 'Fehler';
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

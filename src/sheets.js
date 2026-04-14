@@ -3,6 +3,7 @@
 require('./load-env');
 const { getDb, getDbPath } = require('./database');
 const { geocodeAddressCascade } = require('./geocode-address-cascade');
+const { syncReonicAfterTerminVereinbart } = require('./reonic-sync');
 
 function trimCell(v) {
   return String(v ?? '').trim().replace(/\u00a0/g, ' ');
@@ -37,6 +38,8 @@ function applyCanonicalFieldAliases(lead) {
   set('Notizen', out['Notizen'] || firstMatch((t) => t === 'notizen' || t.includes('notiz')));
   set('Nachfass bis', out['Nachfass bis'] || firstMatch((t) => t.includes('nachfass')));
   set('Termin', out['Termin'] || firstMatch((t) => t === 'termin'));
+  set('Termintyp', out['Termintyp'] || firstMatch((t) => t === 'termintyp' || t === 'termin_typ' || t.includes('termintyp')));
+  set('Meet-Link', out['Meet-Link'] || firstMatch((t) => t === 'meet_link' || t === 'meetlink' || t.includes('meet-link') || (t.includes('meet') && t.includes('link'))));
   const nr = out['Anfrage NR'] || out['Anfrage NR '] || firstMatch((t) => t === 'anfrage') || firstMatch((t) => t.replace(/\s/g, '').includes('anfrag') && t.includes('nr'));
   if (nr) {
     if (!String(out['Anfrage NR'] || '').trim()) out['Anfrage NR'] = String(nr).trim();
@@ -94,6 +97,11 @@ function dbRowToApiLead(row) {
     Status: row.status ?? '',
     'Nachfass bis': row.nachfass_bis ?? '',
     Termin: row.termin ?? '',
+    termin_typ: row.termin_typ ?? 'vor_ort',
+    meet_link: row.meet_link ?? '',
+    Termintyp: row.termin_typ === 'online' ? 'online' : 'vor_ort',
+    'Meet-Link': row.meet_link ?? '',
+    reonic_synced: row.reonic_synced ? 1 : 0,
     last_updated: row.last_updated || '',
     created_at: row.created_at || '',
     archived_at: row.archived_at == null ? '' : String(row.archived_at),
@@ -106,6 +114,12 @@ function dbRowToApiLead(row) {
   return out;
 }
 
+function normalizeTerminTypDbValue(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'online' || s === 'onlinetermin' || s === 'google meet') return 'online';
+  return 'vor_ort';
+}
+
 const PATCH_COLUMN_TO_SQL = {
   'betreut durch': 'betreuer',
   betreuer: 'betreuer',
@@ -114,6 +128,11 @@ const PATCH_COLUMN_TO_SQL = {
   'nachfass bis': 'nachfass_bis',
   nachfass: 'nachfass_bis',
   termin: 'termin',
+  termintyp: 'termin_typ',
+  termin_typ: 'termin_typ',
+  'meet-link': 'meet_link',
+  'meet link': 'meet_link',
+  meet_link: 'meet_link',
   'e-mail': 'email',
   email: 'email',
   telefon: 'telefon',
@@ -126,8 +145,11 @@ const PATCH_COLUMN_TO_SQL = {
 function resolvePatchColumn(columnHeader) {
   const key = trimCell(columnHeader).toLowerCase().replace(/\s+/g, ' ');
   if (PATCH_COLUMN_TO_SQL[key]) return PATCH_COLUMN_TO_SQL[key];
-  for (const [k, col] of Object.entries(PATCH_COLUMN_TO_SQL)) {
-    if (key === k || key.includes(k)) return col;
+  const compact = key.replace(/\s+/g, '');
+  if (PATCH_COLUMN_TO_SQL[compact]) return PATCH_COLUMN_TO_SQL[compact];
+  const sorted = Object.entries(PATCH_COLUMN_TO_SQL).sort((a, b) => b[0].length - a[0].length);
+  for (const [k, col] of sorted) {
+    if (key.includes(k)) return col;
   }
   return null;
 }
@@ -233,6 +255,18 @@ async function leadExists(email) {
   return !!row;
 }
 
+/** True wenn diese E-Mail irgendwo in `leads` vorkommt (inkl. CRM-Archiv). Für IMAP-Dedupe / Aufräumen. */
+function leadEmailExistsInDatabase(email) {
+  if (!email) return false;
+  const db = getDb();
+  const e = String(email).trim().toLowerCase();
+  if (!e) return false;
+  const row = db.prepare(`
+    SELECT 1 AS x FROM leads WHERE lower(trim(email)) = ? LIMIT 1
+  `).get(e);
+  return !!row;
+}
+
 /**
  * @param {object} lead — Felder wie vom LLM-Extractor (name, phone, email, …)
  */
@@ -313,7 +347,7 @@ async function appendLead(lead) {
 
 async function updateLeadField(email, columnHeader, value) {
   const col = resolvePatchColumn(columnHeader);
-  if (!col) return;
+  if (!col) return {};
   const db = getDb();
   const e = String(email || '').trim().toLowerCase();
   const row = db.prepare(`
@@ -322,13 +356,21 @@ async function updateLeadField(email, columnHeader, value) {
     ORDER BY id DESC
     LIMIT 1
   `).get(e);
-  if (!row) return;
+  if (!row) return {};
   if (col === 'email') {
     const em = String(value ?? '').trim();
     db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(em, em, row.id);
-    return;
+    return {};
   }
-  db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(String(value ?? ''), row.id);
+  let v = String(value ?? '');
+  if (col === 'termin_typ') v = normalizeTerminTypDbValue(v);
+  if (col === 'meet_link') v = String(value ?? '').trim();
+  db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(v, row.id);
+  let reonic = null;
+  if (col === 'status' && String(v).trim() === 'Termin vereinbart') {
+    reonic = await syncReonicAfterTerminVereinbart(row.id);
+  }
+  return { reonic };
 }
 
 /**
@@ -352,6 +394,7 @@ async function updateLeadFieldsBulk(currentEmail, updates) {
   const allowedCols = new Set(Object.values(PATCH_COLUMN_TO_SQL));
   const pairs = [];
   let newEmail = null;
+  let bulkStatusVal = null;
   for (const [header, rawVal] of Object.entries(updates)) {
     const col = resolvePatchColumn(header);
     if (!col || !allowedCols.has(col)) continue;
@@ -359,14 +402,23 @@ async function updateLeadFieldsBulk(currentEmail, updates) {
       newEmail = String(rawVal ?? '').trim();
       continue;
     }
+    if (col === 'status') bulkStatusVal = String(rawVal ?? '');
     pairs.push([col, String(rawVal ?? '')]);
   }
   for (const [col, val] of pairs) {
-    db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(val, id);
+    let v = val;
+    if (col === 'termin_typ') v = normalizeTerminTypDbValue(v);
+    if (col === 'meet_link') v = String(v ?? '').trim();
+    db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(v, id);
   }
   if (newEmail !== null) {
     db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(newEmail, newEmail, id);
   }
+  let reonic = null;
+  if (String(bulkStatusVal || '').trim() === 'Termin vereinbart') {
+    reonic = await syncReonicAfterTerminVereinbart(id);
+  }
+  return { reonic };
 }
 
 const STATUS_VALUES = new Set([
@@ -393,7 +445,11 @@ async function setLeadStatus(email, status) {
   `).get(e);
   if (!row) return { ok: false };
   db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, row.id);
-  return { ok: true };
+  let reonic = null;
+  if (s === 'Termin vereinbart') {
+    reonic = await syncReonicAfterTerminVereinbart(row.id);
+  }
+  return { ok: true, reonic };
 }
 
 async function archiveLead(email) {
@@ -563,7 +619,11 @@ async function setLeadStatusByDbId(id, status) {
     return { archived: true };
   }
   db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, idNum);
-  return { ok: true };
+  let reonic = null;
+  if (s === 'Termin vereinbart') {
+    reonic = await syncReonicAfterTerminVereinbart(idNum);
+  }
+  return { ok: true, reonic };
 }
 
 function csvEscapeCell(v) {
@@ -578,6 +638,7 @@ function buildLeadsExportCsv() {
   const rows = db.prepare(`
     SELECT id, anfrage, namen, telefon, email, strasse, plz, ort, land, quelle,
       anfragezeitpunkt, info, betreuer, notizen, col_14, status, nachfass_bis, termin,
+      termin_typ, meet_link, reonic_synced,
       archived_at, created_at, last_updated, latitude, longitude
     FROM leads
     ORDER BY id ASC
@@ -585,6 +646,7 @@ function buildLeadsExportCsv() {
   const headers = [
     'id', 'anfrage', 'namen', 'telefon', 'email', 'strasse', 'plz', 'ort', 'land', 'quelle',
     'anfragezeitpunkt', 'info', 'betreuer', 'notizen', 'col_14', 'status', 'nachfass_bis', 'termin',
+    'termin_typ', 'meet_link', 'reonic_synced',
     'archived_at', 'created_at', 'last_updated', 'latitude', 'longitude',
   ];
   const lines = [headers.join(',')];
@@ -598,6 +660,7 @@ module.exports = {
   appendLead,
   getAllLeads,
   leadExists,
+  leadEmailExistsInDatabase,
   updateLeadField,
   updateLeadFieldsBulk,
   archiveLead,

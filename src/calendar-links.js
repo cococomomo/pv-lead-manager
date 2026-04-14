@@ -5,7 +5,8 @@
  * @param {object} lead — API-Lead (deutsche + interne Feldnamen)
  * @param {string} partnerName
  */
-function buildLeadCalendarDescription(lead, partnerName) {
+function buildLeadCalendarDescription(lead, partnerName, extraLines = [], assignedContact = null) {
+  const kunde = String(lead['Nachname + Vorname'] ?? lead.namen ?? '').trim();
   const tel = String(lead.Telefon ?? lead.telefon ?? '').trim();
   const email = String(lead['E-Mail'] ?? lead.email ?? '').trim();
   const st = String(lead['Straße'] ?? lead.strasse ?? '').trim();
@@ -19,15 +20,33 @@ function buildLeadCalendarDescription(lead, partnerName) {
   const info = String(lead.Info ?? lead.info ?? '').trim();
   const detailsBlock = [info || null, notizen || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
   const partner = String(partnerName || '').trim() || '—';
+  const extras = Array.isArray(extraLines) ? extraLines.filter(Boolean) : [];
+  const betreuer = String(lead['Betreut Durch'] ?? lead.betreuer ?? '').trim();
+  const salesLines = [];
+  if (assignedContact && (assignedContact.tel || assignedContact.email)) {
+    salesLines.push(
+      '---',
+      'NOORTEC Vertrieb (Betreuung):',
+      `Name: ${assignedContact.name || '—'}`,
+      `Tel: ${assignedContact.tel || '—'}`,
+      `E-Mail: ${assignedContact.email || '—'}`,
+    );
+  } else if (betreuer) {
+    salesLines.push('---', `Betreut durch: ${betreuer}`);
+  }
   return [
+    `👤 Kunde: ${kunde || '—'}`,
     `📞 Tel: ${tel || '—'}`,
     `✉️ E-Mail: ${email || '—'}`,
     `📍 Adresse: ${addressStr || '—'}`,
     '---',
-    '📝 Anfrage-Details:',
+    '📝 Anfrage-Details & Notizen:',
     detailsBlock,
     '',
-    `Vertriebspartner: ${partner}`,
+    ...extras,
+    ...salesLines,
+    '---',
+    `NOORTEC Kalender / Ansprechpartner: ${partner}`,
   ].join('\n');
 }
 
@@ -38,16 +57,27 @@ function buildLeadCalendarDescription(lead, partnerName) {
  * @param {string} opts.customerAddress
  * @param {string} opts.partnerName
  * @param {object} opts.lead — für ausführliche DESCRIPTION
+ * @param {'vor_ort'|'online'} [opts.terminTyp]
+ * @param {{ name: string, tel: string, email: string } | null} [opts.assignedContact]
  */
-function buildEventTexts({ customerName, customerAddress, partnerName, lead }) {
-  const title = `PV - ${customerName || 'Kunde'}`;
-  const location = String(customerAddress || '').trim();
-  const description = buildLeadCalendarDescription(lead, partnerName);
+function buildEventTexts({
+  customerName, customerAddress, partnerName, lead, terminTyp = 'vor_ort', assignedContact = null,
+}) {
+  const title = `NOORTEC — ${customerName || 'Kunde'}`;
+  const online = String(terminTyp || '').toLowerCase() === 'online';
+  const location = online
+    ? 'Google Meet (Online-Termin)'
+    : String(customerAddress || '').trim();
+  const meetUrl = String(lead['Meet-Link'] ?? lead.meet_link ?? '').trim();
+  const extra = online && meetUrl ? [`Google Meet: ${meetUrl}`] : [];
+  const description = buildLeadCalendarDescription(lead, partnerName, extra, assignedContact);
   return { title, location, description };
 }
 
 /** Google Calendar compose (wie bisherige Web-UI). `URLSearchParams` kodiert `details` inkl. Zeilenumbrüche sicher. */
-function buildGoogleCalendarUrl({ title, location, description, start, end }) {
+function buildGoogleCalendarUrl({
+  title, location, description, start, end, attendeeEmail, withGoogleMeet,
+}) {
   const fmt = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const params = new URLSearchParams({
     action: 'TEMPLATE',
@@ -56,7 +86,11 @@ function buildGoogleCalendarUrl({ title, location, description, start, end }) {
     location,
     dates: `${fmt(start)}/${fmt(end)}`,
   });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  const guest = String(attendeeEmail || '').trim();
+  if (guest) params.append('add', guest);
+  let qs = params.toString();
+  if (withGoogleMeet) qs += '&conferenceDataVersion=1';
+  return `https://calendar.google.com/calendar/render?${qs}`;
 }
 
 /** Outlook Web (consumer + work ähnliche URL). */
@@ -95,7 +129,7 @@ function buildAppleIcsContent({ title, location, description, start, end, uid })
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//PV Lead Manager//DE',
+    'PRODID:-//NOORTEC Vertriebs-Dashboard//DE',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
@@ -117,25 +151,40 @@ function buildAppleIcsContent({ title, location, description, start, end, uid })
  * @param {string} partnerName
  * @param {Date} start
  * @param {Date} end
+ * @param {{ terminTyp?: string, assignedContact?: { name: string, tel: string, email: string } | null }} [opts]
  */
-function generateCalendarLink(lead, partnerName, start, end) {
+function generateCalendarLink(lead, partnerName, start, end, opts = {}) {
+  const terminTypRaw = opts.terminTyp != null ? opts.terminTyp : (lead.Termintyp ?? lead.termin_typ ?? 'vor_ort');
+  const terminTyp = String(terminTypRaw || '').toLowerCase() === 'online' ? 'online' : 'vor_ort';
   const customerName = lead['Nachname + Vorname'] || lead.namen || lead['E-Mail'] || '';
   const customerAddress = [lead['Straße'] || lead.strasse, lead['PLZ'] || lead.plz, lead['Ort'] || lead.ort].filter(Boolean).join(', ');
+  const assignedContact = opts.assignedContact !== undefined ? opts.assignedContact : null;
   const { title, location, description } = buildEventTexts({
     customerName,
     customerAddress,
     partnerName,
     lead,
+    terminTyp,
+    assignedContact,
   });
+  const attendeeEmail = lead['E-Mail'] || lead.email || '';
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}@pv-lead-manager`;
   return {
     title,
     location,
     description,
-    googleUrl: buildGoogleCalendarUrl({ title, location, description, start, end }),
+    googleUrl: buildGoogleCalendarUrl({
+      title,
+      location,
+      description,
+      start,
+      end,
+      attendeeEmail,
+      withGoogleMeet: terminTyp === 'online',
+    }),
     outlookUrl: buildOutlookCalendarUrl({ title, location, description, start, end }),
     icsContent: buildAppleIcsContent({ title, location, description, start, end, uid }),
-    icsFilename: `PV-Termin-${String(customerName).replace(/\s+/g, '_').slice(0, 40) || 'Lead'}.ics`,
+    icsFilename: `NOORTEC-Termin-${String(customerName).replace(/\s+/g, '_').slice(0, 40) || 'Lead'}.ics`,
   };
 }
 

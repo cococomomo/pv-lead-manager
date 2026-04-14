@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PV Lead Manager – Anmeldung</title>
+  <title>NOORTEC — Anmeldung</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     * { box-sizing: border-box; }
@@ -24,7 +24,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>PV Lead Manager</h1>
+    <h1>NOORTEC Vertriebs-Dashboard</h1>
     <p class="sub">Mit deinem Vertriebler-Zugang anmelden (Benutzername = vergebener Name).</p>
     <form id="f">
       <label for="u">Benutzername</label>
@@ -63,7 +63,12 @@
       const j = await r.json();
       if (j.user) {
         const params = new URLSearchParams(location.search);
-        location.replace(params.get('next') || '/');
+        const next = params.get('next') || '/';
+        if (j.user.profileComplete === false) {
+          location.replace(`/profile?next=${encodeURIComponent(next)}`);
+          return;
+        }
+        location.replace(next);
       }
     }
     checkSession();
@@ -88,7 +93,12 @@
           return;
         }
         const params = new URLSearchParams(location.search);
-        location.replace(params.get('next') || '/');
+        const next = params.get('next') || '/';
+        if (j.user && j.user.profileComplete === false) {
+          location.replace(`/profile?next=${encodeURIComponent(next)}`);
+        } else {
+          location.replace(next);
+        }
       } catch (err) {
         document.getElementById('err').textContent = err.message || 'Anmeldung fehlgeschlagen.';
       } finally {
