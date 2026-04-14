@@ -101,7 +101,9 @@ function dbRowToApiLead(row) {
     longitude: lng,
     __pvlLegacy: false,
   };
-  return applyCanonicalFieldAliases(base);
+  const out = applyCanonicalFieldAliases(base);
+  out.pvlDbId = row.id;
+  return out;
 }
 
 const PATCH_COLUMN_TO_SQL = {
@@ -492,7 +494,7 @@ function getLeadsMissingMapCoordsList() {
       )
     ORDER BY datetime(COALESCE(NULLIF(trim(last_updated), ''), created_at)) DESC, id DESC
   `).all();
-  return rows.map((row) => ({ ...dbRowToApiLead(row), pvlDbId: row.id }));
+  return rows.map((row) => dbRowToApiLead(row));
 }
 
 /**
