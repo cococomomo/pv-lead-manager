@@ -64,6 +64,15 @@
   <script>
     const cred = { credentials: 'include' };
 
+    function sanitizeProfileNext(next) {
+      if (next == null || typeof next !== 'string') return '';
+      const s = next.trim();
+      if (!s.startsWith('/') || s.startsWith('//')) return '';
+      if (/^\/https?:\/\//i.test(s)) return '';
+      if (/^\/login(\.html)?(\?|$)/i.test(s)) return '';
+      return s.length > 2048 ? s.slice(0, 2048) : s;
+    }
+
     async function load() {
       document.getElementById('err').textContent = '';
       const r = await fetch('/api/auth/me', cred);
@@ -185,10 +194,8 @@
         document.getElementById('ok').textContent = 'Gespeichert.';
         if (j.user && j.user.profileComplete) {
           const q = new URLSearchParams(location.search);
-          const next = q.get('next');
-          if (next && next.startsWith('/')) {
-            location.replace(next);
-          }
+          const next = sanitizeProfileNext(q.get('next') || '');
+          if (next) location.replace(next);
         }
         load();
       } catch (err) {

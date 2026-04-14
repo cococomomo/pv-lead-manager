@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Nur Leads ohne gültige Koordinaten: Nominatim (AT, countrycodes=at) mit Kaskade,
- * danach immer gültige Zahlen — bei API-Miss wird Wien-Zentrum gesetzt (wie geocode-address-cascade).
+ * Nur Leads ohne gültige Koordinaten: Nominatim (AT, countrycodes=at) mit Kaskade.
+ * Ohne Treffer: latitude/longitude bleiben NULL.
  *
  * Nutzung:
  *   node scripts/fix-missing-coords.js [--dry-run] [--include-archived]
@@ -10,7 +10,7 @@
 
 require('../src/load-env');
 const { initDb } = require('../src/database');
-const { geocodeAddressCascade, WIEN_ZENTRUM_1 } = require('../src/geocode-address-cascade');
+const { geocodeAddressCascade } = require('../src/geocode-address-cascade');
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -51,18 +51,9 @@ async function main() {
       plz: row.plz || '',
       ort: row.ort || '',
     });
-    let lat = g.lat;
-    let lon = g.lon;
-    let label = g.label;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      lat = WIEN_ZENTRUM_1.lat;
-      lon = WIEN_ZENTRUM_1.lon;
-      label = 'Hard-Fallback Wien (ungültige Kaskade-Rückgabe)';
-    }
-    if (!g.nominatimHit) {
-      label += ' → Wien-Zentrum (hart)';
-    }
-    console.log(`id ${row.id}: ${label}`);
+    const lat = g.lat != null && Number.isFinite(g.lat) ? g.lat : null;
+    const lon = g.lon != null && Number.isFinite(g.lon) ? g.lon : null;
+    console.log(`id ${row.id}: ${g.label}`);
     if (!dry) upd.run(lat, lon, row.id);
   }
 

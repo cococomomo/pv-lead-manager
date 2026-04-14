@@ -9,11 +9,47 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script>
+    (function () {
+      try {
+        var th = localStorage.getItem('pv_lead_manager_theme');
+        if (th === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        else document.documentElement.removeAttribute('data-theme');
+        var sw = localStorage.getItem('pv_lead_manager_sidebar_width');
+        var n = sw != null ? parseInt(sw, 10) : NaN;
+        if (Number.isFinite(n) && n >= 280 && n <= 520) {
+          document.documentElement.style.setProperty('--pvl-sidebar-w', n + 'px');
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     @keyframes pvl-fade-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes pvl-spin { to { transform: rotate(360deg); } }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a202c; animation: pvl-fade-in 0.35s ease-out; }
+    :root {
+      --pvl-sidebar-w: 360px;
+      --pvl-resizer-w: 6px;
+      --pvl-bg: #f0f4f8;
+      --pvl-surface: #ffffff;
+      --pvl-surface-2: #f8fafc;
+      --pvl-text: #1a202c;
+      --pvl-muted: #64748b;
+      --pvl-border: #e2e8f0;
+      --pvl-accent: #1a56db;
+      --pvl-stat-bg: #eef2ff;
+    }
+    html[data-theme="dark"] {
+      --pvl-bg: #1e293b;
+      --pvl-surface: #0f172a;
+      --pvl-surface-2: #1e293b;
+      --pvl-text: #f1f5f9;
+      --pvl-muted: #94a3b8;
+      --pvl-border: #334155;
+      --pvl-accent: #3b82f6;
+      --pvl-stat-bg: #1e3a5f;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--pvl-bg); color: var(--pvl-text); animation: pvl-fade-in 0.35s ease-out; }
 
     header {
       background: linear-gradient(180deg, #1a56db 0%, #1746b3 100%);
@@ -82,12 +118,103 @@
     }
     .header-actions { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; margin-left: auto; }
 
+    .header-theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.1rem;
+      height: 2.1rem;
+      margin-right: 0.15rem;
+      padding: 0;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 1.05rem;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .header-theme-toggle:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.55); }
+    .header-theme-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+    .pvl-mobile-tabbar {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 25000;
+      height: 52px;
+      padding: 0;
+      margin: 0;
+      background: var(--pvl-surface);
+      border-top: 1px solid var(--pvl-border);
+      box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.12);
+      align-items: stretch;
+      justify-content: stretch;
+      gap: 0;
+    }
+    html[data-theme="dark"] .pvl-mobile-tabbar { box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45); }
+    .pvl-mobile-tab {
+      flex: 1;
+      min-height: 48px;
+      border: none;
+      background: transparent;
+      color: var(--pvl-muted);
+      font-size: 0.95rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .pvl-mobile-tab:hover { background: var(--pvl-surface-2); color: var(--pvl-text); }
+    .pvl-mobile-tab.is-active {
+      color: var(--pvl-accent);
+      background: var(--pvl-stat-bg);
+      box-shadow: inset 0 3px 0 var(--pvl-accent);
+    }
+
+    @media (max-width: 767px) {
+      .layout.pvl-is-mobile {
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-rows: auto minmax(0, 1fr);
+        height: calc(100vh - 2.35rem - 52px);
+      }
+      .layout.pvl-is-mobile .sidebar-resizer { display: none !important; }
+      .layout.pvl-is-mobile .map-wrap,
+      .layout.pvl-is-mobile .sidebar {
+        grid-column: 1;
+        grid-row: 2;
+        min-height: 0;
+      }
+      .layout.pvl-is-mobile.pvl-mobile-view-map .sidebar { display: none !important; }
+      .layout.pvl-is-mobile.pvl-mobile-view-map .map-wrap { display: block !important; }
+      .layout.pvl-is-mobile.pvl-mobile-view-list .map-wrap { display: none !important; }
+      .layout.pvl-is-mobile.pvl-mobile-view-list .sidebar { display: flex !important; }
+      .pvl-mobile-tabbar { display: flex; }
+      .lead-item { padding: 0.85rem 1rem; min-height: 52px; box-sizing: border-box; }
+      .lead-name { font-size: 0.95rem; }
+      .lead-meta { font-size: 0.8rem; margin-top: 4px; }
+      .sidebar-tab { padding: 0.65rem 0.5rem; font-size: 0.85rem; min-height: 48px; }
+      .filter-bar input, .filter-bar select { padding: 0.55rem 0.65rem; font-size: 0.88rem; min-height: 44px; }
+      .pvl-filter-panel > summary { min-height: 44px; padding: 0.5rem 0.85rem; font-size: 0.82rem; }
+      .pvl-filter-body select { min-height: 44px; padding: 0.5rem 0.55rem; font-size: 0.88rem; }
+      .pvl-filter-body label.pvl-filter-check { min-height: 44px; align-items: center; font-size: 0.88rem; }
+      .sync-leads-btn { padding: 0.55rem 0.75rem; min-height: 46px; font-size: 0.88rem; }
+      .filter-archive-btn { padding: 0.5rem 0.75rem; min-height: 44px; font-size: 0.85rem; }
+      .refresh-btn { padding: 0.45rem 0.75rem; min-height: 40px; font-size: 0.85rem; }
+      #pvl-toast { bottom: 4.25rem; max-width: min(420px, 94vw); }
+    }
+
     .pvl-modal { display: none; position: fixed; inset: 0; z-index: 30000; align-items: center; justify-content: center; padding: 1rem; }
     .pvl-modal.open { display: flex; }
     .pvl-modal-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.45); }
     .pvl-modal-panel {
       position: relative;
-      background: #fff;
+      background: var(--pvl-surface);
+      color: var(--pvl-text);
       border-radius: 10px;
       max-width: min(640px, 96vw);
       max-height: min(86vh, 720px);
@@ -97,9 +224,9 @@
       flex-direction: column;
       overflow: hidden;
     }
-    .pvl-modal-head { padding: 0.65rem 1rem; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-shrink: 0; }
-    .pvl-modal-head h2 { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
-    .pvl-modal-close { background: none; border: none; font-size: 1.35rem; line-height: 1; cursor: pointer; color: #64748b; padding: 0 0.25rem; }
+    .pvl-modal-head { padding: 0.65rem 1rem; border-bottom: 1px solid var(--pvl-border); display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-shrink: 0; }
+    .pvl-modal-head h2 { font-size: 0.95rem; font-weight: 700; color: var(--pvl-text); }
+    .pvl-modal-close { background: none; border: none; font-size: 1.35rem; line-height: 1; cursor: pointer; color: var(--pvl-muted); padding: 0 0.25rem; }
     .pvl-modal-body { overflow-y: auto; padding: 0.65rem 1rem 1rem; flex: 1; }
     .missing-lead-card {
       border: 1px solid #e2e8f0;
@@ -123,23 +250,64 @@
     .btn-mini-ok { background: #059669; color: #fff; }
     .btn-mini-warn { background: #64748b; color: #fff; }
 
-    .layout { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: auto 1fr; height: calc(100vh - 2.35rem); transition: opacity 0.25s ease; }
-    @media (min-width: 1100px) {
-      .layout { grid-template-columns: 1fr minmax(440px, 42vw); }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) var(--pvl-resizer-w) var(--pvl-sidebar-w);
+      grid-template-rows: auto minmax(0, 1fr);
+      height: calc(100vh - 2.35rem);
+      transition: opacity 0.25s ease;
     }
     .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
+    .map-wrap {
+      grid-column: 1;
+      grid-row: 2;
+      min-height: 0;
+      min-width: 0;
+      position: relative;
+      background: #dde;
+    }
+    html[data-theme="dark"] .map-wrap { background: #0f172a; }
+    #map { position: absolute; inset: 0; }
+
+    .sidebar-resizer {
+      grid-column: 2;
+      grid-row: 2;
+      width: var(--pvl-resizer-w);
+      min-width: var(--pvl-resizer-w);
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: linear-gradient(90deg, transparent, var(--pvl-border) 35%, var(--pvl-border) 65%, transparent);
+      cursor: col-resize;
+      flex-shrink: 0;
+      z-index: 5;
+      touch-action: none;
+    }
+    .sidebar-resizer:hover,
+    .sidebar-resizer:focus-visible { background: linear-gradient(90deg, transparent, var(--pvl-accent) 40%, var(--pvl-accent) 60%, transparent); outline: none; }
+    .sidebar-resizer.is-dragging { background: var(--pvl-accent); }
+
     /* Stats */
-    .stats { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; padding: 0.6rem 1.2rem; background: #fff; border-bottom: 1px solid #e2e8f0; align-items: center; }
-    .stat-card { background: #eef2ff; border-radius: 7px; padding: 0.35rem 0.8rem; text-align: center; min-width: 90px; }
-    .stat-card .num { font-size: 1.25rem; font-weight: 700; color: #1a56db; }
-    .stat-card .lbl { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
-    .legend { margin-left: auto; display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; color: #64748b; flex-wrap: wrap; }
+    .stats {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem 1rem;
+      padding: 0.6rem 1.2rem;
+      background: var(--pvl-surface);
+      border-bottom: 1px solid var(--pvl-border);
+      align-items: center;
+    }
+    .stat-card { background: var(--pvl-stat-bg); border-radius: 7px; padding: 0.35rem 0.8rem; text-align: center; min-width: 90px; }
+    .stat-card .num { font-size: 1.25rem; font-weight: 700; color: var(--pvl-accent); }
+    .stat-card .lbl { font-size: 0.65rem; color: var(--pvl-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .legend { margin-left: auto; display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; color: var(--pvl-muted); flex-wrap: wrap; }
     .legend b { margin-right: 2px; }
     .leg { padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; white-space: nowrap; }
 
-    /* Map */
-    #map { background: #dde; }
+    /* Map — Fläche in .map-wrap (position absolute) */
     .marker-cluster-small { background-color: rgba(214, 0, 0, 0.55); }
     .marker-cluster-small div { background-color: rgba(139, 0, 0, 0.85); color: #fff; }
     .marker-cluster-medium { background-color: rgba(255, 92, 92, 0.5); }
@@ -148,12 +316,21 @@
     .marker-cluster-large div { background-color: rgba(214, 0, 0, 0.75); color: #fff; }
 
     /* Sidebar */
-    .sidebar { background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; }
-    .sidebar-header { padding: 0.6rem 0.9rem; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .sidebar {
+      grid-column: 3;
+      grid-row: 2;
+      background: var(--pvl-surface);
+      border-left: 1px solid var(--pvl-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .sidebar-header { padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--pvl-border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
     .sidebar-header h2 { font-size: 0.9rem; font-weight: 600; }
     .sidebar-tabs {
-      display: flex; gap: 0; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
-      background: #f8fafc;
+      display: flex; gap: 0; border-bottom: 1px solid var(--pvl-border); flex-shrink: 0;
+      background: var(--pvl-surface-2);
       position: sticky;
       top: 0;
       z-index: 12;
@@ -167,19 +344,28 @@
       border: none;
       border-bottom: 2px solid transparent;
       background: transparent;
-      color: #64748b;
+      color: var(--pvl-muted);
       cursor: pointer;
       font-family: inherit;
       transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
     }
-    .sidebar-tab:hover { color: #334155; background: #f1f5f9; }
+    .sidebar-tab:hover { color: var(--pvl-text); background: var(--pvl-surface-2); }
     .sidebar-tab.is-active {
-      color: #1a56db;
-      border-bottom-color: #1a56db;
-      background: #fff;
+      color: var(--pvl-accent);
+      border-bottom-color: var(--pvl-accent);
+      background: var(--pvl-surface);
     }
-    .filter-bar { padding: 0.45rem 0.9rem; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
-    .filter-bar input, .filter-bar select { width: 100%; padding: 0.35rem 0.55rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; margin-bottom: 0.35rem; }
+    .filter-bar { padding: 0.45rem 0.9rem; border-bottom: 1px solid var(--pvl-border); flex-shrink: 0; }
+    .filter-bar input, .filter-bar select {
+      width: 100%;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--pvl-border);
+      border-radius: 6px;
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+      background: var(--pvl-surface);
+      color: var(--pvl-text);
+    }
 
     /* Liste + Detail nebeneinander (Desktop) bzw. gestapelt (schmal) */
     .sidebar-split {
@@ -208,7 +394,7 @@
         flex: 0 0 clamp(200px, 34%, 300px);
         max-width: 300px;
         min-width: 200px;
-        border-right: 1px solid #e2e8f0;
+        border-right: 1px solid var(--pvl-border);
         overflow-y: auto;
       }
       .sidebar-detail-open #sidebar-detail.open {
@@ -220,28 +406,94 @@
 
     /* Lead list */
     #lead-list { overflow-y: auto; flex: 1; scroll-behavior: smooth; min-height: 0; }
-    .lead-item { padding: 0.6rem 0.9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.18s ease, border-left-color 0.2s ease, transform 0.15s ease; border-left: 4px solid transparent; }
-    .lead-item:hover { background: #f8fafc; transform: translateX(2px); }
-    .lead-item.active { background: #eef2ff; }
+    .lead-item {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px solid var(--pvl-border);
+      cursor: pointer;
+      transition: background 0.18s ease, border-left-color 0.2s ease, transform 0.15s ease;
+      border-left: 4px solid transparent;
+    }
+    .lead-item:hover { background: var(--pvl-surface-2); transform: translateX(2px); }
+    .lead-item.active { background: var(--pvl-stat-bg); }
     .lead-name {
       display: flex; align-items: center; flex-wrap: wrap; gap: 0.28rem;
       font-weight: 600; font-size: 0.87rem;
     }
-    .lead-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+    .lead-meta { font-size: 0.72rem; color: var(--pvl-muted); margin-top: 2px; }
     .lead-betreut { font-size: 0.7rem; color: #059669; font-weight: 500; margin-top: 1px; }
     .lead-map-warn-icon {
       flex-shrink: 0;
-      font-size: 0.82rem;
+      font-size: 1.05rem;
       line-height: 1;
-      color: #ca8a04;
+      color: #d97706;
       cursor: help;
+      margin-right: 0.2rem;
+      filter: drop-shadow(0 0 1px rgba(180, 83, 9, 0.45));
+    }
+
+    .pvl-filter-panel {
+      border-bottom: 1px solid var(--pvl-border);
+      flex-shrink: 0;
+      background: var(--pvl-surface-2);
+    }
+    .pvl-filter-panel > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 0.38rem 0.75rem;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--pvl-muted);
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pvl-filter-panel > summary::-webkit-details-marker { display: none; }
+    .pvl-filter-panel > summary::after {
+      content: '▾';
+      font-size: 0.65rem;
+      opacity: 0.75;
+    }
+    .pvl-filter-panel[open] > summary::after { content: '▴'; }
+    .pvl-filter-body {
+      padding: 0 0.75rem 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .pvl-filter-body label.pvl-filter-check {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--pvl-text);
+      cursor: pointer;
+    }
+    .pvl-filter-body .pvl-filter-check input { width: auto; margin: 0; min-height: 18px; min-width: 18px; }
+    .pvl-filter-lbl {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--pvl-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 0.15rem;
+    }
+    .pvl-filter-body select {
+      width: 100%;
+      padding: 0.32rem 0.45rem;
+      border-radius: 6px;
+      border: 1px solid var(--pvl-border);
+      font-size: 0.78rem;
+      background: var(--pvl-surface);
+      color: var(--pvl-text);
     }
 
     /* Sidebar detail panel (replaces list) */
     #sidebar-detail { display: none; flex-direction: column; flex: 1; overflow: hidden; }
     #sidebar-detail.open { display: flex; animation: pvl-fade-in 0.22s ease-out; }
-    .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid #e2e8f0; font-size: 0.82rem; color: #1a56db; cursor: pointer; flex-shrink: 0; }
-    .detail-back:hover { background: #f0f4ff; }
+    .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--pvl-border); font-size: 0.82rem; color: var(--pvl-accent); cursor: pointer; flex-shrink: 0; }
+    .detail-back:hover { background: var(--pvl-stat-bg); }
     .detail-body { overflow-y: auto; flex: 1; padding: 0.9rem; }
     .detail-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.6rem; padding-left: 0.6rem; }
     .detail-info { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 0.8rem; margin-bottom: 0.9rem; }
@@ -253,7 +505,7 @@
     .field-group textarea { resize: vertical; min-height: 60px; }
     .detail-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
     .btn { padding: 0.4rem 0.9rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
-    .btn-save { background: #1a56db; color: #fff; transition: background 0.18s ease, opacity 0.18s ease; }
+    .btn-save { background: var(--pvl-accent); color: #fff; transition: background 0.18s ease, opacity 0.18s ease; }
     .btn-save:hover:not(:disabled) { background: #1e40af; }
     .btn-save:disabled { opacity: 0.65; cursor: wait; }
     .btn-archive { background: #059669; color: #fff; }
@@ -262,7 +514,7 @@
     .save-hint { font-size: 0.73rem; color: #059669; display: none; align-self: center; transition: color 0.2s ease; }
     .save-hint.err { color: #b91c1c; }
 
-    .refresh-btn { background: #1a56db; color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem; font-size: 0.78rem; cursor: pointer; transition: background 0.18s ease; }
+    .refresh-btn { background: var(--pvl-accent); color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem; font-size: 0.78rem; cursor: pointer; transition: background 0.18s ease; }
     .refresh-btn:hover:not(:disabled) { background: #1e40af; }
     .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
 
@@ -315,7 +567,7 @@
     .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.76rem; cursor: pointer; font-family: inherit; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
     .chip:hover { background: #e0e7ff; border-color: #6366f1; }
     .chip:active { transform: scale(0.97); }
-    .chip.chip-active { background: #1a56db; border-color: #1a56db; color: #fff; }
+    .chip.chip-active { background: var(--pvl-accent); border-color: var(--pvl-accent); color: #fff; }
     .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
     .btn-gcal:hover { background: #eef2ff; }
     .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
@@ -356,7 +608,7 @@
     }
     .status-btn:hover:not(:disabled) { background: #e0e7ff; border-color: #6366f1; }
     .status-btn:active:not(:disabled) { transform: scale(0.98); }
-    .status-btn.active { background: #1a56db; border-color: #1a56db; color: #fff; }
+    .status-btn.active { background: var(--pvl-accent); border-color: var(--pvl-accent); color: #fff; }
     .status-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-cal { background: #0f766e; color: #fff; border: none; }
     .btn-cal:hover:not(:disabled) { background: #115e59; }
@@ -378,6 +630,18 @@
     #pvl-toast.err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     #pvl-toast.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
     #pvl-toast.info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    html[data-theme="dark"] #pvl-toast.err { background: #450a0a; color: #fecaca; border-color: #7f1d1d; }
+    html[data-theme="dark"] #pvl-toast.ok { background: #052e16; color: #bbf7d0; border-color: #166534; }
+    html[data-theme="dark"] #pvl-toast.info { background: #172554; color: #bfdbfe; border-color: #1e3a8a; }
+
+    html[data-theme="dark"] .leaflet-bar a,
+    html[data-theme="dark"] .leaflet-control-layers {
+      background: var(--pvl-surface);
+      color: var(--pvl-text);
+      border-color: var(--pvl-border);
+    }
+    html[data-theme="dark"] .leaflet-bar a:hover { background: var(--pvl-surface-2); }
+    html[data-theme="dark"] .leaflet-control-layers-separator { border-top-color: var(--pvl-border); }
 
     @media (prefers-reduced-motion: reduce) {
       body { animation: none; }
@@ -412,13 +676,14 @@
       <option value="apple">Apple</option>
     </select>
     <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
+    <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln">🌙</button>
     <span style="font-size:0.74rem"><a href="/profile" style="color:#fff;text-decoration:underline">Profil</a></span>
     <span style="font-size:0.74rem"><a href="/admin/users" style="color:#fff;text-decoration:underline">Admin</a></span>
     <span style="font-size:0.74rem"><a href="#" id="logout-link" style="color:#fff;text-decoration:underline">Abmelden</a></span>
   </div>
 </header>
 
-<div class="layout">
+<div class="layout pvl-mobile-view-map" id="pvl-layout">
   <!-- Stats -->
   <div class="stats">
     <div id="load-error" style="display:none;flex-basis:100%;padding:0.35rem 0.75rem;background:#fef2f2;color:#991b1b;border-radius:6px;font-size:0.8rem;margin-bottom:0.15rem;"></div>
@@ -442,7 +707,10 @@
   </div>
 
   <!-- Map -->
-  <div id="map"></div>
+  <div class="map-wrap" id="map-wrap">
+    <div id="map"></div>
+  </div>
+  <button type="button" class="sidebar-resizer" id="sidebar-resizer" aria-label="Sidebar-Breite anpassen"></button>
 
   <!-- Sidebar (NOORTEC) -->
   <div class="sidebar" id="sidebar-main" aria-label="NOORTEC Lead-Bereich">
@@ -454,18 +722,36 @@
       <button type="button" class="sidebar-tab is-active" id="tab-leads-active" role="tab" aria-selected="true" aria-controls="lead-list" onclick="setSidebarListTab('active')">Aktive Leads</button>
       <button type="button" class="sidebar-tab" id="tab-leads-done" role="tab" aria-selected="false" aria-controls="lead-list" onclick="setSidebarListTab('done')">Abgearbeitet</button>
     </div>
+    <details class="pvl-filter-panel" id="pvl-filter-panel">
+      <summary>Filter &amp; Sortierung</summary>
+      <div class="pvl-filter-body">
+        <label class="pvl-filter-check"><input type="checkbox" id="filter-geo-only-missing" /> Nur ohne Kartenpunkt</label>
+        <span class="pvl-filter-lbl">Betreuer</span>
+        <select id="filter-betreuer" aria-label="Nach Betreuer filtern">
+          <option value="">Alle</option>
+          <option value="meine">Meine Leads</option>
+          <option value="unbetreut">Unbetreut</option>
+          <option value="andere">Andere Betreuer</option>
+        </select>
+        <span class="pvl-filter-lbl">Status</span>
+        <select id="filter-status" aria-label="Nach Status filtern">
+          <option value="">Alle (nach Tab)</option>
+          <option value="aktiv">Aktiv</option>
+          <option value="terminiert">Terminiert</option>
+          <option value="verloren">Verloren</option>
+          <option value="abgearbeitet">Abgearbeitet</option>
+        </select>
+        <span class="pvl-filter-lbl">Sortierung</span>
+        <select id="sort-leads" onchange="renderList(); renderMarkers();">
+          <option value="created_at_desc">Erstelldatum (neueste zuerst)</option>
+          <option value="created_at_asc">Erstelldatum (älteste zuerst)</option>
+          <option value="last_updated_desc" selected>Zuletzt bearbeitet</option>
+        </select>
+      </div>
+    </details>
     <div class="filter-bar">
       <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromImap()">🔄 Leads jetzt synchronisieren</button>
       <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList(); renderMarkers();" />
-      <select id="sort-leads" onchange="renderList(); renderMarkers();">
-        <option value="last_updated_desc">Sortierung: zuletzt bearbeitet (neu zuerst)</option>
-        <option value="last_updated_asc">Sortierung: zuletzt bearbeitet (alt zuerst)</option>
-        <option value="anfrage_desc">Sortierung: Anfragedatum (neu zuerst)</option>
-        <option value="anfrage_asc">Sortierung: Anfragedatum (alt zuerst)</option>
-        <option value="created_at_desc">Sortierung: Lead-Alter / created_at (neu zuerst)</option>
-        <option value="created_at_asc">Sortierung: Lead-Alter / created_at (alt zuerst)</option>
-        <option value="name_asc">Sortierung: Name A–Z</option>
-      </select>
       <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()">✕ Filter „ohne Kartenpunkt“ aufheben</button>
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
     </div>
@@ -548,6 +834,11 @@
   </div>
 </div>
 
+<nav class="pvl-mobile-tabbar" id="pvl-mobile-tabbar" aria-label="Karte oder Liste">
+  <button type="button" class="pvl-mobile-tab is-active" id="pvl-tab-map" aria-pressed="true">🗺️ Karte</button>
+  <button type="button" class="pvl-mobile-tab" id="pvl-tab-list" aria-pressed="false">📋 Liste</button>
+</nav>
+
 <div id="pvl-toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <div id="modal-missing-coords" class="pvl-modal" role="dialog" aria-modal="true" aria-labelledby="modal-missing-title">
@@ -561,12 +852,29 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=pvl1.1"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js?v=pvl1.1"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=pvl1.2"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js?v=pvl1.2"></script>
 <script>
-  /** Session-Cookie + ggf. HTTP-Basic: `include` stellt sicher, dass Auth-Header zuverlässig mitgeschickt werden. */
+  /** Session-Cookie: `credentials: 'include'` sendet das Cookie zuverlässig mit. */
   function apiFetch(url, opts = {}) {
     return fetch(url, { ...opts, credentials: 'include' });
+  }
+
+  /** Relativer Rückweg nach Login — verhindert `/https://…` und Redirect-Loops im `next`. */
+  function pvlSafeReturnPath() {
+    const p = window.location.pathname || '/';
+    const q = window.location.search || '';
+    const combined = p + q;
+    if (/^\/https?:\/\//i.test(combined)) return '/';
+    if (/^\/login(\.html)?(\?|$)/i.test(p)) return '/';
+    return combined || '/';
+  }
+
+  function pvlRedirectToLoginAfter401() {
+    showToast('Sitzung abgelaufen, bitte neu einloggen.', 'info');
+    setTimeout(() => {
+      window.location.href = '/login.html?next=' + encodeURIComponent(pvlSafeReturnPath());
+    }, 450);
   }
 
   let _toastTimer;
@@ -603,6 +911,17 @@
     wheelPxPerZoomLevel: 60,
   }).setView([48.21, 16.37], 9);
 
+  function pvlInvalidateMap() {
+    requestAnimationFrame(() => {
+      try { map.invalidateSize(); } catch (e) { /* ignore */ }
+      requestAnimationFrame(() => {
+        try { map.invalidateSize(); } catch (e) { /* ignore */ }
+      });
+    });
+  }
+
+  let layersCtrl = null;
+
   const satellite = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { attribution: 'Satellit &copy; Esri', maxZoom: 19 }
@@ -622,15 +941,44 @@
     { attribution: 'Orte &copy; Esri', maxZoom: 19, opacity: 0.9 }
   );
 
-  satellite.addTo(map);
-  roadsOverlay.addTo(map);   // standardmäßig aktiv
-  labelsOverlay.addTo(map);  // standardmäßig aktiv
+  const streetsDark = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    {
+      subdomains: 'abcd',
+      maxZoom: 20,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }
+  );
 
-  L.control.layers(
-    { 'Satellit': satellite, 'Straßenkarte': streets },
-    { 'Straßen': roadsOverlay, 'Orte & Grenzen': labelsOverlay },
-    { collapsed: false }
-  ).addTo(map);
+  function applyMapTheme(isDark) {
+    [satellite, streets, streetsDark, roadsOverlay, labelsOverlay].forEach((layer) => {
+      if (layer && map.hasLayer(layer)) map.removeLayer(layer);
+    });
+    if (layersCtrl) {
+      try { map.removeControl(layersCtrl); } catch (e) { /* ignore */ }
+      layersCtrl = null;
+    }
+    if (isDark) {
+      streetsDark.addTo(map);
+      layersCtrl = L.control.layers(
+        { 'Karte (dunkel)': streetsDark, 'Satellit': satellite },
+        {},
+        { collapsed: false }
+      ).addTo(map);
+    } else {
+      satellite.addTo(map);
+      roadsOverlay.addTo(map);
+      labelsOverlay.addTo(map);
+      layersCtrl = L.control.layers(
+        { 'Satellit': satellite, 'Straßenkarte': streets },
+        { 'Straßen': roadsOverlay, 'Orte & Grenzen': labelsOverlay },
+        { collapsed: false }
+      ).addTo(map);
+    }
+    pvlInvalidateMap();
+  }
+
+  applyMapTheme(document.documentElement.getAttribute('data-theme') === 'dark');
 
   const markerLayer = (typeof L.markerClusterGroup === 'function'
     ? L.markerClusterGroup({
@@ -818,6 +1166,35 @@
     return !!(a && String(a).trim());
   }
 
+  function passesBetreuerFilter(lead) {
+    const mode = document.getElementById('filter-betreuer')?.value || '';
+    if (!mode) return true;
+    const su = window.__pvlSessionUser;
+    const uid = su && su.id != null ? Number(su.id) : NaN;
+    const aid = lead.assigned_to_user_id != null ? Number(lead.assigned_to_user_id) : NaN;
+    const hasAssign = Number.isFinite(aid) && aid > 0;
+    if (mode === 'meine') {
+      if (!Number.isFinite(uid) || uid < 1) return false;
+      return hasAssign && aid === uid;
+    }
+    if (mode === 'unbetreut') return !hasAssign;
+    if (mode === 'andere') {
+      if (!Number.isFinite(uid) || uid < 1) return hasAssign;
+      return hasAssign && aid !== uid;
+    }
+    return true;
+  }
+
+  function passesStatusFilterMode(lead) {
+    const mode = document.getElementById('filter-status')?.value || '';
+    if (!mode) return true;
+    if (mode === 'aktiv') return !isHiddenStatus(lead) && !isCrmArchived(lead);
+    if (mode === 'terminiert') return normalizeStatusDisplay(lead[COL.status]) === 'Termin vereinbart';
+    if (mode === 'verloren') return normalizeStatusDisplay(lead[COL.status]) === 'Lead verloren';
+    if (mode === 'abgearbeitet') return isHiddenStatus(lead) || isCrmArchived(lead);
+    return true;
+  }
+
   /** In der Liste CRM-archivierter Leads als „Archivieren“ darstellen (entspricht dem Archiv-Workflow). */
   function listStatusLabel(lead) {
     if (isCrmArchived(lead)) return 'Archivieren';
@@ -904,6 +1281,8 @@
   /** Gleiche Filter wie Lead-Liste (Tabs, Suche, „ohne Kartenpunkt“). */
   function passesListFilters(lead) {
     if (!passesSidebarTab(lead)) return false;
+    if (!passesBetreuerFilter(lead)) return false;
+    if (!passesStatusFilterMode(lead)) return false;
     if (filterMissingMapCoordsOnly && coordsFromDb(lead)) return false;
     const q = (document.getElementById('search-input')?.value || '').toLowerCase();
     if (!q) return true;
@@ -1006,8 +1385,8 @@
         body: '{}',
       });
       const j = await r.json().catch(() => ({}));
-      if (r.status === 401 && j.error === 'login_required') {
-        window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+      if (r.status === 401) {
+        pvlRedirectToLoginAfter401();
         return;
       }
       if (!r.ok || j.success === false) {
@@ -1709,7 +2088,7 @@
       }
       if (seq !== loadLeadsSeq) return;
       if (res.status === 401 && data && data.error === 'login_required') {
-        window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+        pvlRedirectToLoginAfter401();
         return;
       }
       if (!res.ok) {
@@ -1735,6 +2114,7 @@
         if (!anyMiss) {
           filterMissingMapCoordsOnly = false;
           document.getElementById('filter-clear-missing-coords')?.classList.add('is-hidden');
+          syncFilterGeoCheckbox();
         }
       }
       if (data.length === 0) {
@@ -1756,6 +2136,7 @@
         layout?.classList.remove('app-loading');
         rb?.classList.remove('spin');
         refreshHeaderStats();
+        pvlInvalidateMap();
       }
     }
   }
@@ -1781,9 +2162,15 @@
     return rows;
   }
 
+  function syncFilterGeoCheckbox() {
+    const c = document.getElementById('filter-geo-only-missing');
+    if (c) c.checked = !!filterMissingMapCoordsOnly;
+  }
+
   function clearMissingCoordsMapFilter() {
     filterMissingMapCoordsOnly = false;
     document.getElementById('filter-clear-missing-coords')?.classList.add('is-hidden');
+    syncFilterGeoCheckbox();
     renderList();
     renderMarkers();
   }
@@ -1791,6 +2178,7 @@
   function activateMissingCoordsMapFilter() {
     filterMissingMapCoordsOnly = true;
     document.getElementById('filter-clear-missing-coords')?.classList.remove('is-hidden');
+    syncFilterGeoCheckbox();
     const sd = document.getElementById('sidebar-detail');
     if (sd && sd.classList.contains('open')) closeSidebarDetail();
     else renderList();
@@ -1803,7 +2191,7 @@
     const leads = getFiltered();
     document.getElementById('lead-count').textContent = leads.length;
     if (leads.length === 0 && allLeads.length > 0) {
-      list.innerHTML = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:#64748b;font-size:0.82rem;line-height:1.45">Keine Einträge in dieser Ansicht. Prüfen Sie den Tab <strong>Aktive Leads</strong> / <strong>Abgearbeitet</strong>, die Suche, <strong>Archiv anzeigen</strong> oder den Filter „Leads ohne Kartenpunkt“.</p>';
+      list.innerHTML = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:var(--pvl-muted);font-size:0.82rem;line-height:1.45">Keine Einträge in dieser Ansicht. Prüfen Sie Tab <strong>Aktive Leads</strong> / <strong>Abgearbeitet</strong>, Suche, <strong>Filter &amp; Sortierung</strong> oder „Nur ohne Kartenpunkt“.</p>';
       return;
     }
     if (leads.length === 0) {
@@ -2040,6 +2428,10 @@
 
   function openSidebarDetail(lead) {
     if (typeof map.closePopup === 'function') map.closePopup();
+    const pvlLayout = document.getElementById('pvl-layout');
+    if (pvlLayout && pvlLayout.classList.contains('pvl-is-mobile')) {
+      setMobileTab('list', true);
+    }
     document.getElementById('sidebar-main')?.classList.add('sidebar-detail-open');
     document.getElementById('sidebar-detail').classList.add('open');
 
@@ -2322,7 +2714,7 @@
         const nav = document.getElementById('nav-cal-pref');
         if (nav) nav.value = userCalendarPreference;
         if (j.user.profileComplete === false && !/\/profile(\.html)?\/?$/i.test(location.pathname)) {
-          window.location.replace(`/profile?next=${encodeURIComponent(`${location.pathname}${location.search || ''}` || '/')}`);
+          window.location.replace(`/profile?next=${encodeURIComponent(pvlSafeReturnPath())}`);
           return;
         }
       } else {
@@ -2335,6 +2727,137 @@
       document.getElementById('session-user').textContent = '';
     }
   }
+
+  const PVL_LS_THEME = 'pv_lead_manager_theme';
+  const PVL_LS_SIDEBAR = 'pv_lead_manager_sidebar_width';
+  const PVL_LS_MOBILE_VIEW = 'pv_lead_manager_mobile_view';
+
+  function syncThemeToggleUi() {
+    const btn = document.getElementById('pvl-theme-toggle');
+    if (!btn) return;
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    btn.textContent = dark ? '☀️' : '🌙';
+    btn.title = dark ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren';
+    btn.setAttribute('aria-label', dark ? 'Zu hellem NOORTEC-Design wechseln' : 'Zu dunklem NOORTEC-Design wechseln');
+  }
+
+  function setUiTheme(dark) {
+    if (dark) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    try { localStorage.setItem(PVL_LS_THEME, dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
+    syncThemeToggleUi();
+    applyMapTheme(!!dark);
+    pvlInvalidateMap();
+  }
+
+  function setMobileTab(which, persist) {
+    const layout = document.getElementById('pvl-layout');
+    const tabMap = document.getElementById('pvl-tab-map');
+    const tabList = document.getElementById('pvl-tab-list');
+    if (!layout || !tabMap || !tabList) return;
+    const isMap = which === 'map';
+    layout.classList.toggle('pvl-mobile-view-map', isMap);
+    layout.classList.toggle('pvl-mobile-view-list', !isMap);
+    tabMap.classList.toggle('is-active', isMap);
+    tabList.classList.toggle('is-active', !isMap);
+    tabMap.setAttribute('aria-pressed', isMap ? 'true' : 'false');
+    tabList.setAttribute('aria-pressed', !isMap ? 'true' : 'false');
+    if (isMap) closeSidebarDetail();
+    if (persist !== false) {
+      try { localStorage.setItem(PVL_LS_MOBILE_VIEW, isMap ? 'map' : 'list'); } catch (e) { /* ignore */ }
+    }
+    pvlInvalidateMap();
+  }
+
+  const mqPvlMobile = window.matchMedia('(max-width: 767px)');
+  function applyPvlMobileLayout() {
+    const layout = document.getElementById('pvl-layout');
+    if (!layout) return;
+    if (mqPvlMobile.matches) {
+      layout.classList.add('pvl-is-mobile');
+      let v = 'map';
+      try { v = localStorage.getItem(PVL_LS_MOBILE_VIEW) || 'map'; } catch (e) { /* ignore */ }
+      setMobileTab(v === 'list' ? 'list' : 'map', false);
+    } else {
+      layout.classList.remove('pvl-is-mobile', 'pvl-mobile-view-map', 'pvl-mobile-view-list');
+      layout.classList.add('pvl-mobile-view-map');
+      pvlInvalidateMap();
+    }
+  }
+
+  function initPvlSidebarResize() {
+    const resizer = document.getElementById('sidebar-resizer');
+    const layout = document.getElementById('pvl-layout');
+    if (!resizer || !layout) return;
+    let dragging = false;
+    let startX = 0;
+    let startW = 360;
+    function readSidebarW() {
+      const cs = getComputedStyle(document.documentElement).getPropertyValue('--pvl-sidebar-w').trim();
+      const m = /^([\d.]+)px$/.exec(cs);
+      return m ? parseFloat(m[1]) : 360;
+    }
+    function setSidebarW(px) {
+      const clamped = Math.round(Math.min(520, Math.max(280, px)));
+      document.documentElement.style.setProperty('--pvl-sidebar-w', `${clamped}px`);
+      try { localStorage.setItem(PVL_LS_SIDEBAR, String(clamped)); } catch (e) { /* ignore */ }
+      pvlInvalidateMap();
+    }
+    resizer.addEventListener('pointerdown', (e) => {
+      if (layout.classList.contains('pvl-is-mobile')) return;
+      if (e.button != null && e.button !== 0) return;
+      dragging = true;
+      resizer.classList.add('is-dragging');
+      startX = e.clientX;
+      startW = readSidebarW();
+      try { resizer.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+    });
+    resizer.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      setSidebarW(startW + dx);
+    });
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      resizer.classList.remove('is-dragging');
+      try { resizer.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+      pvlInvalidateMap();
+    }
+    resizer.addEventListener('pointerup', endDrag);
+    resizer.addEventListener('pointercancel', endDrag);
+  }
+
+  function initPvlLayoutEnhancements() {
+    syncFilterGeoCheckbox();
+    document.getElementById('filter-geo-only-missing')?.addEventListener('change', () => {
+      const c = document.getElementById('filter-geo-only-missing');
+      if (c && c.checked) activateMissingCoordsMapFilter();
+      else clearMissingCoordsMapFilter();
+    });
+    document.getElementById('filter-betreuer')?.addEventListener('change', () => { renderList(); renderMarkers(); });
+    document.getElementById('filter-status')?.addEventListener('change', () => { renderList(); renderMarkers(); });
+    syncThemeToggleUi();
+    initPvlSidebarResize();
+    applyPvlMobileLayout();
+    mqPvlMobile.addEventListener('change', applyPvlMobileLayout);
+    document.getElementById('pvl-tab-map')?.addEventListener('click', () => { setMobileTab('map'); });
+    document.getElementById('pvl-tab-list')?.addEventListener('click', () => { setMobileTab('list'); });
+    document.getElementById('pvl-theme-toggle')?.addEventListener('click', () => {
+      setUiTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
+    });
+    const mw = document.getElementById('map-wrap');
+    if (mw && typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => { pvlInvalidateMap(); });
+      ro.observe(mw);
+    }
+    window.addEventListener('resize', () => { pvlInvalidateMap(); });
+  }
+
+  initPvlLayoutEnhancements();
 
   document.getElementById('header-warn-missing')?.addEventListener('click', () => {
     const b = document.getElementById('header-warn-missing');

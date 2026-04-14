@@ -26,7 +26,7 @@ async function main() {
   `).all();
 
   const upd = db.prepare('UPDATE leads SET latitude = ?, longitude = ? WHERE id = ?');
-  let wien = 0;
+  let noHit = 0;
   for (const row of rows) {
     const g = await geocodeAddressCascade({
       strasse: row.strasse,
@@ -34,11 +34,11 @@ async function main() {
       ort: row.ort,
     });
     upd.run(g.lat, g.lon, row.id);
-    if (!g.nominatimHit) wien += 1;
+    if (!g.nominatimHit) noHit += 1;
     console.log(`id ${row.id}: ${g.label}`);
   }
   console.log(
-    `Geocode fertig: ${rows.length} Zeilen aktualisiert (${wien}× ohne Nominatim-Treffer → Wien), ` +
+    `Geocode fertig: ${rows.length} Zeilen aktualisiert (${noHit}× ohne Nominatim-Treffer → lat/lng NULL), ` +
       `archiv=${includeArchived ? 'einbezogen' : 'ausgeschlossen'}, db: ${process.env.SQLITE_LEADS_DB || 'data/leads.db'}`,
   );
 

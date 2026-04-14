@@ -58,12 +58,34 @@
   <script>
     const cred = { credentials: 'include' };
 
+    /** Nur gleicher Origin, relativer Pfad — kein Open-Redirect, kein `/https://…`. */
+    function sanitizeNextParam(next) {
+      if (next == null) return '/';
+      let s = String(next).trim();
+      if (!s) return '/';
+      if (s.length > 2048) s = s.slice(0, 2048);
+      if (s.startsWith('//') || /^(https?:)?\/\//i.test(s)) return '/';
+      if (/^\/https?:\/\//i.test(s)) return '/';
+      if (/^https?:\/\//i.test(s)) {
+        try {
+          const u = new URL(s);
+          if (u.origin !== location.origin) return '/';
+          s = u.pathname + u.search;
+        } catch (_) {
+          return '/';
+        }
+      }
+      if (!s.startsWith('/')) return '/';
+      if (/^\/login(\.html)?(\?|$)/i.test(s)) return '/';
+      return s;
+    }
+
     async function checkSession() {
       const r = await fetch('/api/auth/me', cred);
       const j = await r.json();
       if (j.user) {
         const params = new URLSearchParams(location.search);
-        const next = params.get('next') || '/';
+        const next = sanitizeNextParam(params.get('next') || '/');
         if (j.user.profileComplete === false) {
           location.replace(`/profile?next=${encodeURIComponent(next)}`);
           return;
@@ -93,7 +115,7 @@
           return;
         }
         const params = new URLSearchParams(location.search);
-        const next = params.get('next') || '/';
+        const next = sanitizeNextParam(params.get('next') || '/');
         if (j.user && j.user.profileComplete === false) {
           location.replace(`/profile?next=${encodeURIComponent(next)}`);
         } else {

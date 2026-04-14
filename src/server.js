@@ -2,7 +2,6 @@
 
 require('./load-env');
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
@@ -54,77 +53,35 @@ const PORT = parseInt(process.env.PORT, 10) || 3080;
 const DATA_DIR = path.join(__dirname, '../data');
 app.set('trust proxy', 1);
 
-const SESSION_SECRET = process.env.SESSION_SECRET;
-const sessionOn = !!(SESSION_SECRET && String(SESSION_SECRET).length >= 16);
-
-if (sessionOn) {
-  app.use(session({
-    store: new FileStore({
-      path: path.join(DATA_DIR, 'sessions'),
-      ttl: 86400 * 14,
-      retries: 0,
-      logFn: () => {},
-    }),
-    name: 'pvl.sid',
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    cookie: {
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      httpOnly: true,
-      secure: process.env.SESSION_COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    },
-  }));
+let SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
+if (!SESSION_SECRET || SESSION_SECRET.length < 16) {
+  SESSION_SECRET = crypto.randomBytes(32).toString('hex');
+  process.env.SESSION_SECRET = SESSION_SECRET;
+  console.warn(
+    '[NOORTEC] SESSION_SECRET fehlt oder ist kürzer als 16 Zeichen — temporäres Secret generiert. '
+    + 'Bitte SESSION_SECRET in der .env setzen (mind. 16 Zeichen), sonst sind alle Sessions nach jedem Neustart ungültig.',
+  );
 }
 
-function safeEqStr(expected, received) {
-  try {
-    const a = Buffer.from(String(expected), 'utf8');
-    const b = Buffer.from(String(received), 'utf8');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
-
-function parseBasicAuth(header) {
-  if (!header || !header.startsWith('Basic ')) return null;
-  try {
-    const raw = Buffer.from(header.slice(6), 'base64').toString('utf8');
-    const i = raw.indexOf(':');
-    if (i < 0) return null;
-    return { user: raw.slice(0, i), pass: raw.slice(i + 1) };
-  } catch {
-    return null;
-  }
-}
-
-function basicAuthConfigured() {
-  const u = process.env.BASIC_AUTH_USER;
-  const plain = process.env.BASIC_AUTH_PASS;
-  const hashed = (process.env.BASIC_AUTH_PASS_BCRYPT || '').trim();
-  return !!(u && (plain || hashed));
-}
-
-function verifyBasicCreds(creds) {
-  if (!creds) return false;
-  const u = process.env.BASIC_AUTH_USER;
-  if (!u || !safeEqStr(u, creds.user)) return false;
-  const hash = (process.env.BASIC_AUTH_PASS_BCRYPT || '').trim();
-  if (hash) {
-    try {
-      return bcrypt.compareSync(creds.pass, hash);
-    } catch {
-      return false;
-    }
-  }
-  const plain = process.env.BASIC_AUTH_PASS;
-  if (plain) return safeEqStr(plain, creds.pass);
-  return false;
-}
+app.use(session({
+  store: new FileStore({
+    path: path.join(DATA_DIR, 'sessions'),
+    ttl: 86400 * 14,
+    retries: 0,
+    logFn: () => {},
+  }),
+  name: 'pvl.sid',
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: process.env.SESSION_COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  },
+}));
 
 function formatLeadsApiError(err) {
   return (err && err.message) ? String(err.message) : String(err);
@@ -141,31 +98,16 @@ function parseIncludeArchivedFlag(req) {
   return false;
 }
 
-function basicAuthMiddleware(req, res, next) {
-  if (sessionOn) return next();
-  if (!basicAuthConfigured()) return next();
-  const creds = parseBasicAuth(req.headers.authorization);
-  if (!verifyBasicCreds(creds)) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="NOORTEC Vertriebs-Dashboard"');
-    return res.status(401).send('Authentifizierung erforderlich');
-  }
-  next();
-}
-
 function allowAdmin(req) {
   if (req.session && req.session.user && req.session.user.role === 'admin') return true;
   const token = process.env.ADMIN_TOKEN;
   if (token && req.headers.authorization === `Bearer ${token}`) return true;
-  if (!sessionOn && basicAuthConfigured()) {
-    const creds = parseBasicAuth(req.headers.authorization);
-    if (verifyBasicCreds(creds)) return true;
-  }
   return false;
 }
 
 /** Setter oder Admin: Lead einem Vertriebler (sales) zuweisen. */
 function allowSalesAssign(req) {
-  if (!sessionOn || !req.session?.user) return false;
+  if (!req.session?.user) return false;
   if (req.session.user.role === 'setter' || req.session.user.role === 'admin') return true;
   return false;
 }
@@ -184,19 +126,36 @@ async function resolveActingSalesUsername(lead, sessionUsername) {
 }
 
 function requireApiSession(req, res, next) {
-  if (!sessionOn) return next();
   if (req.session && req.session.user) return next();
   return res.status(401).json({ error: 'login_required' });
 }
 
+/**
+ * Nur relativer Pfad + Query für `?next=` (kein absoluter URL-String, kein `/https://…`).
+ * Verhindert Open-Redirect und Redirect-Loops über login.html.
+ */
+function buildSafeLoginNext(req) {
+  const pathname = String(req.path || '/');
+  const rawUrl = String(req.url || '');
+  if (/^\/https?:\/\//i.test(pathname)) return '';
+  if (/^\/https?:\/\//i.test(rawUrl)) return '';
+  let search = '';
+  const qi = rawUrl.indexOf('?');
+  if (qi >= 0) search = rawUrl.slice(qi);
+  if (/^\/login\.html/i.test(pathname) || /^\/login$/i.test(pathname)) return '';
+  const combined = pathname + search;
+  if (!combined || combined === '/') return '';
+  if (combined.length > 2048) return combined.slice(0, 2048);
+  return combined;
+}
+
 function requireWebSession(req, res, next) {
-  if (!sessionOn) return next();
   if (req.session && req.session.user) return next();
-  const q = req.originalUrl && req.originalUrl !== '/' ? `?next=${encodeURIComponent(req.originalUrl)}` : '';
+  const target = buildSafeLoginNext(req);
+  const q = target ? `?next=${encodeURIComponent(target)}` : '';
   return res.redirect(302, `/login.html${q}`);
 }
 
-app.use(basicAuthMiddleware);
 app.use(express.json({ limit: '128kb' }));
 
 app.get('/profil.html', (req, res) => {
@@ -211,9 +170,6 @@ app.get('/profile.html', (req, res) => {
 
 // ── Auth (öffentlich wenn Session aktiv) ───────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
-  if (!sessionOn) {
-    return res.status(503).json({ error: 'SESSION_SECRET nicht gesetzt (mind. 16 Zeichen)' });
-  }
   const { username, password } = req.body || {};
   const user = await verifyLogin(username, password);
   if (!user) return res.status(401).json({ error: 'invalid_credentials' });
@@ -257,7 +213,7 @@ app.get('/api/auth/me', async (req, res) => {
 });
 
 app.patch('/api/auth/profile', async (req, res) => {
-  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
   const { calendarPreference } = req.body || {};
   if (calendarPreference === undefined) {
     return res.status(400).json({ error: 'calendarPreference erforderlich (google|outlook|apple)' });
@@ -272,7 +228,7 @@ app.patch('/api/auth/profile', async (req, res) => {
 });
 
 app.patch('/api/auth/contact-profile', async (req, res) => {
-  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
   const b = req.body || {};
   try {
     upsertProfile(req.session.user.username, {
@@ -292,7 +248,7 @@ app.patch('/api/auth/contact-profile', async (req, res) => {
 });
 
 app.post('/api/auth/smtp-test', async (req, res) => {
-  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
   const body = req.body || {};
   try {
     if (body.useSaved) {
@@ -311,7 +267,7 @@ app.post('/api/auth/smtp-test', async (req, res) => {
   }
 });
 
-// Geschützte API + HTML (Session ODER nur Basic ohne Session)
+// Geschützte API + HTML (nur Session-Login; öffentliche Auth-Routen ausgenommen)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
     if (req.path === '/api/auth/login' && req.method === 'POST') return next();
@@ -319,11 +275,9 @@ app.use((req, res, next) => {
     if (req.path === '/api/auth/bootstrap-admin' && req.method === 'POST') return next();
     if (req.path === '/api/auth/reset-password' && req.method === 'POST') return next();
     if (req.path === '/api/auth/me') return next();
-    if (!sessionOn) return next();
     return requireApiSession(req, res, next);
   }
   if (req.path === '/login.html' || req.path === '/login') return next();
-  if (!sessionOn) return next();
   return requireWebSession(req, res, next);
 });
 
@@ -356,7 +310,7 @@ app.get('/api/leads', async (req, res) => {
 
 /** NOORTEC: IMAP → SQLite, einmal pro Aufruf (nur mit Session-Login). */
 app.post('/api/sync-leads', async (req, res) => {
-  if (!sessionOn || !req.session?.user) {
+  if (!req.session?.user) {
     return res.status(401).json({ error: 'login_required' });
   }
   try {
@@ -546,7 +500,7 @@ app.post('/api/calendar/build', async (req, res) => {
 });
 
 app.post('/api/leads/:email/notify-appointment', async (req, res) => {
-  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
   try {
     const lead = await getLeadByEmail(decodeURIComponent(req.params.email));
     if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
@@ -645,7 +599,7 @@ app.get('/api/vertriebler', async (req, res) => {
 
 /** Setter: Quick-Chips — nur `sales`, mit SQLite-`users.id` für Zuweisung. */
 app.get('/api/sales-assignees', async (req, res) => {
-  if (!sessionOn || !req.session?.user) return res.status(401).json({ error: 'login_required' });
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
   try {
     const db = getDb();
     const users = await readUsers();
@@ -771,7 +725,6 @@ app.post('/api/admin/users/delete', async (req, res) => {
 });
 
 app.post('/api/auth/bootstrap-admin', async (req, res) => {
-  if (!sessionOn) return res.status(503).json({ error: 'SESSION_SECRET fehlt' });
   const n = await userCount();
   if (n > 0) return res.status(403).json({ error: 'Bereits Benutzer vorhanden' });
   const { username, password, email, setupToken } = req.body || {};
@@ -834,9 +787,7 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  const parts = [];
-  if (sessionOn) parts.push('Session-Login');
-  if (!sessionOn && basicAuthConfigured()) parts.push('Basic-Auth');
+  const parts = ['Session-Login'];
   const pub = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
   const local = `http://127.0.0.1:${PORT}`;
   if (pub) {

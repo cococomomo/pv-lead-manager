@@ -19,11 +19,7 @@ Für **PV Lead Manager** brauchst du **denselben Server**, aber **eine eigene Ke
 ## `.env` und Passwort – „verschlüsselt“?
 
 - Die `**.env` auf dem Server** sollte nur für den Deploy-User lesbar sein (`chmod 600 .env`, Besitzer z. B. der PM2-User). **Normale Website-Besucher** können sie **nicht** auslesen; sie liegt nicht im Webroot.
-- Trotzdem: **Kein Klartext-Passwort** in der `.env` auf Produktion. Stattdessen **bcrypt-Hash** nutzen:
-  ```bash
-  npm run hash-basic-password -- 'dein-passwort'
-  ```
-  Ausgabe in `.env` als `BASIC_AUTH_PASS_BCRYPT=...` eintragen, **`BASIC_AUTH_PASS` weglassen**. Login im Browser bleibt **Klartext** (cosimo / Passwort) – nur die **Speicherung** ist gehasht. HTTPS schützt die Übertragung.
+- **Benutzer-Passwörter** (Vertriebler-Logins) werden in `data/users.json` als **bcrypt-Hash** gespeichert — nicht in der `.env`.
 
 ## Kosten / KI
 
@@ -53,15 +49,15 @@ cp .env.example .env
 # Werte ausfüllen (nie committen)
 ```
 
-### 3b. Benutzer-Logins (statt einem gemeinsamen Basic-Auth)
+### 3b. Benutzer-Logins (Session über `/login.html`)
 
-1. In `.env` `**SESSION_SECRET**` setzen (mind. 16 zufällige Zeichen). Optional `**SESSION_COOKIE_SECURE=1**` hinter HTTPS.
+1. In `.env` `**SESSION_SECRET**` setzen (mind. 16 zufällige Zeichen, empfohlen: länger). Fehlt der Wert, generiert der Server beim Start ein **temporäres** Secret (Warnung im Log — nach jedem Neustart sind alle Sessions ungültig). Optional `**SESSION_COOKIE_SECURE=1**` hinter HTTPS.
 2. `**APP_BASE_URL**` z. B. `https://pvl.lifeco.at` (für Links in Einladungs-Mails).
 3. **Ersten Admin** anlegen:
   - **A)** Einmalig `SETUP_TOKEN` in `.env`, dann auf `/login.html` unten „Erstes Admin-Konto“ ausfüllen, **oder**
   - **B)** Auf dem Server: `npm run create-admin -- <user> <passwort> [email]`
 4. Weitere Nutzer: als Admin einloggen → `**/admin.html`**. Optional **E-Mail senden**: **SMTP** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `MAIL_FROM`).
-5. Wenn `SESSION_SECRET` gesetzt ist, entfällt die **Basic-Auth**-Abfrage für die App (Basic greift dann nicht mehr). Für Notfall-API weiterhin `ADMIN_TOKEN` (Bearer) möglich.
+5. Für Admin-API ohne Browser-Session optional `**ADMIN_TOKEN**` (Bearer) in der `.env`.
 
 Benutzerdatei: `data/users.json` (nicht im Git). Vorlage: `data/users.example.json`.
 
@@ -91,7 +87,7 @@ Von hier aus gibt es **keinen direkten Zugriff** auf `pvl.lifeco.at` — du füh
 3. `**.env` auf dem Server:** u. a. `**APP_BASE_URL=https://pvl.lifeco.at`**, bei HTTPS `**SESSION_COOKIE_SECURE=1**`, `SESSION_SECRET`, SMTP/IMAP, optional `SQLITE_LEADS_DB`.
 4. **Nginx:** `server_name pvl.lifeco.at` → `proxy_pass http://127.0.0.1:3080` (Port wie `PORT` in `.env`, Standard **3080**), danach `**sudo nginx -t && sudo systemctl reload nginx`**.
 5. **HTTPS:** z. B. Certbot für `pvl.lifeco.at` — erst dann Login/Session sinnvoll mit `SESSION_COOKIE_SECURE=1`.
-6. **Smoke-Test:** `https://pvl.lifeco.at` öffnen, Login, Karte; optional `curl -I https://pvl.lifeco.at/api/stats` (mit Session-Cookie / Basic je nach Setup).
+6. **Smoke-Test:** `https://pvl.lifeco.at` öffnen, Login, Karte; optional `curl -I https://pvl.lifeco.at/api/stats` (mit Session-Cookie).
 
 ## Lokal starten
 
@@ -123,14 +119,10 @@ Typisch fehlt **mindestens eines** von: DNS, Firewall, laufender Node-Prozess, R
 1. **DNS** beim Domain-Anbieter: Host `pvl` (oder `@` wenn Subdomain anders) als **A-Record** auf die **öffentliche IPv4** des Hetzner-Servers. Warten bis `nslookup pvl.lifeco.at` die richtige IP zeigt (oft wenige Minuten bis Stunden).
 2. **Firewall** (z. B. `ufw allow 80` und `ufw allow 443` / Hetzner Cloud Firewall): Traffic zum Webserver erlauben.
 3. **App auf dem Server**: Repo klonen oder deployen, `npm ci`, `.env` ausfüllen, Leads per `**npm run import-leads-csv`** einspielen, `PORT=3080`.
-4. **Passwortschutz (HTTP Basic Auth)** in `.env` auf dem Server (nicht ins Git):
-  `BASIC_AUTH_USER=cosimo`  
-   Passwort **gehasht**: `npm run hash-basic-password -- '…'` → Zeile `BASIC_AUTH_PASS_BCRYPT=…` in die `.env`, `**BASIC_AUTH_PASS` auf Produktion weglassen**.  
-   Nur für lokale Tests ohne Hash: `BASIC_AUTH_USER` + `BASIC_AUTH_PASS`.  
-   Ohne User+Passwort/Hash ist die App **ohne** Login erreichbar.
+4. **Zugang:** Die App ist **nur mit Session-Login** (`/login.html`) erreichbar — `SESSION_SECRET` und Benutzer anlegen (siehe Abschnitt 3b).
 5. **Prozesse**: `pm2 start src/server.js --name pv-lead-web` und `pm2 start src/poller.js --name pv-lead-poll` (Poller für E-Mail), `pm2 save`.
 6. **Reverse-Proxy** (Nginx/Caddy) mit `server_name pvl.lifeco.at` → `http://127.0.0.1:3080`. Erst danach ist die Domain von außen nutzbar, wenn der Node-Dienst läuft.
-7. **HTTPS empfohlen**: Ohne TLS sieht jemand im Netz mit, welche Seiten du aufrufst; Basic-Auth-Passwort wäre mitlesbar. Let’s Encrypt (Certbot oder Caddy automatisch) einrichten.
+7. **HTTPS empfohlen**: Ohne TLS sind Session-Cookies und Logins mitlesbar. Let’s Encrypt (Certbot oder Caddy automatisch) einrichten.
 
 **Nginx** (HTTP, Auszug – TLS später mit Certbot ergänzen):
 
@@ -149,7 +141,7 @@ server {
 }
 ```
 
-`/admin.html` nutzt dieselbe Basic-Auth-Session wie die Karte (`credentials: 'same-origin'`). Optional bleibt `ADMIN_TOKEN` für Spezialfälle ohne Basic Auth.
+`/admin.html` nutzt dieselbe **Session** wie das Dashboard (`credentials: 'include'`). Optional: `ADMIN_TOKEN` (Bearer) für Admin-API ohne Browser.
 
 ## Dashboard (Kurz)
 
@@ -164,7 +156,7 @@ server {
 
 1. **CSV vs. SQLite:** `npm run compare-csv-sqlite -- "pfad/leads.csv"` — vergleicht nicht-leere CSV-Zeilen mit der Zeilenanzahl in `leads` (Hinweis im Log).
 2. **Re-Geocoding:** `npm run geocode-leads-db` — Nominatim-Kaskade (AT, 1,5 s Pause) für aktive Leads ohne Koordinaten. Archivierte mit einbeziehen: `node scripts/geocode-leads-db.js --include-archived`
-  Zielkorrektur nur fehlende Punkte inkl. hartem Wien-Fallback-Log: `**npm run fix-missing-coords`** (`scripts/fix-missing-coords.js`, optional `--dry-run` / `--include-archived`).
+  Zielkorrektur nur fehlende Punkte (Nominatim, ohne städtischen Fallback): `**npm run fix-missing-coords`** (`scripts/fix-missing-coords.js`, optional `--dry-run` / `--include-archived`). Alte Stephansplatz-Fallback-Zeilen: `**npm run clear-wien-fallback-geocoords**` (optional `--dry-run`).
 3. **SQL-Schnellcheck (latitude):** `sqlite3 data/leads.db "SELECT COUNT(*) FROM leads WHERE latitude IS NULL OR latitude = 0;"` — Ziel **0** (Hinweis: die App prüft zusätzlich **longitude**).
 4. **Checks:** `npm run deploy-check`
 5. **Neustart:** `pm2 restart pvl-manager --update-env`

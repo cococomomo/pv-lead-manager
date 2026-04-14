@@ -4,17 +4,15 @@ const { geocodeNominatimOnce } = require('./geocode-nominatim');
 
 const NOMINATIM_DELAY_MS = 1500;
 
-const WIEN_ZENTRUM_1 = { lat: 48.2082, lon: 16.3738 };
-
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
- * Nominatim-Kaskade (Österreich): volle Adresse → PLZ+Ort → Wien-Fix.
+ * Nominatim-Kaskade (Österreich): volle Adresse → PLZ+Ort.
+ * Ohne Treffer: lat/lon bleiben null (kein städtischer Fallback).
  * @param {{ strasse?: string, plz?: string, ort?: string }} parts — bereits getrimmte Strings
- * @returns {Promise<{ lat: number, lon: number, label: string, nominatimHit: boolean }>}
- *   `nominatimHit` false, wenn nur Wien-Fallback ohne Treffer aus der API.
+ * @returns {Promise<{ lat: number|null, lon: number|null, label: string, nominatimHit: boolean }>}
  */
 async function geocodeAddressCascade(parts) {
   const strasse = String(parts.strasse || '').trim();
@@ -41,11 +39,11 @@ async function geocodeAddressCascade(parts) {
   }
 
   return {
-    lat: WIEN_ZENTRUM_1.lat,
-    lon: WIEN_ZENTRUM_1.lon,
-    label: 'Fallback Wien-Zentrum (fixe Koordinaten Stephansplatz-Nähe)',
+    lat: null,
+    lon: null,
+    label: 'Kein Nominatim-Treffer — keine Koordinaten gesetzt',
     nominatimHit: false,
   };
 }
 
-module.exports = { geocodeAddressCascade, WIEN_ZENTRUM_1, NOMINATIM_DELAY_MS };
+module.exports = { geocodeAddressCascade, NOMINATIM_DELAY_MS };

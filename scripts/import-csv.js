@@ -245,12 +245,12 @@ async function main() {
       }
     } else {
       const g = await geocodeLeadWithCascade(merged);
-      lat = g.lat;
-      lng = g.lon;
+      lat = g.lat != null && Number.isFinite(g.lat) ? g.lat : null;
+      lng = g.lon != null && Number.isFinite(g.lon) ? g.lon : null;
       logLine = `Lead ${n}/${total}: ${g.label}`;
       if (!g.nominatimHit) {
         appendImportErrorLog({
-          kind: 'NOMINATIM_MISS_FALLBACK',
+          kind: 'NOMINATIM_MISS_NO_COORDS',
           rowN: n,
           total,
           anfrage: merged.anfrage,
@@ -339,7 +339,7 @@ async function main() {
     `SQLite: aktive Leads=${activeInDb}, alle Zeilen (inkl. Archiv)=${totalInDb} | Hinweis: CSV-Zeilen − Batch = ${dataRows.length - batch.length} (leer/ignoriert); Batch − inserted = ${batch.length - inserted} (=Duplikate, wenn keine anderen Abbrüche)`
   );
   if (!skipGeocode) {
-    console.log(`Geocoding-Fälle ohne Nominatim-Treffer (Wien-Fallback o. Ä.): siehe ${path.relative(process.cwd(), IMPORT_ERROR_LOG)}`);
+    console.log(`Geocoding ohne Nominatim-Treffer (lat/lng leer): siehe ${path.relative(process.cwd(), IMPORT_ERROR_LOG)}`);
   }
 }
 
