@@ -830,6 +830,34 @@
     return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   }
 
+  /**
+   * Beschreibung wie `buildLeadCalendarDescription` in `src/calendar-links.js` — bei Text-Änderungen beide pflegen.
+   * URL-Encoding übernimmt `URLSearchParams` (details/text/location).
+   */
+  function buildLeadCalendarDescriptionClient(leadObj, partnerName) {
+    const tel = String(leadObj.Telefon ?? '').trim();
+    const email = String(leadObj['E-Mail'] ?? '').trim();
+    const st = String(leadObj['Straße'] ?? '').trim();
+    const plz = String(leadObj.PLZ ?? '').trim();
+    const ort = String(leadObj.Ort ?? '').trim();
+    const addrMid = [plz, ort].filter(Boolean).join(' ').trim();
+    const addressStr = st ? `${st}, ${addrMid}`.trim() : addrMid;
+    const notizen = String(leadObj.Notizen ?? '').trim();
+    const info = String(leadObj.Info ?? '').trim();
+    const notesBlock = [notizen || null, info || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
+    const partner = String(partnerName || '').trim() || '—';
+    return [
+      `📞 Tel: ${tel || '—'}`,
+      `✉️ E-Mail: ${email || '—'}`,
+      `📍 Adresse: ${addressStr || '—'}`,
+      '---',
+      '📝 Notizen/Beschreibung:',
+      notesBlock,
+      '',
+      `Vertriebspartner: ${partner}`,
+    ].join('\n');
+  }
+
   /** Google Calendar „action=TEMPLATE“ — gleiches Format wie Server (`calendar-links.js`). */
   function buildGoogleCalendarUrlClient({ title, location, description, start, end }) {
     const params = new URLSearchParams({
@@ -880,50 +908,67 @@
     const location = [st, zi, ci].map((x) => String(x || '').trim()).filter(Boolean).join(', ');
     const partner = calendarPartnerName || 'Vertrieb';
     const title = `PV - ${String(customerName || 'Kunde').trim() || 'Kunde'}`;
-    const description = `Vertriebspartner: ${partner}`;
+
+    if (apiEmail) {
+      try {
+        const r = await apiFetch('/api/calendar/build', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: apiEmail,
+            start: start.toISOString(),
+            end: end.toISOString(),
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          showToast(j.error || 'Kalender-Link fehlgeschlagen', 'err');
+          return;
+        }
+        if (pref === 'apple' && j.icsContent) {
+          const blob = new Blob([j.icsContent], { type: 'text/calendar;charset=utf-8' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = j.icsFilename || 'termin.ics';
+          a.rel = 'noopener noreferrer';
+          a.target = '_blank';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          showToast('Kalendereintrag (.ics) heruntergeladen.', 'ok');
+          return;
+        }
+        if (pref === 'google' && j.googleUrl) {
+          window.open(j.googleUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        if (pref === 'outlook' && j.outlookUrl) {
+          window.open(j.outlookUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        showToast('Kalender-Antwort ohne URL.', 'err');
+      } catch (e) {
+        showToast(e.message || String(e), 'err');
+      }
+      return;
+    }
 
     if (pref === 'google') {
+      const leadObj = {
+        Telefon: (document.getElementById('sd-c-phone') && document.getElementById('sd-c-phone').value) || '',
+        'E-Mail': (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value) || '',
+        'Straße': st,
+        PLZ: zi,
+        Ort: ci,
+        Notizen: (document.getElementById('sd-notizen') && document.getElementById('sd-notizen').value) || '',
+        Info: (rowLead && rowLead[COL.info]) ? String(rowLead[COL.info]) : '',
+      };
+      const description = buildLeadCalendarDescriptionClient(leadObj, partner);
       const url = buildGoogleCalendarUrlClient({ title, location, description, start, end });
       window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    if (!apiEmail) {
-      showToast('Kalender (Outlook/Apple): Bitte eine E-Mail zum Lead hinterlegen.', 'info');
-      return;
-    }
-    try {
-      const r = await apiFetch('/api/calendar/build', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: apiEmail,
-          start: start.toISOString(),
-          end: end.toISOString(),
-        }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        showToast(j.error || 'Kalender-Link fehlgeschlagen', 'err');
-        return;
-      }
-      if (pref === 'apple' && j.icsContent) {
-        const blob = new Blob([j.icsContent], { type: 'text/calendar;charset=utf-8' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = j.icsFilename || 'termin.ics';
-        a.rel = 'noopener noreferrer';
-        a.target = '_blank';
-        a.click();
-        URL.revokeObjectURL(a.href);
-        showToast('Kalendereintrag (.ics) heruntergeladen.', 'ok');
-        return;
-      }
-      const url = pref === 'outlook' ? j.outlookUrl : j.googleUrl;
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    }
+    showToast('Kalender (Outlook/Apple): Bitte eine E-Mail zum Lead hinterlegen.', 'info');
   }
 
   async function restoreLeadFromArchive() {

@@ -1,18 +1,46 @@
 'use strict';
 
 /**
+ * Kalender-Beschreibung (Google details / Outlook body / ICS DESCRIPTION).
+ * @param {object} lead — API-Lead (deutsche + interne Feldnamen)
+ * @param {string} partnerName
+ */
+function buildLeadCalendarDescription(lead, partnerName) {
+  const tel = String(lead.Telefon ?? lead.telefon ?? '').trim();
+  const email = String(lead['E-Mail'] ?? lead.email ?? '').trim();
+  const st = String(lead['Straße'] ?? lead.strasse ?? '').trim();
+  const plz = String(lead.PLZ ?? lead.plz ?? '').trim();
+  const ort = String(lead.Ort ?? lead.ort ?? '').trim();
+  const addrMid = [plz, ort].filter(Boolean).join(' ').trim();
+  const addressStr = st ? `${st}, ${addrMid}`.trim() : addrMid;
+  const notizen = String(lead.Notizen ?? lead.notizen ?? '').trim();
+  const info = String(lead.Info ?? lead.info ?? '').trim();
+  const notesBlock = [notizen || null, info || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
+  const partner = String(partnerName || '').trim() || '—';
+  return [
+    `📞 Tel: ${tel || '—'}`,
+    `✉️ E-Mail: ${email || '—'}`,
+    `📍 Adresse: ${addressStr || '—'}`,
+    '---',
+    '📝 Notizen/Beschreibung:',
+    notesBlock,
+    '',
+    `Vertriebspartner: ${partner}`,
+  ].join('\n');
+}
+
+/**
  * Deep-Links / ICS für Termine (Google, Outlook, Apple).
  * @param {object} opts
  * @param {string} opts.customerName
  * @param {string} opts.customerAddress
  * @param {string} opts.partnerName
- * @param {Date} opts.start
- * @param {Date} opts.end
+ * @param {object} opts.lead — für ausführliche DESCRIPTION
  */
-function buildEventTexts({ customerName, customerAddress, partnerName }) {
+function buildEventTexts({ customerName, customerAddress, partnerName, lead }) {
   const title = `PV - ${customerName || 'Kunde'}`;
   const location = String(customerAddress || '').trim();
-  const description = `Vertriebspartner: ${partnerName || '-'}`;
+  const description = buildLeadCalendarDescription(lead, partnerName);
   return { title, location, description };
 }
 
@@ -95,6 +123,7 @@ function generateCalendarLink(lead, partnerName, start, end) {
     customerName,
     customerAddress,
     partnerName,
+    lead,
   });
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}@pv-lead-manager`;
   return {
@@ -110,6 +139,7 @@ function generateCalendarLink(lead, partnerName, start, end) {
 
 module.exports = {
   generateCalendarLink,
+  buildLeadCalendarDescription,
   buildGoogleCalendarUrl,
   buildOutlookCalendarUrl,
   buildAppleIcsContent,
