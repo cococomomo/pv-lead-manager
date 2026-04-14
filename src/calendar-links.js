@@ -11,19 +11,21 @@ function buildLeadCalendarDescription(lead, partnerName) {
   const st = String(lead['Straße'] ?? lead.strasse ?? '').trim();
   const plz = String(lead.PLZ ?? lead.plz ?? '').trim();
   const ort = String(lead.Ort ?? lead.ort ?? '').trim();
+  const land = String(lead.Land ?? lead.land ?? '').trim();
   const addrMid = [plz, ort].filter(Boolean).join(' ').trim();
-  const addressStr = st ? `${st}, ${addrMid}`.trim() : addrMid;
+  const core = st ? `${st}, ${addrMid}`.trim() : addrMid;
+  const addressStr = [core, land].filter(Boolean).join(', ') || '';
   const notizen = String(lead.Notizen ?? lead.notizen ?? '').trim();
   const info = String(lead.Info ?? lead.info ?? '').trim();
-  const notesBlock = [notizen || null, info || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
+  const detailsBlock = [info || null, notizen || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
   const partner = String(partnerName || '').trim() || '—';
   return [
     `📞 Tel: ${tel || '—'}`,
     `✉️ E-Mail: ${email || '—'}`,
     `📍 Adresse: ${addressStr || '—'}`,
     '---',
-    '📝 Notizen/Beschreibung:',
-    notesBlock,
+    '📝 Anfrage-Details:',
+    detailsBlock,
     '',
     `Vertriebspartner: ${partner}`,
   ].join('\n');
@@ -44,7 +46,7 @@ function buildEventTexts({ customerName, customerAddress, partnerName, lead }) {
   return { title, location, description };
 }
 
-/** Google Calendar compose (wie bisherige Web-UI). */
+/** Google Calendar compose (wie bisherige Web-UI). `URLSearchParams` kodiert `details` inkl. Zeilenumbrüche sicher. */
 function buildGoogleCalendarUrl({ title, location, description, start, end }) {
   const fmt = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const params = new URLSearchParams({
