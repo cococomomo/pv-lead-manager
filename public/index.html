@@ -169,7 +169,6 @@
       .pvl-filter-panel > summary { min-height: 44px; padding: 0.5rem 0.85rem; font-size: 0.82rem; }
       .pvl-filter-body select { min-height: 44px; padding: 0.5rem 0.55rem; font-size: 0.88rem; }
       .pvl-filter-body label.pvl-filter-check { min-height: 44px; align-items: center; font-size: 0.88rem; }
-      .sync-leads-btn { padding: 0.55rem 0.75rem; min-height: 46px; font-size: 0.88rem; }
       .filter-archive-btn { padding: 0.5rem 0.75rem; min-height: 44px; font-size: 0.85rem; }
       .refresh-btn { padding: 0.45rem 0.75rem; min-height: 40px; font-size: 0.85rem; }
       #pvl-toast { bottom: 4.25rem; max-width: min(420px, 94vw); }
@@ -596,29 +595,6 @@
     .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
     .refresh-btn svg { flex-shrink: 0; }
 
-    .sync-leads-btn {
-      width: 100%;
-      margin-bottom: 0.35rem;
-      padding: 0.38rem 0.65rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      border-radius: 6px;
-      border: none;
-      background: #0f766e;
-      color: #fff;
-      cursor: pointer;
-      font-family: inherit;
-      transition: background 0.18s ease, opacity 0.18s ease;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.4rem;
-    }
-    .sync-leads-btn:hover:not(:disabled) { background: #115e59; }
-    .sync-leads-btn:disabled { opacity: 0.72; cursor: wait; }
-    .sync-leads-btn.spin { animation: pvl-spin 0.75s linear infinite; }
-    .sync-leads-btn svg { flex-shrink: 0; }
-
     #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
@@ -728,7 +704,6 @@
       .lead-item { transition: none; }
       .lead-item:hover { transform: none; }
       .refresh-btn.spin { animation: none; }
-      .sync-leads-btn.spin { animation: none; }
       #sidebar-detail.open { animation: none; }
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
@@ -837,7 +812,6 @@
       </div>
     </details>
     <div class="filter-bar">
-      <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromImap()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg><span>Leads jetzt synchronisieren</span></button>
       <input type="text" id="search-input" placeholder="Name, E-Mail, Telefon, Ort…" oninput="renderList(); renderMarkers();" />
       <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
@@ -1465,44 +1439,6 @@
     const H2 = Math.floor(snapped / 60) % 24;
     const M2 = ((snapped % 60) + 60) % 60;
     return `${datePart}T${String(H2).padStart(2, '0')}:${String(M2).padStart(2, '0')}`;
-  }
-
-  let syncLeadsInFlight = false;
-  async function syncLeadsFromImap() {
-    if (syncLeadsInFlight) return;
-    const btn = document.getElementById('btn-sync-leads');
-    syncLeadsInFlight = true;
-    if (btn) {
-      btn.disabled = true;
-      btn.classList.add('spin');
-    }
-    try {
-      const r = await apiFetch('/api/sync-leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 401) {
-        pvlRedirectToLoginAfter401();
-        return;
-      }
-      if (!r.ok || j.success === false) {
-        showToast(j.error || 'NOORTEC: Synchronisation fehlgeschlagen.', 'err');
-        return;
-      }
-      const n = parseInt(String(j.count ?? 0), 10) || 0;
-      showToast(`Sync erfolgreich: ${n} neue Leads importiert.`, 'ok');
-      await loadLeads();
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    } finally {
-      syncLeadsInFlight = false;
-      if (btn) {
-        btn.disabled = false;
-        btn.classList.remove('spin');
-      }
-    }
   }
 
   async function loadVertrieblerNames() {

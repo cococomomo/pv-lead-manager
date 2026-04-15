@@ -348,6 +348,7 @@ async function appendLead(lead) {
       );
     }
   }
+  return { id: rid };
 }
 
 async function updateLeadField(email, columnHeader, value) {

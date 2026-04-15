@@ -26,6 +26,8 @@ const {
   setLeadStatusByDbId,
   buildLeadsExportCsv,
   regeocodeLeadByEmail,
+  appendLead,
+  leadEmailExistsInDatabase,
 } = require('./sheets');
 const {
   verifyLogin,
@@ -158,6 +160,58 @@ function requireWebSession(req, res, next) {
 
 app.use(express.json({ limit: '128kb' }));
 
+/** n8n → SQLite (API-Key, kein Session-Login). */
+app.post('/api/webhook/n8n-lead', async (req, res) => {
+  const expected = String(process.env.N8N_API_KEY || '').trim();
+  if (!expected) {
+    return res.status(503).json({ error: 'N8N_API_KEY ist nicht konfiguriert' });
+  }
+  const got = String(req.headers['x-n8n-api-key'] || '').trim();
+  if (got !== expected) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const b = req.body && typeof req.body === 'object' ? req.body : {};
+  const trim = (v) => (v == null ? '' : String(v).trim());
+  const name = trim(b.name);
+  const email = trim(b.email);
+  const telefon = trim(b.telefon);
+  const strasse = trim(b.strasse);
+  const plz = trim(b.plz);
+  const ort = trim(b.ort);
+  const land = trim(b.land);
+  const info = trim(b.info);
+  const source = trim(b.source);
+  if (!email || !looksLikeEmail(email)) {
+    return res.status(400).json({ error: 'Gültige E-Mail (email) erforderlich' });
+  }
+  try {
+    if (leadEmailExistsInDatabase(email)) {
+      return res.status(409).json({ error: 'Lead mit dieser E-Mail existiert bereits' });
+    }
+    const todayIso = new Date().toISOString();
+    const out = await appendLead({
+      name,
+      phone: telefon,
+      email,
+      street: strasse,
+      zip: plz,
+      city: ort,
+      country: land || 'Österreich',
+      source,
+      info,
+      date: todayIso,
+    });
+    res.json({
+      ok: true,
+      message: 'Lead gespeichert',
+      id: out && out.id != null ? out.id : undefined,
+    });
+  } catch (err) {
+    console.error('POST /api/webhook/n8n-lead:', err && err.message ? err.message : err);
+    res.status(500).json({ error: formatLeadsApiError(err) });
+  }
+});
+
 app.get('/profil.html', (req, res) => {
   res.redirect(302, req.originalUrl.replace(/\/profil\.html/i, '/profile'));
 });
@@ -277,6 +331,7 @@ app.post('/api/auth/smtp-test', async (req, res) => {
 // Geschützte API + HTML (nur Session-Login; öffentliche Auth-Routen ausgenommen)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
+    if (req.path === '/api/webhook/n8n-lead' && req.method === 'POST') return next();
     if (req.path === '/api/auth/login' && req.method === 'POST') return next();
     if (req.path === '/api/auth/logout' && req.method === 'POST') return next();
     if (req.path === '/api/auth/bootstrap-admin' && req.method === 'POST') return next();
@@ -312,25 +367,6 @@ app.get('/api/leads', async (req, res) => {
   } catch (err) {
     console.error('GET /api/leads error:', err.message);
     res.status(500).json({ error: formatLeadsApiError(err) });
-  }
-});
-
-/** NOORTEC: IMAP → SQLite, einmal pro Aufruf (nur mit Session-Login). */
-app.post('/api/sync-leads', async (req, res) => {
-  if (!req.session?.user) {
-    return res.status(401).json({ error: 'login_required' });
-  }
-  try {
-    const { pollEmails } = require('./poller');
-    const { importedCount } = await pollEmails();
-    res.json({ success: true, count: importedCount });
-  } catch (err) {
-    console.error('POST /api/sync-leads:', err && err.message ? err.message : err);
-    res.status(500).json({
-      success: false,
-      count: 0,
-      error: (err && err.message) ? String(err.message) : String(err),
-    });
   }
 });
 

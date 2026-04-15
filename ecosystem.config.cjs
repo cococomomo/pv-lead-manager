@@ -1,6 +1,6 @@
 'use strict';
 
-/** PM2: NOORTEC Web-App. IMAP-Import nur manuell (Dashboard POST /api/sync-leads oder `npm run poll`). */
+/** PM2: NOORTEC Web-App. Lead-Import über n8n → POST /api/webhook/n8n-lead. */
 module.exports = {
   apps: [
     {
