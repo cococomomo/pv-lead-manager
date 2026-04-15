@@ -102,6 +102,7 @@ async function createUser({
   voller_name,
   telefon,
   email_kontakt,
+  mailbox_password,
 }) {
   const name = String(username || '').trim();
   if (!name || !password || String(password).length < 6) {
@@ -114,17 +115,21 @@ async function createUser({
   users.push({
     username: name,
     passwordHash: bcrypt.hashSync(String(password), 12),
-    email: String(email || '').trim(),
+    email: String(email_kontakt || email || '').trim(),
     role: normalizeUserRole(role),
     calendarPreference: 'google',
   });
   await writeUsers(users);
   ensureSqliteUserStub(name);
-  upsertProfile(name, {
+  const profPatch = {
     voller_name: voller_name !== undefined ? String(voller_name ?? '').trim() : '',
     telefon: telefon !== undefined ? String(telefon ?? '').trim() : '',
     email_kontakt: email_kontakt !== undefined ? String(email_kontakt ?? '').trim() : '',
-  });
+  };
+  if (mailbox_password !== undefined && String(mailbox_password).length > 0) {
+    profPatch.smtp_pass = String(mailbox_password);
+  }
+  upsertProfile(name, profPatch);
 }
 
 /**
@@ -140,12 +145,15 @@ async function updateUserAdminFields(username, patch) {
   if (idx < 0) throw new Error('Benutzer nicht gefunden');
   if (patch.email !== undefined) users[idx].email = String(patch.email ?? '').trim();
   if (patch.role !== undefined) users[idx].role = normalizeUserRole(patch.role);
-  await writeUsers(users);
-  ensureSqliteUserStub(name);
   const p = {};
   if (patch.voller_name !== undefined) p.voller_name = patch.voller_name;
   if (patch.telefon !== undefined) p.telefon = patch.telefon;
-  if (patch.email_kontakt !== undefined) p.email_kontakt = patch.email_kontakt;
+  if (patch.email_kontakt !== undefined) {
+    p.email_kontakt = patch.email_kontakt;
+    users[idx].email = String(patch.email_kontakt ?? '').trim();
+  }
+  await writeUsers(users);
+  ensureSqliteUserStub(name);
   if (Object.keys(p).length) upsertProfile(name, p);
 }
 
@@ -165,9 +173,6 @@ async function getUserPublic(username) {
     voller_name,
     telefon,
     email_kontakt,
-    smtp_host: String(prof.smtp_host ?? '').trim(),
-    smtp_port: String(prof.smtp_port ?? '587').trim() || '587',
-    smtp_user: String(prof.smtp_user ?? '').trim(),
     smtp_pass_configured: !!prof.smtp_pass_configured,
     profileComplete: isProfileComplete(u.username),
   };
@@ -216,6 +221,41 @@ async function resetUserPassword(username, newPassword) {
   await writeUsers(users);
 }
 
+/**
+ * CLI / Notfall: Nutzer per E-Mail (JSON `email`, Login-Name oder SQLite `email_kontakt`) finden,
+ * Rolle Admin setzen und Passwort überschreiben.
+ * @param {string} emailOrUsername
+ * @param {string} newPassword
+ */
+async function promoteToAdminAndResetPassword(emailOrUsername, newPassword) {
+  const key = String(emailOrUsername || '').trim().toLowerCase();
+  if (!key || !newPassword || String(newPassword).length < 6) {
+    throw new Error('E-Mail und neues Passwort (mind. 6 Zeichen) erforderlich');
+  }
+  const users = await readUsers();
+  const db = getDb();
+  let idx = users.findIndex((x) => {
+    const un = String(x.username || '').trim().toLowerCase();
+    const em = String(x.email || '').trim().toLowerCase();
+    return un === key || em === key;
+  });
+  if (idx < 0) {
+    for (let i = 0; i < users.length; i += 1) {
+      const un = String(users[i].username || '').trim();
+      const row = db.prepare('SELECT email_kontakt FROM users WHERE lower(username) = lower(?)').get(un);
+      const ek = String(row && row.email_kontakt ? row.email_kontakt : '').trim().toLowerCase();
+      if (ek === key) {
+        idx = i;
+        break;
+      }
+    }
+  }
+  if (idx < 0) throw new Error('Kein Benutzer mit dieser E-Mail oder diesem Namen gefunden');
+  users[idx].role = 'admin';
+  users[idx].passwordHash = bcrypt.hashSync(String(newPassword), 12);
+  await writeUsers(users);
+}
+
 module.exports = {
   readUsers,
   verifyLogin,
@@ -226,6 +266,7 @@ module.exports = {
   deleteUser,
   userCount,
   resetUserPassword,
+  promoteToAdminAndResetPassword,
   getUserPublic,
   updateCalendarPreference,
   normalizeCalendarPreference,

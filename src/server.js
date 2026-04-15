@@ -45,7 +45,7 @@ const { getDb } = require('./database');
 const { sendAppointmentConfirmationEmail, buildLeadAddressLine, formatTerminDe, looksLikeEmail } = require('./mail-appointment-confirm');
 const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-transport');
 const { resolveBetreuerContact } = require('./sales-contact');
-const { upsertProfile, ensureSqliteUserStub } = require('./user-profile');
+const { upsertProfile, ensureSqliteUserStub, getProfile } = require('./user-profile');
 const { getDashboardStats } = require('./stats');
 
 const app = express();
@@ -235,9 +235,6 @@ app.patch('/api/auth/contact-profile', async (req, res) => {
       voller_name: b.voller_name,
       telefon: b.telefon,
       email_kontakt: b.email_kontakt,
-      smtp_host: b.smtp_host,
-      smtp_port: b.smtp_port,
-      smtp_user: b.smtp_user,
       smtp_pass: b.smtp_pass,
     });
     const user = await getUserPublic(req.session.user.username);
@@ -254,10 +251,20 @@ app.post('/api/auth/smtp-test', async (req, res) => {
     if (body.useSaved) {
       await verifySavedUserSmtp(req.session.user.username);
     } else {
+      const host = (process.env.DEFAULT_SMTP_HOST || process.env.SMTP_HOST || '').trim();
+      if (!host) {
+        throw new Error('DEFAULT_SMTP_HOST oder SMTP_HOST in der Server-.env setzen');
+      }
+      const port = parseInt(String(process.env.DEFAULT_SMTP_PORT || process.env.SMTP_PORT || '587'), 10) || 587;
+      const prof = getProfile(req.session.user.username);
+      const userMail = String(body.email_kontakt || '').trim() || String(prof && prof.email_kontakt || '').trim();
+      if (!looksLikeEmail(userMail)) {
+        throw new Error('Gültige Kontakt-E-Mail erforderlich (gleiches Postfach wie SMTP-Login)');
+      }
       await verifySmtpInline({
-        host: body.smtp_host,
-        port: body.smtp_port || 587,
-        user: body.smtp_user,
+        host,
+        port,
+        user: userMail,
         pass: body.smtp_pass,
       });
     }
@@ -651,17 +658,19 @@ app.post('/api/admin/users', async (req, res) => {
   const b = req.body || {};
   const {
     username, password, email, role, voller_name, telefon, email_kontakt, sendWelcomeEmail,
+    mailbox_password,
   } = b;
   const skipMail = sendWelcomeEmail === false;
   try {
     await createUser({
       username,
       password,
-      email,
+      email: String(email_kontakt || email || '').trim(),
       role,
       voller_name,
       telefon,
       email_kontakt,
+      mailbox_password,
     });
     const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
     const toMail = String(email_kontakt || email || '').trim();

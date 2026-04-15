@@ -12,5 +12,4 @@ data/leads.db-wal
 data/sessions/
 .DS_Store
 *.log
-!data/import_errors.log
 .claude/

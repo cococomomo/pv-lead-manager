@@ -72,8 +72,33 @@ function getDashboardStats() {
       )
   `).get().c;
 
+  const nonArchived = `(archived_at IS NULL OR trim(archived_at) = '')`;
+
+  const toCallCount = db.prepare(`
+    SELECT COUNT(*) AS c FROM leads
+    WHERE ${nonArchived}
+      AND lower(trim(coalesce(status, ''))) NOT IN (
+        'termin vereinbart', 'lead verloren', 'termin', 'verloren'
+      )
+  `).get().c;
+
+  const terminCount = db.prepare(`
+    SELECT COUNT(*) AS c FROM leads
+    WHERE ${nonArchived}
+      AND lower(trim(coalesce(status, ''))) IN ('termin vereinbart', 'termin')
+  `).get().c;
+
+  const lostCount = db.prepare(`
+    SELECT COUNT(*) AS c FROM leads
+    WHERE ${nonArchived}
+      AND lower(trim(coalesce(status, ''))) IN ('lead verloren', 'verloren')
+  `).get().c;
+
   return {
     totalLeads,
+    toCallCount,
+    terminCount,
+    lostCount,
     newWeek,
     newMonth,
     doneWeek,

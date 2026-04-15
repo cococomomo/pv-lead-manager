@@ -42,7 +42,7 @@ async function sendNoortecWelcomeOnboardingEmail({
     `Benutzername (Login): ${username}`,
     `Passwort (bitte nach dem ersten Login ändern): ${passwordPlain}`,
     '',
-    'Bitte vervollständigen Sie Ihr Profil unter /profile (Name, Telefon, Kontakt-E-Mail und optional persönliches SMTP für Kunden-E-Mails).',
+    'Bitte vervollständigen Sie Ihr Profil unter /profile (Name, Telefon, Kontakt-E-Mail und optional Postfach-Passwort für persönlichen Kunden-E-Mail-Versand).',
     '',
     process.env.EMAIL_SIGNATURE || `Mit freundlichen Grüßen,\n${process.env.MY_NAME || 'NOORTEC'}`,
   ].join('\n');

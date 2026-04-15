@@ -12,6 +12,7 @@
     "poll": "node scripts/pv-lead-poll.js",
     "create-admin": "node scripts/create-admin.js",
     "reset-password": "node scripts/reset-password.js",
+    "reset-admin": "node scripts/reset-admin.js",
     "import-leads-csv": "node scripts/import-csv.js",
     "geocode-leads-db": "node scripts/geocode-leads-db.js",
     "clear-wien-fallback-geocoords": "node scripts/clear-wien-fallback-geocoords.js",

@@ -3,6 +3,18 @@
 const { getDb } = require('./database');
 const { encryptSecret, decryptSecret } = require('./secret-crypto');
 
+function looksLikeEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+}
+
+/** Persönlicher Versand: Host/Port aus .env (DEFAULT_SMTP_* bevorzugt, sonst SMTP_*). */
+function resolveDefaultSmtpServer() {
+  const host = (process.env.DEFAULT_SMTP_HOST || process.env.SMTP_HOST || '').trim();
+  const portRaw = process.env.DEFAULT_SMTP_PORT || process.env.SMTP_PORT || '587';
+  const port = parseInt(String(portRaw).trim(), 10) || 587;
+  return { host, port };
+}
+
 /**
  * @param {string} username
  * @returns {object | null} — inkl. smtp_pass (verschlüsselt), nur serverintern
@@ -25,18 +37,16 @@ function getProfileRow(username) {
 function getProfile(username) {
   const row = getProfileRow(username);
   if (!row) return null;
-  const passSet = !!(String(row.smtp_host || '').trim()
-    && String(row.smtp_user || '').trim()
-    && String(row.smtp_pass || '').trim());
+  const { host } = resolveDefaultSmtpServer();
+  const passSet = !!(String(row.smtp_pass || '').trim()
+    && looksLikeEmail(row.email_kontakt)
+    && !!host);
   return {
     id: row.id != null ? Number(row.id) : null,
     username: row.username,
     voller_name: String(row.voller_name ?? '').trim(),
     telefon: String(row.telefon ?? '').trim(),
     email_kontakt: String(row.email_kontakt ?? '').trim(),
-    smtp_host: String(row.smtp_host ?? '').trim(),
-    smtp_port: String(row.smtp_port ?? '587').trim() || '587',
-    smtp_user: String(row.smtp_user ?? '').trim(),
     smtp_pass_configured: passSet,
   };
 }
@@ -54,25 +64,23 @@ function isProfileComplete(username) {
 
 /**
  * Persönliches SMTP für Versand (entschlüsselt). Sonst null.
+ * Host/Port aus Umgebung; Login-Name = Kontakt-E-Mail.
  * @param {string} username
  */
 function getProfileForMailSend(username) {
   const row = getProfileRow(username);
   if (!row) return null;
-  const host = String(row.smtp_host || '').trim();
-  const user = String(row.smtp_user || '').trim();
+  const { host, port } = resolveDefaultSmtpServer();
+  const user = String(row.email_kontakt || '').trim();
   const pass = decryptSecret(String(row.smtp_pass || ''));
-  if (!host || !user || !pass) return null;
+  if (!host || !looksLikeEmail(user) || !pass) return null;
   return {
     voller_name: String(row.voller_name || '').trim(),
     telefon: String(row.telefon || '').trim(),
     email_kontakt: String(row.email_kontakt || '').trim(),
     smtp: {
       host,
-      port: (() => {
-        const p = parseInt(String(row.smtp_port || '587').trim(), 10);
-        return Number.isFinite(p) && p > 0 ? p : 587;
-      })(),
+      port,
       user,
       pass,
     },
@@ -100,21 +108,22 @@ function upsertProfile(username, fields) {
   const email_kontakt = fields.email_kontakt !== undefined
     ? String(fields.email_kontakt ?? '').trim()
     : String(cur.email_kontakt ?? '').trim();
-  const smtp_host = fields.smtp_host !== undefined
-    ? String(fields.smtp_host ?? '').trim()
-    : String(cur.smtp_host ?? '').trim();
-  const smtp_port = fields.smtp_port !== undefined
-    ? String(fields.smtp_port ?? '587').trim() || '587'
-    : (String(cur.smtp_port ?? '587').trim() || '587');
-  const smtp_user = fields.smtp_user !== undefined
-    ? String(fields.smtp_user ?? '').trim()
-    : String(cur.smtp_user ?? '').trim();
 
   let smtp_pass = String(cur.smtp_pass ?? '');
   if (fields.smtp_pass === '') {
     smtp_pass = '';
   } else if (fields.smtp_pass != null && String(fields.smtp_pass).length > 0) {
     smtp_pass = encryptSecret(String(fields.smtp_pass));
+  }
+
+  const { host, port } = resolveDefaultSmtpServer();
+  let smtp_host = '';
+  let smtp_port = '587';
+  let smtp_user = '';
+  if (String(smtp_pass || '').trim() && looksLikeEmail(email_kontakt) && host) {
+    smtp_host = host;
+    smtp_port = String(port);
+    smtp_user = email_kontakt.trim();
   }
 
   const db = getDb();
@@ -134,22 +143,22 @@ function upsertProfile(username, fields) {
 
 /** Leere SQLite-Zeile für Login (nach JSON-Anlage); id wird automatisch vergeben. */
 function ensureSqliteUserStub(username) {
-  const u = String(username || '').trim();
-  if (!u) return;
+  const un = String(username || '').trim();
+  if (!un) return;
   const db = getDb();
-  const ex = db.prepare('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)').get(u);
+  const ex = db.prepare('SELECT 1 AS x FROM users WHERE lower(username) = lower(?)').get(un);
   if (ex) return;
   db.prepare(`
     INSERT INTO users (username, voller_name, telefon, email_kontakt, smtp_host, smtp_port, smtp_user, smtp_pass)
     VALUES (?, '', '', '', '', '587', '', '')
-  `).run(u);
+  `).run(un);
 }
 
 function deleteSqliteUserByUsername(username) {
-  const u = String(username || '').trim();
-  if (!u) return;
+  const un = String(username || '').trim();
+  if (!un) return;
   const db = getDb();
-  db.prepare('DELETE FROM users WHERE lower(username) = lower(?)').run(u);
+  db.prepare('DELETE FROM users WHERE lower(username) = lower(?)').run(un);
 }
 
 module.exports = {
@@ -162,4 +171,6 @@ module.exports = {
   userSmtpFullyConfigured,
   ensureSqliteUserStub,
   deleteSqliteUserByUsername,
+  resolveDefaultSmtpServer,
+  looksLikeEmail,
 };

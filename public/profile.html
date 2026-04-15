@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NOORTEC — Profil</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E" />
   <style>
     * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; margin: 0; padding: 1.25rem; }
@@ -27,32 +27,26 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>NOORTEC — Kontakt &amp; SMTP</h1>
-    <p class="sub">Name, Telefon und E-Mail sind Pflicht. Persönliches SMTP ist optional — sonst wird der zentrale Versand (z. B. vertrieb@noortec.at) aus der Server-<code>.env</code> genutzt.</p>
+    <h1>NOORTEC — Kontakt &amp; E-Mail</h1>
+    <p class="sub">Name, Telefon und E-Mail-Adresse sind Pflicht. Für den persönlichen Kunden-E-Mail-Versand genügt optional das <strong>Passwort desselben Postfachs</strong> — SMTP-Host und Port kommen aus der Server-<code>.env</code> (<code>DEFAULT_SMTP_HOST</code> / <code>DEFAULT_SMTP_PORT</code>), der Login-Name ist immer Ihre E-Mail-Adresse.</p>
     <form id="f">
       <h2>Kontakt</h2>
       <label for="voller_name">Voller Name</label>
       <input id="voller_name" name="voller_name" autocomplete="name" required />
       <label for="telefon">Telefon</label>
       <input id="telefon" name="telefon" type="tel" autocomplete="tel" required />
-      <label for="email_kontakt">E-Mail (Kontakt / Absender bei persönlichem SMTP)</label>
+      <label for="email_kontakt">E-Mail-Adresse (Kontakt &amp; Postfach-Login)</label>
       <input id="email_kontakt" name="email_kontakt" type="email" autocomplete="email" required />
 
-      <h2>Persönliches SMTP (optional)</h2>
-      <p class="hint">SMTP-Passwort wird verschlüsselt gespeichert (PVL_ENCRYPTION_KEY oder SESSION_SECRET). Leer lassen = unverändert; nur Leerzeichen im Passwortfeld löschen = Passwort entfernen.</p>
-      <label for="smtp_host">SMTP-Host</label>
-      <input id="smtp_host" name="smtp_host" autocomplete="off" placeholder="z. B. mail.noortec.at" />
-      <label for="smtp_port">SMTP-Port</label>
-      <input id="smtp_port" name="smtp_port" type="number" min="1" max="65535" placeholder="587" />
-      <label for="smtp_user">SMTP-Benutzer</label>
-      <input id="smtp_user" name="smtp_user" autocomplete="username" />
-      <label for="smtp_pass">SMTP-Passwort</label>
+      <h2>E-Mail-Postfach (optional)</h2>
+      <p class="hint">Passwort wird verschlüsselt gespeichert. Leer lassen = unverändert; zum Entfernen „Postfach entfernen“ nutzen.</p>
+      <label for="smtp_pass">Passwort für das E-Mail-Postfach</label>
       <input id="smtp_pass" name="smtp_pass" type="password" autocomplete="new-password" placeholder="nur bei Änderung ausfüllen" />
 
       <div class="row-actions">
-        <button type="button" class="secondary" id="btn-test-inline">SMTP testen (Formular)</button>
-        <button type="button" class="secondary" id="btn-test-saved">SMTP testen (gespeichert)</button>
-        <button type="button" class="secondary" id="btn-clear-smtp">Persönliches SMTP entfernen</button>
+        <button type="button" class="secondary" id="btn-test-inline">Verbindung testen (Formular)</button>
+        <button type="button" class="secondary" id="btn-test-saved">Verbindung testen (gespeichert)</button>
+        <button type="button" class="secondary" id="btn-clear-smtp">Postfach-Zugang entfernen</button>
       </div>
 
       <button type="submit" id="btn">Speichern</button>
@@ -84,11 +78,8 @@
       document.getElementById('voller_name').value = j.user.voller_name || '';
       document.getElementById('telefon').value = j.user.telefon || '';
       document.getElementById('email_kontakt').value = j.user.email_kontakt || '';
-      document.getElementById('smtp_host').value = j.user.smtp_host || '';
-      document.getElementById('smtp_port').value = j.user.smtp_port || '587';
-      document.getElementById('smtp_user').value = j.user.smtp_user || '';
       document.getElementById('smtp_pass').value = '';
-        document.getElementById('smtp_pass').placeholder = j.user.smtp_pass_configured
+      document.getElementById('smtp_pass').placeholder = j.user.smtp_pass_configured
         ? '•••• hinterlegt — leer lassen oder neu eingeben'
         : 'nur bei Änderung ausfüllen';
       window._hadSmtpPass = !!j.user.smtp_pass_configured;
@@ -111,9 +102,7 @@
       btn.disabled = true;
       try {
         const r = await postJson('/api/auth/smtp-test', {
-          smtp_host: document.getElementById('smtp_host').value.trim(),
-          smtp_port: document.getElementById('smtp_port').value.trim() || 587,
-          smtp_user: document.getElementById('smtp_user').value.trim(),
+          email_kontakt: document.getElementById('email_kontakt').value.trim(),
           smtp_pass: document.getElementById('smtp_pass').value,
         });
         const j = await r.json().catch(() => ({}));
@@ -130,12 +119,27 @@
     };
 
     document.getElementById('btn-clear-smtp').onclick = async () => {
-      if (!confirm('Persönliches SMTP wirklich entfernen? (Danach gilt der zentrale Versand aus der .env)')) return;
-      document.getElementById('smtp_host').value = '';
-      document.getElementById('smtp_port').value = '587';
-      document.getElementById('smtp_user').value = '';
+      if (!confirm('Postfach-Zugang wirklich entfernen? (Danach gilt nur der zentrale Versand aus der .env)')) return;
       document.getElementById('smtp_pass').value = '';
-      document.getElementById('f').dispatchEvent(new Event('submit', { cancelable: true }));
+      const body = {
+        voller_name: document.getElementById('voller_name').value.trim(),
+        telefon: document.getElementById('telefon').value.trim(),
+        email_kontakt: document.getElementById('email_kontakt').value.trim(),
+        smtp_pass: '',
+      };
+      const r = await fetch('/api/auth/contact-profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        document.getElementById('err').textContent = j.error || r.statusText;
+        return;
+      }
+      document.getElementById('ok').textContent = 'Postfach-Zugang entfernt.';
+      load();
     };
 
     document.getElementById('btn-test-saved').onclick = async () => {
@@ -170,14 +174,9 @@
           voller_name: document.getElementById('voller_name').value.trim(),
           telefon: document.getElementById('telefon').value.trim(),
           email_kontakt: document.getElementById('email_kontakt').value.trim(),
-          smtp_host: document.getElementById('smtp_host').value.trim(),
-          smtp_port: String(document.getElementById('smtp_port').value || '587').trim(),
-          smtp_user: document.getElementById('smtp_user').value.trim(),
         };
         if (passEl.value.length > 0) body.smtp_pass = passEl.value;
-        else if (!document.getElementById('smtp_host').value.trim() && !document.getElementById('smtp_user').value.trim()) {
-          body.smtp_pass = '';
-        }
+        else if (!window._hadSmtpPass) body.smtp_pass = '';
 
         const r = await fetch('/api/auth/contact-profile', {
           method: 'PATCH',

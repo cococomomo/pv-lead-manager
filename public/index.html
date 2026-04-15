@@ -4,8 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NOORTEC Vertriebs-Dashboard</title>
-  <!-- Favicon: Sonnen-Emoji ☀️ (SVG mit Text, damit alle Browser es zuverlässig anzeigen) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
@@ -62,7 +61,8 @@
       box-shadow: 0 1px 0 rgba(15, 23, 42, 0.12);
     }
     .header-brand { display: flex; align-items: flex-start; gap: 0.45rem; min-width: 0; flex: 1 1 auto; }
-    .header-brand .header-sun { font-size: 1.05rem; line-height: 1.35; opacity: 0.92; flex-shrink: 0; }
+    .header-brand .header-sun { display: flex; align-items: center; opacity: 0.92; flex-shrink: 0; color: #fde68a; }
+    .header-brand .header-sun svg { width: 1.15rem; height: 1.15rem; display: block; }
     .header-title-block { min-width: 0; }
     header h1 {
       font-size: 1.05rem;
@@ -72,44 +72,6 @@
       margin: 0;
       line-height: 1.2;
     }
-    .header-mini-stats {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.25rem 0.65rem;
-      margin-top: 0.12rem;
-      font-size: 0.68rem;
-      font-weight: 500;
-      color: rgba(255, 255, 255, 0.82);
-      line-height: 1.35;
-    }
-    .header-mini-stats .hdr-stat strong { color: #fff; font-weight: 700; }
-    .header-warn-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.28rem;
-      margin-top: 0.1rem;
-      padding: 0.18rem 0.5rem;
-      background: #fef9c3;
-      color: #713f12;
-      border-radius: 6px;
-      font-size: 0.66rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid #eab308;
-      font-family: inherit;
-      text-align: left;
-      max-width: 100%;
-    }
-    .header-warn-badge.ok-state {
-      background: rgba(220, 252, 231, 0.95);
-      color: #14532d;
-      border-color: #86efac;
-      cursor: default;
-    }
-    .header-warn-badge.ok-state:hover { background: rgba(220, 252, 231, 0.95); }
-    .header-warn-badge:hover:not(.ok-state) { background: #fef08a; }
-    .header-warn-badge.is-hidden { display: none !important; }
     .header-export {
       font-size: 0.72rem;
       color: #fff;
@@ -168,7 +130,12 @@
       font-family: inherit;
       cursor: pointer;
       transition: color 0.15s ease, background 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
     }
+    .pvl-mobile-tab svg { width: 1.05rem; height: 1.05rem; flex-shrink: 0; opacity: 0.85; }
     .pvl-mobile-tab:hover { background: var(--pvl-surface-2); color: var(--pvl-text); }
     .pvl-mobile-tab.is-active {
       color: var(--pvl-accent);
@@ -266,9 +233,16 @@
       min-width: 0;
       position: relative;
       background: #dde;
+      color-scheme: light;
+      filter: none !important;
     }
-    html[data-theme="dark"] .map-wrap { background: #0f172a; }
     #map { position: absolute; inset: 0; }
+    /* Karte nie an Dark-Mode der App koppeln (kein invert / kein theme-abhängiger Layer). */
+    #map-wrap .leaflet-container,
+    #map-wrap .leaflet-tile-container img {
+      color-scheme: light;
+      filter: none !important;
+    }
 
     .sidebar-resizer {
       grid-column: 2;
@@ -288,24 +262,115 @@
     .sidebar-resizer:focus-visible { background: linear-gradient(90deg, transparent, var(--pvl-accent) 40%, var(--pvl-accent) 60%, transparent); outline: none; }
     .sidebar-resizer.is-dragging { background: var(--pvl-accent); }
 
-    /* Stats */
+    /* Stats (KPI-Leiste) */
     .stats {
       grid-column: 1 / -1;
       grid-row: 1;
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem 1rem;
-      padding: 0.6rem 1.2rem;
+      flex-direction: column;
+      gap: 0.4rem;
+      padding: 0.48rem 1rem 0.52rem;
       background: var(--pvl-surface);
       border-bottom: 1px solid var(--pvl-border);
-      align-items: center;
     }
-    .stat-card { background: var(--pvl-stat-bg); border-radius: 7px; padding: 0.35rem 0.8rem; text-align: center; min-width: 90px; }
-    .stat-card .num { font-size: 1.25rem; font-weight: 700; color: var(--pvl-accent); }
-    .stat-card .lbl { font-size: 0.65rem; color: var(--pvl-muted); text-transform: uppercase; letter-spacing: .05em; }
-    .legend { margin-left: auto; display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; color: var(--pvl-muted); flex-wrap: wrap; }
-    .legend b { margin-right: 2px; }
-    .leg { padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; white-space: nowrap; }
+    .stats-row-primary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 0.45rem 0.55rem;
+    }
+    .stats-kpi {
+      flex: 1 1 0;
+      min-width: 4.2rem;
+      max-width: 9rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.06rem;
+      padding: 0.32rem 0.4rem;
+      border-radius: 8px;
+      background: var(--pvl-stat-bg);
+      border: 1px solid var(--pvl-border);
+    }
+    .stats-kpi-ic { display: flex; color: var(--pvl-accent); opacity: 0.92; }
+    .stats-kpi-ic svg { width: 1rem; height: 1rem; }
+    .stats-kpi-val { font-size: 1.12rem; font-weight: 800; color: var(--pvl-accent); line-height: 1.1; }
+    .stats-kpi-lbl { font-size: 0.56rem; font-weight: 600; color: var(--pvl-muted); text-transform: uppercase; letter-spacing: 0.04em; text-align: center; line-height: 1.15; }
+    .stats-row-perf {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem 1rem;
+      font-size: 0.66rem;
+      color: var(--pvl-muted);
+    }
+    .stats-row-perf strong { color: var(--pvl-text); font-weight: 700; }
+    .stats-row-perf .stats-perf-ic { display: inline-flex; vertical-align: middle; margin-right: 0.2rem; opacity: 0.85; }
+    .stats-row-perf .stats-perf-ic svg { width: 0.85rem; height: 0.85rem; }
+
+    .pvl-map-legend {
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 8px;
+      padding: 0.4rem 0.55rem;
+      font-size: 0.62rem;
+      line-height: 1.38;
+      color: #334155;
+      box-shadow: 0 2px 14px rgba(15, 23, 42, 0.1);
+      max-width: 230px;
+    }
+    .pvl-map-legend .pvl-ml-title { font-weight: 700; font-size: 0.64rem; margin-bottom: 0.28rem; color: #0f172a; }
+    .pvl-map-legend .pvl-ml-sub { font-size: 0.58rem; color: #64748b; margin-bottom: 0.22rem; }
+    .pvl-map-legend .pvl-ml-row { display: flex; align-items: center; gap: 0.38rem; margin: 0.1rem 0; }
+    .pvl-map-legend .pvl-ml-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(15,23,42,0.15); }
+    .pvl-map-legend .pvl-ml-pin { width: 14px; height: 14px; flex-shrink: 0; }
+
+    .sidebar-foot-warn {
+      flex-shrink: 0;
+      margin: 0;
+      padding: 0.42rem 0.75rem;
+      border-top: 1px solid var(--pvl-border);
+      font-size: 0.72rem;
+      line-height: 1.38;
+      background: var(--pvl-surface-2);
+      color: var(--pvl-text);
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+      font-family: inherit;
+    }
+    .sidebar-foot-warn.is-hidden { display: none !important; }
+    .sidebar-foot-warn.ok-state { cursor: default; color: var(--pvl-muted); }
+    .sidebar-foot-warn .pvl-foot-warn-ic { display: inline-flex; color: #dc2626; margin-right: 0.32rem; vertical-align: middle; }
+    .sidebar-foot-warn .pvl-foot-warn-ic svg { width: 0.95em; height: 0.95em; display: block; }
+
+    .pvl-betreuer-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.08rem; }
+    .pvl-betreuer-pills button {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 0.3rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--pvl-border);
+      background: var(--pvl-surface);
+      color: var(--pvl-muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .pvl-betreuer-pills button:hover { background: var(--pvl-surface-2); color: var(--pvl-text); }
+    .pvl-betreuer-pills button.is-active {
+      border-color: var(--pvl-accent);
+      background: var(--pvl-stat-bg);
+      color: var(--pvl-accent);
+    }
+
+    .missing-lead-tel { font-size: 0.8rem; font-weight: 600; color: var(--pvl-text); margin: 0.15rem 0 0.1rem; }
+    .missing-lead-tel-num { font-variant-numeric: tabular-nums; }
 
     /* Map — Fläche in .map-wrap (position absolute) */
     .marker-cluster-small { background-color: rgba(214, 0, 0, 0.55); }
@@ -423,13 +488,13 @@
     .lead-betreut { font-size: 0.7rem; color: #059669; font-weight: 500; margin-top: 1px; }
     .lead-map-warn-icon {
       flex-shrink: 0;
-      font-size: 1.05rem;
-      line-height: 1;
-      color: #d97706;
-      cursor: help;
+      display: inline-flex;
+      align-items: center;
       margin-right: 0.2rem;
-      filter: drop-shadow(0 0 1px rgba(180, 83, 9, 0.45));
+      cursor: help;
+      color: #dc2626;
     }
+    .lead-map-warn-icon svg { width: 1.05rem; height: 1.05rem; display: block; }
 
     .pvl-filter-panel {
       border-bottom: 1px solid var(--pvl-border);
@@ -450,11 +515,19 @@
     }
     .pvl-filter-panel > summary::-webkit-details-marker { display: none; }
     .pvl-filter-panel > summary::after {
-      content: '▾';
-      font-size: 0.65rem;
-      opacity: 0.75;
+      content: '';
+      width: 0.42rem;
+      height: 0.42rem;
+      border-right: 2px solid var(--pvl-muted);
+      border-bottom: 2px solid var(--pvl-muted);
+      transform: rotate(45deg);
+      margin-top: -0.12rem;
+      opacity: 0.88;
     }
-    .pvl-filter-panel[open] > summary::after { content: '▴'; }
+    .pvl-filter-panel[open] > summary::after {
+      transform: rotate(-135deg);
+      margin-top: 0.1rem;
+    }
     .pvl-filter-body {
       padding: 0 0.75rem 0.5rem;
       display: flex;
@@ -514,9 +587,14 @@
     .save-hint { font-size: 0.73rem; color: #059669; display: none; align-self: center; transition: color 0.2s ease; }
     .save-hint.err { color: #b91c1c; }
 
-    .refresh-btn { background: var(--pvl-accent); color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem; font-size: 0.78rem; cursor: pointer; transition: background 0.18s ease; }
+    .refresh-btn {
+      background: var(--pvl-accent); color: #fff; border: none; border-radius: 6px; padding: 0.28rem 0.65rem;
+      font-size: 0.78rem; cursor: pointer; transition: background 0.18s ease;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
     .refresh-btn:hover:not(:disabled) { background: #1e40af; }
     .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
+    .refresh-btn svg { flex-shrink: 0; }
 
     .sync-leads-btn {
       width: 100%;
@@ -531,10 +609,15 @@
       cursor: pointer;
       font-family: inherit;
       transition: background 0.18s ease, opacity 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
     }
     .sync-leads-btn:hover:not(:disabled) { background: #115e59; }
     .sync-leads-btn:disabled { opacity: 0.72; cursor: wait; }
     .sync-leads-btn.spin { animation: pvl-spin 0.75s linear infinite; }
+    .sync-leads-btn svg { flex-shrink: 0; }
 
     #geo-status { display: none !important; }
 
@@ -618,7 +701,13 @@
     .field-group input:focus, .field-group textarea:focus, .field-group select:focus {
       outline: 2px solid #93c5fd; outline-offset: 1px; border-color: #2563eb;
     }
-    .stat-card .num { transition: color 0.2s ease; }
+    .stats-kpi-val { transition: color 0.2s ease; }
+
+    .pvl-map-legend-wrap.leaflet-bar {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
 
     #pvl-toast {
       position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%) translateY(140%);
@@ -634,15 +723,6 @@
     html[data-theme="dark"] #pvl-toast.ok { background: #052e16; color: #bbf7d0; border-color: #166534; }
     html[data-theme="dark"] #pvl-toast.info { background: #172554; color: #bfdbfe; border-color: #1e3a8a; }
 
-    html[data-theme="dark"] .leaflet-bar a,
-    html[data-theme="dark"] .leaflet-control-layers {
-      background: var(--pvl-surface);
-      color: var(--pvl-text);
-      border-color: var(--pvl-border);
-    }
-    html[data-theme="dark"] .leaflet-bar a:hover { background: var(--pvl-surface-2); }
-    html[data-theme="dark"] .leaflet-control-layers-separator { border-top-color: var(--pvl-border); }
-
     @media (prefers-reduced-motion: reduce) {
       body { animation: none; }
       .lead-item { transition: none; }
@@ -652,7 +732,7 @@
       #sidebar-detail.open { animation: none; }
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
-      .stat-card .num { transition: none; }
+      .stats-kpi-val { transition: none; }
     }
   </style>
 </head>
@@ -660,11 +740,9 @@
 
 <header>
   <div class="header-brand">
-    <span class="header-sun" aria-hidden="true">☀️</span>
+    <span class="header-sun" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span>
     <div class="header-title-block">
       <h1>NOORTEC Vertriebs-Dashboard</h1>
-      <div class="header-mini-stats" id="header-mini-stats" aria-live="polite"></div>
-      <button type="button" class="header-warn-badge is-hidden" id="header-warn-missing" aria-label="Leads ohne Kartenpunkt"></button>
     </div>
   </div>
   <div class="header-actions">
@@ -676,7 +754,7 @@
       <option value="apple">Apple</option>
     </select>
     <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
-    <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln">🌙</button>
+    <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 0 1 1-9-9Z"/></svg></button>
     <span style="font-size:0.74rem"><a href="/profile" style="color:#fff;text-decoration:underline">Profil</a></span>
     <span style="font-size:0.74rem"><a href="/admin/users" style="color:#fff;text-decoration:underline">Admin</a></span>
     <span style="font-size:0.74rem"><a href="#" id="logout-link" style="color:#fff;text-decoration:underline">Abmelden</a></span>
@@ -687,22 +765,31 @@
   <!-- Stats -->
   <div class="stats">
     <div id="load-error" style="display:none;flex-basis:100%;padding:0.35rem 0.75rem;background:#fef2f2;color:#991b1b;border-radius:6px;font-size:0.8rem;margin-bottom:0.15rem;"></div>
-    <div class="stat-card"><div class="num" id="stat-total">0</div><div class="lbl">Gesamt</div></div>
-    <div class="stat-card"><div class="num" id="stat-active">0</div><div class="lbl">Aktiv</div></div>
-    <div class="stat-card"><div class="num" id="stat-done">0</div><div class="lbl">Termin / Verl.</div></div>
-    <div class="stat-card"><div class="num" id="stat-new">0</div><div class="lbl">Neu</div></div>
-    <div class="stat-card"><div class="num" id="stat-betreut">0</div><div class="lbl">In Betreuung</div></div>
-    <div class="legend">
-      <b>Pin-Ring:</b>
-      <span class="leg" style="border:2px solid #0f172a;background:transparent;color:#0f172a">Neu / aktives Blatt</span>
-      <span class="leg" style="border:2px solid #fff;box-shadow:0 0 0 1px #94a3b8;background:transparent;color:#334155">Archiv-Blatt</span>
-      <span class="leg" style="background:#e2e8f0;color:#475569;border:1px solid #94a3b8">Abgearbeitet (Termin / Verloren)</span>
-      <b style="margin-left:0.5rem">Alter:</b>
-      <span class="leg" style="background:#FFC7C7;color:#1a202c">&lt; 1 Mon</span>
-      <span class="leg" style="background:#FFA0A0;color:#1a202c">1–3 Mon</span>
-      <span class="leg" style="background:#FF5C5C;color:#1a202c">3–6 Mon</span>
-      <span class="leg" style="background:#D60000;color:#fff">6–12 Mon</span>
-      <span class="leg" style="background:#8B0000;color:#fff">&gt; 1 Jahr</span>
+    <div class="stats-row-primary" aria-label="Übersicht Kunden und Pipeline">
+      <div class="stats-kpi" title="Alle Leads in der Datenbank">
+        <span class="stats-kpi-ic" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <span class="stats-kpi-val" id="stat-kunden">0</span>
+        <span class="stats-kpi-lbl">Gesamt<br/>Kunden</span>
+      </div>
+      <div class="stats-kpi" title="Aktive Leads (noch anzurufen / in Bearbeitung)">
+        <span class="stats-kpi-ic" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+        <span class="stats-kpi-val" id="stat-anzurufen">0</span>
+        <span class="stats-kpi-lbl">Anzurufen</span>
+      </div>
+      <div class="stats-kpi" title="Status Termin vereinbart">
+        <span class="stats-kpi-ic" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+        <span class="stats-kpi-val" id="stat-terminiert">0</span>
+        <span class="stats-kpi-lbl">Terminiert</span>
+      </div>
+      <div class="stats-kpi" title="Status Lead verloren">
+        <span class="stats-kpi-ic" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span>
+        <span class="stats-kpi-val" id="stat-disqual">0</span>
+        <span class="stats-kpi-lbl">Disqualifiziert</span>
+      </div>
+    </div>
+    <div class="stats-row-perf" aria-label="Performance Kennzahlen">
+      <span class="stats-perf-sep"><span class="stats-perf-ic" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-6 4 4 5-8"/></svg></span>Neu (7 / 30 Tage): <strong id="stat-neu7">0</strong> / <strong id="stat-neu30">0</strong></span>
+      <span class="stats-perf-sep"><span class="stats-perf-ic" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></span>Abgearbeitet (7 / 30 Tage): <strong id="stat-done7">0</strong> / <strong id="stat-done30">0</strong></span>
     </div>
   </div>
 
@@ -716,7 +803,7 @@
   <div class="sidebar" id="sidebar-main" aria-label="NOORTEC Lead-Bereich">
     <div class="sidebar-header">
       <h2>Leads (<span id="lead-count">0</span>)</h2>
-      <button class="refresh-btn" onclick="loadLeads()">↻</button>
+      <button type="button" class="refresh-btn" onclick="loadLeads()" title="Liste neu laden" aria-label="Lead-Liste neu laden"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg></button>
     </div>
     <div class="sidebar-tabs" role="tablist" aria-label="NOORTEC Lead-Listen">
       <button type="button" class="sidebar-tab is-active" id="tab-leads-active" role="tab" aria-selected="true" aria-controls="lead-list" onclick="setSidebarListTab('active')">Aktive Leads</button>
@@ -725,14 +812,14 @@
     <details class="pvl-filter-panel" id="pvl-filter-panel">
       <summary>Filter &amp; Sortierung</summary>
       <div class="pvl-filter-body">
-        <label class="pvl-filter-check"><input type="checkbox" id="filter-geo-only-missing" /> Nur ohne Kartenpunkt</label>
-        <span class="pvl-filter-lbl">Betreuer</span>
-        <select id="filter-betreuer" aria-label="Nach Betreuer filtern">
-          <option value="">Alle</option>
-          <option value="meine">Meine Leads</option>
-          <option value="unbetreut">Unbetreut</option>
-          <option value="andere">Andere Betreuer</option>
-        </select>
+        <label class="pvl-filter-check"><input type="checkbox" id="filter-geo-only-missing" /> Nur ohne Kartenpunkt anzeigen</label>
+        <input type="hidden" id="filter-betreuer" value="" />
+        <span class="pvl-filter-lbl">Vertriebler</span>
+        <div class="pvl-betreuer-pills" role="group" aria-label="Leads nach Zuweisung filtern">
+          <button type="button" class="is-active" data-betreuer="" id="pill-betreuer-all">Alle Leads</button>
+          <button type="button" data-betreuer="meine" id="pill-betreuer-meine">Meine Leads</button>
+          <button type="button" data-betreuer="unbetreut" id="pill-betreuer-unbetreut">Unbetreut</button>
+        </div>
         <span class="pvl-filter-lbl">Status</span>
         <select id="filter-status" aria-label="Nach Status filtern">
           <option value="">Alle (nach Tab)</option>
@@ -743,16 +830,16 @@
         </select>
         <span class="pvl-filter-lbl">Sortierung</span>
         <select id="sort-leads" onchange="renderList(); renderMarkers();">
-          <option value="created_at_desc">Erstelldatum (neueste zuerst)</option>
+          <option value="created_at_desc" selected>Erstelldatum (neueste zuerst)</option>
           <option value="created_at_asc">Erstelldatum (älteste zuerst)</option>
-          <option value="last_updated_desc" selected>Zuletzt bearbeitet</option>
+          <option value="last_updated_desc">Zuletzt bearbeitet</option>
         </select>
       </div>
     </details>
     <div class="filter-bar">
-      <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromImap()">🔄 Leads jetzt synchronisieren</button>
-      <input type="text" id="search-input" placeholder="Name, E-Mail, Ort…" oninput="renderList(); renderMarkers();" />
-      <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()">✕ Filter „ohne Kartenpunkt“ aufheben</button>
+      <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromImap()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg><span>Leads jetzt synchronisieren</span></button>
+      <input type="text" id="search-input" placeholder="Name, E-Mail, Telefon, Ort…" oninput="renderList(); renderMarkers();" />
+      <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
     </div>
     <div id="geo-status"></div>
@@ -831,12 +918,13 @@
       </div>
     </div>
     </div>
+    <button type="button" class="sidebar-foot-warn is-hidden" id="sidebar-foot-warn" aria-label="Hinweis Leads ohne Kartenpunkt"></button>
   </div>
 </div>
 
 <nav class="pvl-mobile-tabbar" id="pvl-mobile-tabbar" aria-label="Karte oder Liste">
-  <button type="button" class="pvl-mobile-tab is-active" id="pvl-tab-map" aria-pressed="true">🗺️ Karte</button>
-  <button type="button" class="pvl-mobile-tab" id="pvl-tab-list" aria-pressed="false">📋 Liste</button>
+  <button type="button" class="pvl-mobile-tab is-active" id="pvl-tab-map" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>Karte</span></button>
+  <button type="button" class="pvl-mobile-tab" id="pvl-tab-list" aria-pressed="false"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>Liste</span></button>
 </nav>
 
 <div id="pvl-toast" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -920,18 +1008,46 @@
     });
   }
 
-  let layersCtrl = null;
+  let mapLegendControl = null;
+
+  function pvlPinLegendSvg(stroke, fill) {
+    return '<svg class="pvl-ml-pin" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 40" aria-hidden="true"><path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z" fill="' + fill + '" stroke="' + stroke + '" stroke-width="2.5"/></svg>';
+  }
+
+  function pvlMapLegendHtml() {
+    return '<div class="pvl-map-legend">'
+      + '<div class="pvl-ml-title">Kartenlegende</div>'
+      + '<div class="pvl-ml-sub">Dunkler = frischer Lead (Erstelldatum) · heller = älter</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#8B0000"></span>&lt; 1 Monat (neu)</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#D60000"></span>1–3 Monate</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#FF5C5C"></span>3–6 Monate</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#FFA0A0"></span>6–12 Monate</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#FFC7C7"></span>&gt; 1 Jahr</div>'
+      + '<div class="pvl-ml-title" style="margin-top:0.35rem">Pin-Rand</div>'
+      + '<div class="pvl-ml-row">' + pvlPinLegendSvg('#0f172a', '#94a3b8') + '<span style="margin-left:2px">Hauptblatt</span></div>'
+      + '<div class="pvl-ml-row">' + pvlPinLegendSvg('#ffffff', '#94a3b8') + '<span style="margin-left:2px">Legacy / Archiv-Blatt</span></div>'
+      + '<div class="pvl-ml-row"><span style="opacity:.72">' + pvlPinLegendSvg('#0f172a', '#cbd5e1') + '</span><span style="margin-left:2px">Abgearbeitet</span></div>'
+      + '</div>';
+  }
+
+  function pvlEnsureMapLegend() {
+    if (mapLegendControl) return;
+    mapLegendControl = L.control({ position: 'topright' });
+    mapLegendControl.onAdd = function () {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar pvl-map-legend-wrap');
+      wrap.innerHTML = pvlMapLegendHtml();
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      return wrap;
+    };
+    mapLegendControl.addTo(map);
+  }
 
   const satellite = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { attribution: 'Satellit &copy; Esri', maxZoom: 19 }
   );
-  const streets = L.tileLayer(
-    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    { attribution: '© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', maxZoom: 19 }
-  );
 
-  // Transparente Overlay-Ebenen für Straßen, Ortsnamen und Grenzen
   const roadsOverlay = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
     { attribution: 'Straßen &copy; Esri', maxZoom: 19, opacity: 0.75 }
@@ -941,44 +1057,22 @@
     { attribution: 'Orte &copy; Esri', maxZoom: 19, opacity: 0.9 }
   );
 
-  const streetsDark = L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    {
-      subdomains: 'abcd',
-      maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }
-  );
-
-  function applyMapTheme(isDark) {
-    [satellite, streets, streetsDark, roadsOverlay, labelsOverlay].forEach((layer) => {
+  /**
+   * Basis immer Esri-Satellit — in Light- und Dark-Mode niemals auf dunkle Rasterkarten (z. B. Carto) umschalten.
+   * Straßen- und Orte/Grenzen-Overlays fest dauerhaft über der Satellitenbasis (nicht per UI ausblendbar).
+   */
+  function pvlInitMapLayersSatelliteOnly() {
+    [satellite, roadsOverlay, labelsOverlay].forEach((layer) => {
       if (layer && map.hasLayer(layer)) map.removeLayer(layer);
     });
-    if (layersCtrl) {
-      try { map.removeControl(layersCtrl); } catch (e) { /* ignore */ }
-      layersCtrl = null;
-    }
-    if (isDark) {
-      streetsDark.addTo(map);
-      layersCtrl = L.control.layers(
-        { 'Karte (dunkel)': streetsDark, 'Satellit': satellite },
-        {},
-        { collapsed: false }
-      ).addTo(map);
-    } else {
-      satellite.addTo(map);
-      roadsOverlay.addTo(map);
-      labelsOverlay.addTo(map);
-      layersCtrl = L.control.layers(
-        { 'Satellit': satellite, 'Straßenkarte': streets },
-        { 'Straßen': roadsOverlay, 'Orte & Grenzen': labelsOverlay },
-        { collapsed: false }
-      ).addTo(map);
-    }
+    satellite.addTo(map);
+    roadsOverlay.addTo(map);
+    labelsOverlay.addTo(map);
+    pvlEnsureMapLegend();
     pvlInvalidateMap();
   }
 
-  applyMapTheme(document.documentElement.getAttribute('data-theme') === 'dark');
+  pvlInitMapLayersSatelliteOnly();
 
   const markerLayer = (typeof L.markerClusterGroup === 'function'
     ? L.markerClusterGroup({
@@ -1036,6 +1130,9 @@
     closeSidebarDetail();
   });
 
+  /** Einfarbiges Warndreieck (Heroicons-Style), Farbe über `currentColor` / CSS. */
+  const PVL_SVG_WARN_TRI = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.674 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" clip-rule="evenodd"/></svg>';
+
   // ── Column keys ───────────────────────────────────────────────────────────
   const COL = {
     nr: 'Anfrage NR ', name: 'Nachname + Vorname', phone: 'Telefon',
@@ -1088,7 +1185,10 @@
     return leadDateMs(lead);
   }
 
-  /** Strikte Alter-Farben (nur Rot-Töne, kein Grau). */
+  /**
+   * „Frische“-Skala: neueste Leads am dunkelsten/intensivsten, mit zunehmendem Alter heller (invertiert zur reinen Altersstufe).
+   * Nur Rot-Töne; kein Wechsel der Kartenbasis nach UI-Theme.
+   */
   function getMarkerColor(msOrLead) {
     let ms;
     if (typeof msOrLead === 'object' && msOrLead !== null) {
@@ -1098,20 +1198,18 @@
     } else {
       ms = Date.parse(String(msOrLead || ''));
     }
-    if (!ms || Number.isNaN(ms)) return '#8B0000';
+    if (!ms || Number.isNaN(ms)) return '#FFA0A0';
     const days = (Date.now() - ms) / 86400000;
-    if (days < 0) return '#FFC7C7';
-    if (days < 30) return '#FFC7C7';
-    if (days < 90) return '#FFA0A0';
+    if (days < 0) return '#8B0000';
+    if (days < 30) return '#8B0000';
+    if (days < 90) return '#D60000';
     if (days < 180) return '#FF5C5C';
-    if (days < 365) return '#D60000';
-    return '#8B0000';
+    if (days < 365) return '#FFA0A0';
+    return '#FFC7C7';
   }
 
   function getMarkerColorForLead(lead) {
-    const ms = leadCreatedAtMs(lead);
-    if (!ms) return '#8B0000';
-    return getMarkerColor(ms);
+    return getMarkerColor(lead);
   }
 
   function cssEscAttr(val) {
@@ -1286,7 +1384,7 @@
     if (filterMissingMapCoordsOnly && coordsFromDb(lead)) return false;
     const q = (document.getElementById('search-input')?.value || '').toLowerCase();
     if (!q) return true;
-    return [lead[COL.name], lead[COL.email], lead[COL.city], lead[COL.street]].some((v) => String(v || '').toLowerCase().includes(q));
+    return [lead[COL.name], lead[COL.email], lead[COL.phone], lead[COL.city], lead[COL.street]].some((v) => String(v || '').toLowerCase().includes(q));
   }
 
   /** Nur sichtbare Listen-Leads mit gültigen DB-Koordinaten (Karte = Sidebar-Ansicht). */
@@ -1323,7 +1421,7 @@
     if (!lead[COL.phone]) return '';
     const h = telHref(lead[COL.phone]);
     const inner = h
-      ? `<a class="tel-link" href="${esc(h)}">📞 ${esc(lead[COL.phone])}</a>`
+      ? `<a class="tel-link" href="${esc(h)}">${esc(lead[COL.phone])}</a>`
       : esc(lead[COL.phone]);
     return `<div class="lead-meta">${inner}</div>`;
   }
@@ -1558,12 +1656,12 @@
       salesLines.push('---', `Betreut durch: ${bet}`);
     }
     return [
-      `👤 Kunde: ${kunde || '—'}`,
-      `📞 Tel: ${tel || '—'}`,
-      `✉️ E-Mail: ${email || '—'}`,
-      `📍 Adresse: ${addressStr || '—'}`,
+      `Kunde: ${kunde || '—'}`,
+      `Tel: ${tel || '—'}`,
+      `E-Mail: ${email || '—'}`,
+      `Adresse: ${addressStr || '—'}`,
       '---',
-      '📝 Anfrage-Details & Notizen:',
+      'Anfrage-Details & Notizen:',
       detailsBlock,
       '',
       ...extras,
@@ -1828,7 +1926,6 @@
       } else {
         closeSidebarDetail();
       }
-      refreshHeaderStats();
     } catch (e) {
       showToast(e.message || String(e), 'err');
     }
@@ -1867,7 +1964,6 @@
         await loadLeads();
         closeSidebarDetail();
         showToast('Lead archiviert.', 'ok');
-        refreshHeaderStats();
         return;
       }
       detailCurrentStatus = status;
@@ -1879,11 +1975,10 @@
       }
       syncStatusBarHighlight();
       syncNachfassTerminVisibility();
-      renderStats();
       renderList();
       renderMarkers();
       toastAfterLeadStatusSave(j, 'Status gespeichert');
-      refreshHeaderStats();
+      await refreshDashboardStatsBar();
     } catch (e) {
       showToast(e.message || String(e), 'err');
     }
@@ -1901,46 +1996,61 @@
     if (el) el.style.display = 'none';
   }
 
-  async function refreshHeaderStats() {
-    const el = document.getElementById('header-mini-stats');
-    const warnBtn = document.getElementById('header-warn-missing');
-    if (!el) return;
+  function syncBetreuerPillsFromHidden() {
+    const v = document.getElementById('filter-betreuer')?.value || '';
+    document.querySelectorAll('.pvl-betreuer-pills button').forEach((b) => {
+      b.classList.toggle('is-active', (b.getAttribute('data-betreuer') || '') === v);
+    });
+  }
+
+  async function refreshDashboardStatsBar() {
+    const setTxt = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val == null || val === '' ? '–' : String(val);
+    };
+    const foot = document.getElementById('sidebar-foot-warn');
     try {
       const r = await apiFetch('/api/stats');
       if (!r.ok) {
-        el.innerHTML = '';
-        if (warnBtn) {
-          warnBtn.textContent = '';
-          warnBtn.classList.add('is-hidden');
-          warnBtn.classList.remove('ok-state');
-          warnBtn.title = '';
+        ['stat-kunden', 'stat-anzurufen', 'stat-terminiert', 'stat-disqual', 'stat-neu7', 'stat-neu30', 'stat-done7', 'stat-done30'].forEach((id) => setTxt(id, '–'));
+        if (foot) {
+          foot.innerHTML = '';
+          foot.classList.add('is-hidden');
+          foot.classList.remove('ok-state');
+          foot.title = '';
         }
         return;
       }
       const s = await r.json();
-      el.innerHTML =
-        '<span class="hdr-stat">Gesamt: <strong>' + esc(String(s.totalLeads ?? '–')) + '</strong></span>' +
-        '<span class="hdr-stat">Neu (7/30 T.): <strong>+' + esc(String(s.newWeek ?? 0)) + '</strong> / <strong>+' + esc(String(s.newMonth ?? 0)) + '</strong></span>' +
-        '<span class="hdr-stat">Erledigt (7/30 T.): <strong>' + esc(String(s.doneWeek ?? 0)) + '</strong> / <strong>' + esc(String(s.doneMonth ?? 0)) + '</strong></span>';
+      setTxt('stat-kunden', s.totalLeads);
+      setTxt('stat-anzurufen', s.toCallCount);
+      setTxt('stat-terminiert', s.terminCount);
+      setTxt('stat-disqual', s.lostCount);
+      setTxt('stat-neu7', s.newWeek);
+      setTxt('stat-neu30', s.newMonth);
+      setTxt('stat-done7', s.doneWeek);
+      setTxt('stat-done30', s.doneMonth);
       const miss = parseInt(String(s.missingMapCoords ?? 0), 10) || 0;
-      if (warnBtn) {
-        warnBtn.classList.remove('is-hidden');
-        warnBtn.textContent = '⚠️ ' + miss + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt';
+      if (foot) {
+        foot.classList.remove('is-hidden');
+        const ic = '<span class="pvl-foot-warn-ic" aria-hidden="true">' + PVL_SVG_WARN_TRI.replace('<svg ', '<svg width="14" height="14" ') + '</span>';
         if (miss > 0) {
-          warnBtn.classList.remove('ok-state');
-          warnBtn.title = 'Klicken: Nur Leads ohne Kartenpunkt in der Liste anzeigen (Filter). Dialog: Filterleiste unten.';
+          foot.innerHTML = ic + '<span>' + esc(String(miss)) + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt — tippen für Filter in der Liste.</span>';
+          foot.classList.remove('ok-state');
+          foot.title = 'Nur Leads ohne gültigen Kartenpunkt anzeigen (entspricht der Checkbox unter „Filter & Sortierung“).';
         } else {
-          warnBtn.classList.add('ok-state');
-          warnBtn.title = 'Alle aktiven Leads haben einen Kartenpunkt. Klicken: Kartenfilter aufheben (falls aktiv).';
+          foot.innerHTML = '<span>' + esc(String(miss)) + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt — alle aktiven Einträge sind auf der Karte platzierbar.</span>';
+          foot.classList.add('ok-state');
+          foot.title = 'Alle aktiven Leads haben Koordinaten. Tippen: Kartenfilter „ohne Punkt“ aufheben.';
         }
       }
     } catch {
-      el.innerHTML = '';
-      if (warnBtn) {
-        warnBtn.textContent = '';
-        warnBtn.classList.add('is-hidden');
-        warnBtn.classList.remove('ok-state');
-        warnBtn.title = '';
+      ['stat-kunden', 'stat-anzurufen', 'stat-terminiert', 'stat-disqual', 'stat-neu7', 'stat-neu30', 'stat-done7', 'stat-done30'].forEach((id) => setTxt(id, '–'));
+      if (foot) {
+        foot.innerHTML = '';
+        foot.classList.add('is-hidden');
+        foot.classList.remove('ok-state');
+        foot.title = '';
       }
     }
   }
@@ -1955,10 +2065,12 @@
     if (id == null) return '';
     const th = telHref(lead[COL.phone]);
     const telBtn = th
-      ? `<a class="btn-mini btn-mini-tel" href="${esc(th)}">📞 Anrufen</a>`
+      ? `<a class="btn-mini btn-mini-tel" href="${esc(th)}">Anrufen</a>`
       : '';
+    const telRaw = lead[COL.phone] ? String(lead[COL.phone]).trim() : '';
     return `<div class="missing-lead-card" data-pvl-id="${id}">
       <div class="row-title">${esc(lead[COL.name] || '(kein Name)')} <span style="color:#64748b;font-weight:500">#${esc(anfrageNr(lead))}</span>${lead[COL.email] ? ' · ' + esc(lead[COL.email]) : ''}</div>
+      ${telRaw ? `<div class="missing-lead-tel">Tel. <span class="missing-lead-tel-num">${esc(telRaw)}</span></div>` : ''}
       <div class="addr-grid">
         <input type="text" class="mc-str" placeholder="Straße" value="${esc(lead[COL.street] || '')}" />
         <input type="text" class="mc-zip" placeholder="PLZ" value="${esc(lead[COL.zip] || '')}" />
@@ -2031,7 +2143,6 @@
       showToast(j.geocodeLabel || 'Adresse gespeichert', 'ok');
       await loadLeads();
       await refreshMissingModalBody();
-      refreshHeaderStats();
     } catch (e) {
       showToast(e.message || String(e), 'err');
     } finally {
@@ -2058,7 +2169,6 @@
       else toastAfterLeadStatusSave(j, 'Status gespeichert.');
       await loadLeads();
       await refreshMissingModalBody();
-      refreshHeaderStats();
     } catch (e) {
       showToast(e.message || String(e), 'err');
     }
@@ -2081,7 +2191,6 @@
         console.error('loadLeads JSON:', parseErr);
         allLeads = [];
         showLoadError('Ungültige Server-Antwort (kein JSON).');
-        renderStats();
         renderList();
         renderMarkers();
         return;
@@ -2094,7 +2203,6 @@
       if (!res.ok) {
         allLeads = [];
         showLoadError((data && data.error) || `API-Fehler (${res.status})`);
-        renderStats();
         renderList();
         renderMarkers();
         return;
@@ -2102,7 +2210,6 @@
       if (!Array.isArray(data)) {
         allLeads = [];
         showLoadError('Ungültige Server-Antwort.');
-        renderStats();
         renderList();
         renderMarkers();
         return;
@@ -2120,7 +2227,6 @@
       if (data.length === 0) {
         showLoadError('Keine Leads geladen. Auf dem Server: Ordner data/, SQLite mit Zeilen (Import z. B. npm run import-leads-csv -- "auto_leads - sheet1.csv"). Diagnose: /api/debug/leads-db (Alias: /api/debug/leads-sheet)');
       }
-      renderStats();
       renderList();
       renderMarkers();
     } catch (e) {
@@ -2128,35 +2234,21 @@
       console.error('Failed to load leads:', e);
       allLeads = [];
       showLoadError('Netzwerk- oder Serverfehler: ' + (e.message || String(e)));
-      renderStats();
       renderList();
       renderMarkers();
     } finally {
       if (seq === loadLeadsSeq) {
         layout?.classList.remove('app-loading');
         rb?.classList.remove('spin');
-        refreshHeaderStats();
+        void refreshDashboardStatsBar();
         pvlInvalidateMap();
       }
     }
   }
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
-  function renderStats() {
-    const pool = allLeads.filter((l) => !isCrmArchived(l));
-    const done = pool.filter(isHiddenStatus).length;
-    document.getElementById('stat-total').textContent   = pool.length;
-    document.getElementById('stat-active').textContent  = pool.length - done;
-    document.getElementById('stat-done').textContent    = done;
-    const active = (l) => !isHiddenStatus(l);
-    const stNeu = (l) => !String(l[COL.status] || '').trim() || normalizeStatusDisplay(l[COL.status]) === 'Neu';
-    document.getElementById('stat-new').textContent     = pool.filter((l) => active(l) && stNeu(l)).length;
-    document.getElementById('stat-betreut').textContent = pool.filter((l) => active(l) && l[COL.betreut]).length;
-  }
-
   // ── Filter ────────────────────────────────────────────────────────────────
   function getFiltered() {
-    const sortMode = document.getElementById('sort-leads')?.value || 'last_updated_desc';
+    const sortMode = document.getElementById('sort-leads')?.value || 'created_at_desc';
     let rows = allLeads.filter(passesListFilters);
     rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
     return rows;
@@ -2206,7 +2298,7 @@
       const stShow = listStatusLabel(l);
       const mapMiss = !coordsFromDb(l);
       const warnIcon = mapMiss
-        ? '<span class="lead-map-warn-icon" title="Kein gültiger Kartenpunkt in der Datenbank — Adresse prüfen" aria-label="Warnung: keine Kartenkoordinaten">⚠️</span>'
+        ? '<span class="lead-map-warn-icon" title="Kein gültiger Kartenpunkt in der Datenbank — Adresse prüfen" aria-label="Warnung: keine Kartenkoordinaten">' + PVL_SVG_WARN_TRI + '</span>'
         : '';
       const tabDoneCls = sidebarListTab === 'done' ? ' lead-item-abgearbeitet' : '';
       return `<div class="lead-item${act ? ' active' : ''}${arch ? ' lead-archived' : ''}${tabDoneCls}"
@@ -2306,9 +2398,9 @@
         ${esc(lead[COL.name] || '(kein Name)')}
         <span style="color:#94a3b8;font-weight:400;font-size:0.75rem"> #${esc(anfrageNr(lead))}</span>
       </div>
-      ${lead[COL.phone]   ? `<div class="popup-row">📞 <a class="tel-link" href="${esc(telHref(lead[COL.phone]))}">${esc(lead[COL.phone])}</a></div>` : ''}
-      ${lead[COL.email]   ? `<div class="popup-row">✉️ ${esc(lead[COL.email])}</div>` : ''}
-      ${lead[COL.city]    ? `<div class="popup-row">📍 ${esc(lead[COL.street] ? lead[COL.street]+', ' : '')}${esc(lead[COL.zip]||'')} ${esc(lead[COL.city])}</div>` : ''}
+      ${lead[COL.phone]   ? `<div class="popup-row"><a class="tel-link" href="${esc(telHref(lead[COL.phone]))}">${esc(lead[COL.phone])}</a></div>` : ''}
+      ${lead[COL.email]   ? `<div class="popup-row">${esc(lead[COL.email])}</div>` : ''}
+      ${lead[COL.city]    ? `<div class="popup-row">${esc(lead[COL.street] ? lead[COL.street]+', ' : '')}${esc(lead[COL.zip]||'')} ${esc(lead[COL.city])}</div>` : ''}
       <div class="popup-row" style="color:#64748b">${esc(src)} · ${esc(lead[COL.date]||'')}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
       ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
       ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
@@ -2678,10 +2770,9 @@
       hint.style.display = 'inline';
       hint.style.color = '';
       setTimeout(() => { hint.style.display = 'none'; }, 2000);
-      renderStats();
       renderList();
       renderMarkers();
-      refreshHeaderStats();
+      await refreshDashboardStatsBar();
       const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
       if (openLead && document.getElementById('sidebar-detail')?.classList.contains('open')) {
         openSidebarDetail(openLead);
@@ -2736,7 +2827,9 @@
     const btn = document.getElementById('pvl-theme-toggle');
     if (!btn) return;
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    btn.textContent = dark ? '☀️' : '🌙';
+    const sun = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+    const moon = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 0 1 1-9-9Z"/></svg>';
+    btn.innerHTML = dark ? sun : moon;
     btn.title = dark ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren';
     btn.setAttribute('aria-label', dark ? 'Zu hellem NOORTEC-Design wechseln' : 'Zu dunklem NOORTEC-Design wechseln');
   }
@@ -2749,7 +2842,7 @@
     }
     try { localStorage.setItem(PVL_LS_THEME, dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
     syncThemeToggleUi();
-    applyMapTheme(!!dark);
+    /* Karte: immer Satellit + feste Overlays — nach Theme-Wechsel nur Größe neu messen, keine anderen Layer. */
     pvlInvalidateMap();
   }
 
@@ -2818,6 +2911,7 @@
     resizer.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - startX;
+      /* Sidebar rechts: Griff nach rechts = breiter → Breite steigt mit clientX. */
       setSidebarW(startW + dx);
     });
     function endDrag(e) {
@@ -2833,12 +2927,22 @@
 
   function initPvlLayoutEnhancements() {
     syncFilterGeoCheckbox();
+    syncBetreuerPillsFromHidden();
     document.getElementById('filter-geo-only-missing')?.addEventListener('change', () => {
       const c = document.getElementById('filter-geo-only-missing');
       if (c && c.checked) activateMissingCoordsMapFilter();
       else clearMissingCoordsMapFilter();
     });
-    document.getElementById('filter-betreuer')?.addEventListener('change', () => { renderList(); renderMarkers(); });
+    document.querySelectorAll('.pvl-betreuer-pills button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const v = btn.getAttribute('data-betreuer') || '';
+        const hid = document.getElementById('filter-betreuer');
+        if (hid) hid.value = v;
+        syncBetreuerPillsFromHidden();
+        renderList();
+        renderMarkers();
+      });
+    });
     document.getElementById('filter-status')?.addEventListener('change', () => { renderList(); renderMarkers(); });
     syncThemeToggleUi();
     initPvlSidebarResize();
@@ -2859,8 +2963,8 @@
 
   initPvlLayoutEnhancements();
 
-  document.getElementById('header-warn-missing')?.addEventListener('click', () => {
-    const b = document.getElementById('header-warn-missing');
+  document.getElementById('sidebar-foot-warn')?.addEventListener('click', () => {
+    const b = document.getElementById('sidebar-foot-warn');
     if (b && b.classList.contains('ok-state')) {
       clearMissingCoordsMapFilter();
       return;

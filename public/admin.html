@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NOORTEC — Administration</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' x='8' font-size='88'%3E%E2%98%80%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a56db' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E" />
   <style>
     body { font-family: system-ui, sans-serif; max-width: 920px; margin: 1.5rem auto; padding: 0 1rem; color: #1a202c; animation: adm-fade 0.35s ease-out; }
     @keyframes adm-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -65,12 +65,12 @@
         <input type="text" id="ntel" autocomplete="tel" />
       </div>
       <div>
-        <label>E-Mail Kontakt (Profil / Versand)</label>
+        <label>E-Mail-Adresse (Kontakt, Login-Name für Postfach &amp; Benachrichtigung)</label>
         <input type="email" id="nkc" autocomplete="email" />
       </div>
       <div>
-        <label>E-Mail Benachrichtigung (JSON, optional)</label>
-        <input type="email" id="ne" autocomplete="off" />
+        <label>Passwort für das E-Mail-Postfach (optional)</label>
+        <input type="password" id="nmb" autocomplete="new-password" placeholder="SMTP/IMAP-Login = dieselbe E-Mail; Server aus .env" />
       </div>
       <div>
         <label>Rolle</label>
@@ -102,12 +102,8 @@
           <input type="text" id="eu-tel" />
         </div>
         <div>
-          <label>E-Mail Kontakt</label>
+          <label>E-Mail-Adresse (Kontakt &amp; Postfach-Login)</label>
           <input type="email" id="eu-kc" />
-        </div>
-        <div>
-          <label>E-Mail (JSON)</label>
-          <input type="email" id="eu-em" />
         </div>
         <div>
           <label>Rolle</label>
@@ -209,7 +205,6 @@
       document.getElementById('eu-vn').value = u.voller_name || '';
       document.getElementById('eu-tel').value = u.telefon || '';
       document.getElementById('eu-kc').value = u.email_kontakt || '';
-      document.getElementById('eu-em').value = u.email || '';
       document.getElementById('eu-role').value = u.role === 'admin' ? 'admin' : (u.role === 'setter' ? 'setter' : 'sales');
       document.getElementById('m-edit').textContent = '';
       document.getElementById('edit-panel').classList.add('open');
@@ -230,7 +225,6 @@
             voller_name: document.getElementById('eu-vn').value.trim(),
             telefon: document.getElementById('eu-tel').value.trim(),
             email_kontakt: document.getElementById('eu-kc').value.trim(),
-            email: document.getElementById('eu-em').value.trim(),
             role: document.getElementById('eu-role').value,
           }),
         });
@@ -267,10 +261,10 @@
         const body = {
           username: document.getElementById('nu').value.trim(),
           password: document.getElementById('np').value,
-          email: document.getElementById('ne').value.trim(),
           voller_name: document.getElementById('nvn').value.trim(),
           telefon: document.getElementById('ntel').value.trim(),
           email_kontakt: document.getElementById('nkc').value.trim(),
+          mailbox_password: document.getElementById('nmb').value,
           role: document.getElementById('nr').value,
           sendWelcomeEmail: !document.getElementById('nskipmail').checked,
         };
@@ -286,10 +280,10 @@
         if (r.ok) {
           document.getElementById('nu').value = '';
           document.getElementById('np').value = '';
-          document.getElementById('ne').value = '';
           document.getElementById('nvn').value = '';
           document.getElementById('ntel').value = '';
           document.getElementById('nkc').value = '';
+          document.getElementById('nmb').value = '';
           loadUsers();
         }
       } finally {

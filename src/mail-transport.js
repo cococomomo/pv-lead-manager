@@ -63,7 +63,7 @@ async function getMailSender(opts = {}) {
   const fromName = process.env.MY_NAME || 'NOORTEC';
   if (!smtpConfigured()) {
     throw new Error(
-      'Kein persönliches SMTP hinterlegt und zentraler Versand nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS in der .env).'
+      'Kein persönliches Postfach hinterlegt und zentraler Versand nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS in der .env; für Profil-Versand zusätzlich DEFAULT_SMTP_HOST und DEFAULT_SMTP_PORT).'
     );
   }
   const addr = (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim();

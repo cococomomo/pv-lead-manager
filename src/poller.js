@@ -38,6 +38,37 @@ function leadsMailboxPath() {
   return `INBOX.${process.env.IMAP_FOLDER || 'Leads'}`;
 }
 
+/**
+ * Manche Server deselektieren das Postfach nach move/search — vor jedem Zugriff wieder öffnen.
+ * @param {*} connection — imap-simple Verbindung
+ * @param {string} mailboxPath
+ */
+async function ensureMailboxSelected(connection, mailboxPath) {
+  await connection.openBox(mailboxPath);
+}
+
+/**
+ * node-imap: SEARCH/FETCH nur im gewählten Postfach — immer SELECT (openBox) abwarten,
+ * danach optional einmal erneut bei „No mailbox is currently selected“.
+ * @param {*} connection
+ * @param {string} mailboxPath
+ * @param {unknown[]} searchCriteria
+ * @param {object} fetchOptions
+ */
+async function searchInMailbox(connection, mailboxPath, searchCriteria, fetchOptions) {
+  await ensureMailboxSelected(connection, mailboxPath);
+  try {
+    return await connection.search(searchCriteria, fetchOptions);
+  } catch (err) {
+    const msg = err && err.message ? String(err.message) : String(err);
+    if (/no mailbox is currently selected/i.test(msg)) {
+      await ensureMailboxSelected(connection, mailboxPath);
+      return await connection.search(searchCriteria, fetchOptions);
+    }
+    throw err;
+  }
+}
+
 function archiveMailboxPath(leadsMb) {
   const explicit = process.env.IMAP_ARCHIVE_MAILBOX;
   if (explicit && String(explicit).trim()) return String(explicit).trim();
@@ -95,13 +126,18 @@ function collectEmailsFromParsed(parsed) {
  */
 async function verifyArchiveMailbox(connection, leadsMailbox, archivePath) {
   try {
-    await connection.openBox(archivePath);
-    await connection.openBox(leadsMailbox);
+    await ensureMailboxSelected(connection, archivePath);
+    await ensureMailboxSelected(connection, leadsMailbox);
     return true;
   } catch (err) {
     console.warn(
       `[NOORTEC] IMAP-Archiv: Zielordner nicht gefunden oder nicht öffenbar (${archivePath}): ${err.message}. Importe laufen weiter; Verschieben wird übersprungen.`,
     );
+    try {
+      await ensureMailboxSelected(connection, leadsMailbox);
+    } catch (e2) {
+      console.warn(`[NOORTEC] IMAP-Archiv: Leads-Postfach konnte nicht erneut gewählt werden: ${e2.message}`);
+    }
     return false;
   }
 }
@@ -127,12 +163,14 @@ async function runInitialInboxArchiveCleanup(connection, leadsMailbox, archivePa
   initialCleanupRan = true;
   if (!archiveEnabled) return;
 
+  await ensureMailboxSelected(connection, leadsMailbox);
+
   const rawMax = parseInt(process.env.IMAP_CLEANUP_MAX_MESSAGES, 10);
   const max = Math.min(Math.max(Number.isFinite(rawMax) ? rawMax : 200, 10), 500);
 
   let messages;
   try {
-    messages = await connection.search(['ALL'], { bodies: [''], markSeen: false });
+    messages = await searchInMailbox(connection, leadsMailbox, ['ALL'], { bodies: [''], markSeen: false });
   } catch (err) {
     console.warn(`[NOORTEC] IMAP-Cleanup: Suche fehlgeschlagen: ${err.message}`);
     return;
@@ -180,10 +218,12 @@ async function pollEmails() {
 
   try {
     connection = await imaps.connect(imapConfig);
-    await connection.openBox(leadsMailbox);
+    await ensureMailboxSelected(connection, leadsMailbox);
 
     const archiveOk = await verifyArchiveMailbox(connection, leadsMailbox, archivePath);
+    await ensureMailboxSelected(connection, leadsMailbox);
     await runInitialInboxArchiveCleanup(connection, leadsMailbox, archivePath, archiveOk);
+    await ensureMailboxSelected(connection, leadsMailbox);
 
     const searchCriteria = ['UNSEEN'];
     const fetchOptions = {
@@ -191,7 +231,7 @@ async function pollEmails() {
       markSeen: false,
     };
 
-    const messages = await connection.search(searchCriteria, fetchOptions);
+    const messages = await searchInMailbox(connection, leadsMailbox, searchCriteria, fetchOptions);
     console.log(`Found ${messages.length} unread message(s).`);
 
     for (const message of messages) {
@@ -224,6 +264,7 @@ async function pollEmails() {
         if (lead.email && leadEmailExistsInDatabase(lead.email)) {
           console.log(`Lead ${lead.email} already in database — NOORTEC: Mail wird archiviert.`);
           await markSeenAndMoveToArchive(connection, uid, archivePath, archiveOk);
+          await ensureMailboxSelected(connection, leadsMailbox);
           continue;
         }
 
@@ -240,8 +281,14 @@ async function pollEmails() {
         }
 
         await markSeenAndMoveToArchive(connection, uid, archivePath, archiveOk);
+        await ensureMailboxSelected(connection, leadsMailbox);
       } catch (err) {
         console.error('[NOORTEC] Error processing message:', err.message);
+        try {
+          await ensureMailboxSelected(connection, leadsMailbox);
+        } catch (e2) {
+          console.warn('[NOORTEC] IMAP: Leads-Postfach nach Fehler nicht wieder wählbar:', e2.message);
+        }
       }
     }
   } catch (err) {
