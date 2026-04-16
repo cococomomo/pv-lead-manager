@@ -225,6 +225,16 @@
     }
     .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
+    /* Desktop: ohne Lead-Detail mehr Kartenfläche (Sidebar-Spalte begrenzt); mit Detail volle gespeicherte Breite. */
+    @media (min-width: 768px) {
+      .layout:not(.pvl-is-mobile):not(.pvl-detail-open) {
+        grid-template-columns: minmax(0, 1fr) var(--pvl-resizer-w) minmax(260px, min(var(--pvl-sidebar-w), 360px));
+      }
+      .layout:not(.pvl-is-mobile).pvl-detail-open {
+        grid-template-columns: minmax(0, 1fr) var(--pvl-resizer-w) minmax(280px, var(--pvl-sidebar-w));
+      }
+    }
+
     .map-wrap {
       grid-column: 1;
       grid-row: 2;
@@ -2708,7 +2718,7 @@
     if (pvlLayout && pvlLayout.classList.contains('pvl-is-mobile')) {
       setMobileTab('list', true);
     }
-    maybeExpandSidebarForDetail();
+    document.getElementById('pvl-layout')?.classList.add('pvl-detail-open');
     document.getElementById('sidebar-detail').classList.add('open');
     document.getElementById('sidebar-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -2818,13 +2828,14 @@
     renderSetterSalesChips(lead);
     document.getElementById('save-hint').style.display = 'none';
     syncTempFocusMarker(lead);
+    pvlInvalidateMap();
   }
 
   function closeSidebarDetail() {
     clearTempFocusMarker();
     restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
-    restoreSidebarAfterDetail();
+    document.getElementById('pvl-layout')?.classList.remove('pvl-detail-open');
     const restoreBtn = document.getElementById('btn-restore-archive');
     if (restoreBtn) restoreBtn.style.display = 'none';
     activeEmail = null;
@@ -2847,6 +2858,7 @@
       chipRow.style.opacity = '';
     }
     renderList();
+    pvlInvalidateMap();
   }
 
   // ── Save fields ───────────────────────────────────────────────────────────
@@ -3035,22 +3047,6 @@
     document.documentElement.style.setProperty('--pvl-sidebar-w', `${clamped}px`);
     try { localStorage.setItem(PVL_LS_SIDEBAR, String(clamped)); } catch (e) { /* ignore */ }
     pvlInvalidateMap();
-  }
-
-  let _sidebarWidthBeforeDetail = null;
-  function maybeExpandSidebarForDetail() {
-    if (_sidebarWidthBeforeDetail != null) return;
-    _sidebarWidthBeforeDetail = pvlReadSidebarW();
-    // Breiter machen nur, wenn aktuell recht schmal.
-    const target = Math.max(_sidebarWidthBeforeDetail, 460);
-    if (target !== _sidebarWidthBeforeDetail) pvlSetSidebarW(target);
-  }
-
-  function restoreSidebarAfterDetail() {
-    if (_sidebarWidthBeforeDetail == null) return;
-    const w = _sidebarWidthBeforeDetail;
-    _sidebarWidthBeforeDetail = null;
-    pvlSetSidebarW(w);
   }
 
   function syncThemeToggleUi() {
