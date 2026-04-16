@@ -218,21 +218,71 @@
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) var(--pvl-resizer-w) var(--pvl-sidebar-w);
+      grid-template-columns: minmax(0, 1fr) 22px var(--pvl-resizer-w) var(--pvl-sidebar-w);
       grid-template-rows: auto minmax(0, 1fr);
       height: calc(100vh - 2.35rem);
       transition: opacity 0.25s ease;
     }
     .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
-    /* Desktop: ohne Lead-Detail mehr Kartenfläche (Sidebar-Spalte begrenzt); mit Detail volle gespeicherte Breite. */
+    /* Desktop: schmale Liste ohne Detail; mit Detail volle Breite; komplett eingeklappt nur Karte + Tab. */
     @media (min-width: 768px) {
-      .layout:not(.pvl-is-mobile):not(.pvl-detail-open) {
-        grid-template-columns: minmax(0, 1fr) var(--pvl-resizer-w) minmax(260px, min(var(--pvl-sidebar-w), 360px));
+      .layout:not(.pvl-is-mobile):not(.pvl-detail-open):not(.pvl-sidebar-collapsed) {
+        grid-template-columns: minmax(0, 1fr) 22px var(--pvl-resizer-w) minmax(260px, min(var(--pvl-sidebar-w), 360px));
       }
-      .layout:not(.pvl-is-mobile).pvl-detail-open {
-        grid-template-columns: minmax(0, 1fr) var(--pvl-resizer-w) minmax(280px, var(--pvl-sidebar-w));
+      .layout:not(.pvl-is-mobile).pvl-detail-open:not(.pvl-sidebar-collapsed) {
+        grid-template-columns: minmax(0, 1fr) 22px var(--pvl-resizer-w) minmax(280px, var(--pvl-sidebar-w));
       }
+      .layout:not(.pvl-is-mobile).pvl-sidebar-collapsed {
+        grid-template-columns: minmax(0, 1fr) 22px 0 0 !important;
+      }
+    }
+
+    .pvl-sidebar-collapse-toggle {
+      grid-column: 2;
+      grid-row: 2;
+      align-self: center;
+      justify-self: center;
+      z-index: 12;
+      width: 20px;
+      height: 72px;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--pvl-border);
+      border-radius: 8px 0 0 8px;
+      background: var(--pvl-surface);
+      color: var(--pvl-accent);
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+      box-shadow: -2px 2px 10px rgba(15, 23, 42, 0.08);
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .pvl-sidebar-collapse-toggle:hover {
+      background: var(--pvl-stat-bg);
+      color: var(--pvl-text);
+    }
+    .pvl-sidebar-collapse-toggle:focus-visible {
+      outline: 2px solid var(--pvl-accent);
+      outline-offset: 2px;
+    }
+    @media (max-width: 767px) {
+      .pvl-sidebar-collapse-toggle { display: none !important; }
+    }
+    .layout.pvl-sidebar-collapsed:not(.pvl-is-mobile) .sidebar,
+    .layout.pvl-sidebar-collapsed:not(.pvl-is-mobile) .sidebar-resizer {
+      visibility: hidden !important;
+      pointer-events: none !important;
+      width: 0 !important;
+      min-width: 0 !important;
+      max-width: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      overflow: hidden !important;
+      opacity: 0;
     }
 
     .map-wrap {
@@ -254,7 +304,7 @@
     }
 
     .sidebar-resizer {
-      grid-column: 2;
+      grid-column: 3;
       grid-row: 2;
       width: var(--pvl-resizer-w);
       min-width: var(--pvl-resizer-w);
@@ -426,7 +476,7 @@
 
     /* Sidebar */
     .sidebar {
-      grid-column: 3;
+      grid-column: 4;
       grid-row: 2;
       background: var(--pvl-surface);
       border-left: 1px solid var(--pvl-border);
@@ -649,6 +699,23 @@
     .sync-leads-btn:disabled { opacity: 0.72; cursor: wait; }
     .sync-leads-btn.spin { animation: pvl-spin 0.75s linear infinite; }
 
+    .pvl-n8n-sync-btn {
+      background: #1a56db;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.28rem 0.55rem;
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s ease, opacity 0.18s ease;
+      display: none;
+      white-space: nowrap;
+    }
+    .pvl-n8n-sync-btn:hover:not(:disabled) { background: #1746b3; }
+    .pvl-n8n-sync-btn:disabled { opacity: 0.72; cursor: wait; }
+    .pvl-n8n-sync-btn.spin { animation: pvl-spin 0.75s linear infinite; }
+
     #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
@@ -737,6 +804,28 @@
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
+      pointer-events: none !important;
+    }
+    .pvl-map-legend-wrap .pvl-map-legend {
+      pointer-events: auto !important;
+    }
+
+    .leaflet-popup-content .popup-row a {
+      color: #1a56db;
+      text-decoration: underline;
+      word-break: break-word;
+    }
+    html[data-theme="dark"] .leaflet-popup-content .popup-row a {
+      color: #60a5fa;
+    }
+
+    .detail-info a {
+      color: var(--pvl-accent);
+      text-decoration: underline;
+      word-break: break-word;
+    }
+    .detail-info a:hover {
+      opacity: 0.88;
     }
 
     #pvl-toast {
@@ -759,6 +848,7 @@
       .lead-item:hover { transform: none; }
       .refresh-btn.spin { animation: none; }
       .sync-leads-btn.spin { animation: none; }
+      .pvl-n8n-sync-btn.spin { animation: none; }
       .sidebar-detail-open #sidebar-detail.open { animation: none; }
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
@@ -828,14 +918,16 @@
   <div class="map-wrap" id="map-wrap">
     <div id="map"></div>
   </div>
+  <button type="button" class="pvl-sidebar-collapse-toggle" id="pvl-sidebar-collapse-toggle" aria-controls="sidebar-main" aria-expanded="true" title="Sidebar ausblenden (mehr Karte)">‹</button>
   <button type="button" class="sidebar-resizer" id="sidebar-resizer" aria-label="Sidebar-Breite anpassen"></button>
 
   <!-- Sidebar (NOORTEC) -->
   <div class="sidebar" id="sidebar-main" aria-label="NOORTEC Lead-Bereich">
     <div class="sidebar-header">
       <h2>Leads (<span id="lead-count">0</span>)</h2>
-      <div style="display:flex;align-items:center;gap:0.35rem">
-        <button type="button" class="sync-leads-btn pvl-admin-only" onclick="openCsvImportModal()" title="Leads manuell per Copy/Paste CSV importieren" aria-label="Leads manuell per CSV importieren">Import</button>
+      <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end">
+        <button type="button" class="sync-leads-btn pvl-csv-upload-btn pvl-admin-only" onclick="openCsvImportModal()" title="Leads manuell per CSV (Copy/Paste) importieren" aria-label="Leads hochladen (CSV)">Leads hochladen</button>
+        <button type="button" class="pvl-n8n-sync-btn pvl-admin-only" onclick="syncLeadsFromN8n()" title="Neue Leads per n8n-Webhook synchronisieren" aria-label="Leads per Webhook synchronisieren">Leads synchronisieren</button>
         <button type="button" class="refresh-btn" onclick="loadLeads()" title="Liste neu laden" aria-label="Lead-Liste neu laden"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg></button>
       </div>
     </div>
@@ -1039,7 +1131,7 @@
   let syncLeadsInFlight = false;
   async function syncLeadsFromN8n() {
     if (syncLeadsInFlight) return;
-    const btns = [];
+    const btns = Array.from(document.querySelectorAll('.pvl-n8n-sync-btn'));
     syncLeadsInFlight = true;
     for (const btn of btns) {
       btn.disabled = true;
@@ -1630,7 +1722,7 @@
   function googleMapsSearchHref(addressLine) {
     const q = String(addressLine || '').trim();
     if (!q) return '';
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+    return `https://maps.google.com/?q=${encodeURIComponent(q)}`;
   }
 
   function stopPropAttr() {
@@ -2587,14 +2679,19 @@
     const donePin = isAbgearbeitetForMap(lead);
     const marker = L.marker(coords, { icon: pinIcon(color, !!lead.__pvlLegacy, donePin) });
 
+    const emailRawPop = String(lead[COL.email] || '').trim();
+    const emailHPop = mailtoHref(emailRawPop);
+    const addrPartsPop = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).map((x) => String(x).trim()).filter(Boolean);
+    const addrLinePop = addrPartsPop.join(', ');
+    const addrHPop = googleMapsSearchHref(addrLinePop);
     const popupContent = `
       <div class="popup-name" style="border-left:3px solid ${color};padding-left:6px">
         ${esc(lead[COL.name] || '(kein Name)')}
         <span style="color:#94a3b8;font-weight:400;font-size:0.75rem"> #${esc(anfrageNr(lead))}</span>
       </div>
       ${lead[COL.phone]   ? `<div class="popup-row"><a class="tel-link" href="${esc(telHref(lead[COL.phone]))}">${esc(lead[COL.phone])}</a></div>` : ''}
-      ${lead[COL.email]   ? `<div class="popup-row">${esc(lead[COL.email])}</div>` : ''}
-      ${lead[COL.city]    ? `<div class="popup-row">${esc(lead[COL.street] ? lead[COL.street]+', ' : '')}${esc(lead[COL.zip]||'')} ${esc(lead[COL.city])}</div>` : ''}
+      ${emailRawPop ? (emailHPop ? `<div class="popup-row"><a href="${esc(emailHPop)}">${esc(emailRawPop)}</a></div>` : `<div class="popup-row">${esc(emailRawPop)}</div>`) : ''}
+      ${addrLinePop ? (addrHPop ? `<div class="popup-row"><a href="${esc(addrHPop)}" target="_blank" rel="noopener noreferrer">${esc(addrLinePop)}</a></div>` : `<div class="popup-row">${esc(addrLinePop)}</div>`) : ''}
       <div class="popup-row" style="color:#64748b">${esc(src)} · ${esc(lead[COL.date]||'')}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
       ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
       ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
@@ -2718,6 +2815,10 @@
     if (pvlLayout && pvlLayout.classList.contains('pvl-is-mobile')) {
       setMobileTab('list', true);
     }
+    if (pvlLayout && pvlLayout.classList.contains('pvl-sidebar-collapsed')) {
+      pvlSetSidebarCollapsed(false);
+    }
+    pvlEnterDetailSidebarWidth();
     document.getElementById('pvl-layout')?.classList.add('pvl-detail-open');
     document.getElementById('sidebar-detail').classList.add('open');
     document.getElementById('sidebar-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2772,10 +2873,10 @@
     const emailH = mailtoHref(emailRaw);
     const addrH = googleMapsSearchHref(addr);
     const emailCell = emailH
-      ? `<a href="${esc(emailH)}">${esc(emailRaw)}</a>`
+      ? `<a href="${esc(emailH)}" onclick="event.stopPropagation()">${esc(emailRaw)}</a>`
       : esc(emailRaw);
     const addrCell = addrH
-      ? `<a href="${esc(addrH)}" target="_blank" rel="noopener noreferrer">${esc(addr)}</a>`
+      ? `<a href="${esc(addrH)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${esc(addr)}</a>`
       : esc(addr);
 
     const infoRows = [
@@ -2836,6 +2937,7 @@
     restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
     document.getElementById('pvl-layout')?.classList.remove('pvl-detail-open');
+    pvlLeaveDetailSidebarWidth();
     const restoreBtn = document.getElementById('btn-restore-archive');
     if (restoreBtn) restoreBtn.style.display = 'none';
     activeEmail = null;
@@ -3035,6 +3137,9 @@
   const PVL_LS_THEME = 'pv_lead_manager_theme';
   const PVL_LS_SIDEBAR = 'pv_lead_manager_sidebar_width';
   const PVL_LS_MOBILE_VIEW = 'pv_lead_manager_mobile_view';
+  const PVL_LS_SIDEBAR_COLLAPSED = 'pv_lead_manager_sidebar_collapsed';
+
+  let _sidebarWBeforeDetail = null;
 
   function pvlReadSidebarW() {
     const cs = getComputedStyle(document.documentElement).getPropertyValue('--pvl-sidebar-w').trim();
@@ -3047,6 +3152,57 @@
     document.documentElement.style.setProperty('--pvl-sidebar-w', `${clamped}px`);
     try { localStorage.setItem(PVL_LS_SIDEBAR, String(clamped)); } catch (e) { /* ignore */ }
     pvlInvalidateMap();
+  }
+
+  function pvlIsSidebarCollapsed() {
+    return !!document.getElementById('pvl-layout')?.classList.contains('pvl-sidebar-collapsed');
+  }
+
+  function pvlSyncSidebarCollapseToggleUi() {
+    const layout = document.getElementById('pvl-layout');
+    const tab = document.getElementById('pvl-sidebar-collapse-toggle');
+    if (!layout || !tab) return;
+    const collapsed = layout.classList.contains('pvl-sidebar-collapsed');
+    tab.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    tab.textContent = collapsed ? '›' : '‹';
+    tab.title = collapsed ? 'Sidebar einblenden' : 'Sidebar ausblenden (mehr Karte)';
+  }
+
+  function pvlSetSidebarCollapsed(collapsed) {
+    const layout = document.getElementById('pvl-layout');
+    const tab = document.getElementById('pvl-sidebar-collapse-toggle');
+    if (!layout || !tab) return;
+    if (layout.classList.contains('pvl-is-mobile')) return;
+    layout.classList.toggle('pvl-sidebar-collapsed', collapsed);
+    pvlSyncSidebarCollapseToggleUi();
+    try { localStorage.setItem(PVL_LS_SIDEBAR_COLLAPSED, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
+    pvlInvalidateMap();
+  }
+
+  function pvlTryRestoreSidebarCollapsedFromLs() {
+    const layout = document.getElementById('pvl-layout');
+    if (!layout || layout.classList.contains('pvl-is-mobile')) return;
+    let c = false;
+    try { c = localStorage.getItem(PVL_LS_SIDEBAR_COLLAPSED) === '1'; } catch (e) { /* ignore */ }
+    layout.classList.toggle('pvl-sidebar-collapsed', c);
+    pvlSyncSidebarCollapseToggleUi();
+    pvlInvalidateMap();
+  }
+
+  function pvlEnterDetailSidebarWidth() {
+    const layout = document.getElementById('pvl-layout');
+    if (!layout || layout.classList.contains('pvl-is-mobile')) return;
+    if (_sidebarWBeforeDetail != null) return;
+    _sidebarWBeforeDetail = pvlReadSidebarW();
+    const target = Math.min(520, Math.max(400, _sidebarWBeforeDetail));
+    if (Math.abs(pvlReadSidebarW() - target) > 0.5) pvlSetSidebarW(target);
+  }
+
+  function pvlLeaveDetailSidebarWidth() {
+    if (_sidebarWBeforeDetail == null) return;
+    const w = _sidebarWBeforeDetail;
+    _sidebarWBeforeDetail = null;
+    pvlSetSidebarW(w);
   }
 
   function syncThemeToggleUi() {
@@ -3097,12 +3253,15 @@
     if (!layout) return;
     if (mqPvlMobile.matches) {
       layout.classList.add('pvl-is-mobile');
+      layout.classList.remove('pvl-sidebar-collapsed');
+      pvlSyncSidebarCollapseToggleUi();
       let v = 'map';
       try { v = localStorage.getItem(PVL_LS_MOBILE_VIEW) || 'map'; } catch (e) { /* ignore */ }
       setMobileTab(v === 'list' ? 'list' : 'map', false);
     } else {
       layout.classList.remove('pvl-is-mobile', 'pvl-mobile-view-map', 'pvl-mobile-view-list');
       layout.classList.add('pvl-mobile-view-map');
+      pvlTryRestoreSidebarCollapsedFromLs();
       pvlInvalidateMap();
     }
   }
@@ -3169,6 +3328,12 @@
     mqPvlMobile.addEventListener('change', applyPvlMobileLayout);
     document.getElementById('pvl-tab-map')?.addEventListener('click', () => { setMobileTab('map'); });
     document.getElementById('pvl-tab-list')?.addEventListener('click', () => { setMobileTab('list'); });
+    document.getElementById('pvl-sidebar-collapse-toggle')?.addEventListener('click', () => {
+      const nextCollapsed = !pvlIsSidebarCollapsed();
+      const detail = document.getElementById('sidebar-detail');
+      if (nextCollapsed && detail && detail.classList.contains('open')) closeSidebarDetail();
+      pvlSetSidebarCollapsed(nextCollapsed);
+    });
     document.getElementById('pvl-theme-toggle')?.addEventListener('click', () => {
       setUiTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
     });
