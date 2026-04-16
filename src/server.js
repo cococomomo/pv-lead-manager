@@ -8,6 +8,7 @@ const path = require('path');
 const { URL } = require('url');
 const session = require('express-session');
 const FileStore = require('session-file-store')(session);
+const { parse: parseCsvSync } = require('csv-parse/sync');
 
 const { generateCalendarLink } = require('./calendar-links');
 const {
@@ -192,7 +193,7 @@ function requireWebSession(req, res, next) {
   return res.redirect(302, `/login.html${q}`);
 }
 
-app.use(express.json({ limit: '128kb' }));
+app.use(express.json({ limit: '512kb' }));
 
 /** n8n → SQLite (API-Key, kein Session-Login). */
 app.post('/api/webhook/n8n-lead', async (req, res) => {
@@ -244,6 +245,146 @@ app.post('/api/webhook/n8n-lead', async (req, res) => {
     console.error('POST /api/webhook/n8n-lead:', err && err.message ? err.message : err);
     res.status(500).json({ error: formatLeadsApiError(err) });
   }
+});
+
+function createdAtIsoFromCell(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return new Date().toISOString();
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) {
+    const y = parseInt(ymd[1], 10);
+    const mo = parseInt(ymd[2], 10) - 1;
+    const d = parseInt(ymd[3], 10);
+    if (mo >= 0 && mo < 12 && d >= 1 && d <= 31) {
+      return new Date(Date.UTC(y, mo, d, 12, 0, 0, 0)).toISOString();
+    }
+  }
+  let ms = Date.parse(s);
+  if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{2}))?)?/);
+  if (m) {
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const y = parseInt(m[3], 10);
+    const hh = m[4] != null ? parseInt(m[4], 10) : 12;
+    const mm = m[5] != null ? parseInt(m[5], 10) : 0;
+    const ss = m[6] != null ? parseInt(m[6], 10) : 0;
+    ms = Date.UTC(y, mo, d, hh, mm, ss);
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function rowToSimpleLead(row) {
+  const cells = row.map((v) => (v == null ? '' : String(v).trim()));
+  const name = cells[0] || '';
+  const phone = cells[1] || '';
+  const email = cells[2] || '';
+  const street = cells[3] || '';
+  const zip = cells[4] || '';
+  const city = cells[5] || '';
+  const country = cells[6] || '';
+  const source = cells[7] || '';
+  const date = cells[8] || '';
+  let info = cells[9] || '';
+  if (cells.length > 10) {
+    const tail = cells.slice(9).filter(Boolean).join(', ');
+    info = tail || info;
+  }
+  return {
+    name,
+    phone,
+    email,
+    street,
+    zip,
+    city,
+    country,
+    source,
+    date,
+    info,
+  };
+}
+
+/**
+ * Admin: CSV (Text) importieren.
+ * Format ohne Header (genau wie vom User geliefert):
+ * name, phone, email, street, zip, city, country, source, date, info
+ */
+app.post('/api/admin/import-leads-csv', async (req, res) => {
+  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const b = req.body && typeof req.body === 'object' ? req.body : {};
+  const csvText = String(b.csvText || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!csvText.trim()) return res.status(400).json({ error: 'csvText fehlt' });
+  if (csvText.length > 1024 * 256) return res.status(413).json({ error: 'CSV zu groß (max 256 KB)' });
+  const hasHeader = !!b.hasHeader;
+  const skipGeocode = !!b.skipGeocode;
+
+  let rows;
+  try {
+    rows = parseCsvSync(csvText, {
+      relax_column_count: true,
+      skip_empty_lines: true,
+      bom: true,
+      trim: true,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: `CSV parse error: ${err.message || String(err)}` });
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'CSV ist leer' });
+  }
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+
+  let inserted = 0;
+  let skippedDup = 0;
+  const errors = [];
+  const imported = [];
+
+  for (let i = 0; i < dataRows.length; i += 1) {
+    const row = Array.isArray(dataRows[i]) ? dataRows[i] : [dataRows[i]];
+    if (!row.some((v) => String(v ?? '').trim())) continue;
+    const lead = rowToSimpleLead(row);
+    const rowNumber = i + 1 + (hasHeader ? 1 : 0);
+
+    if (!lead.email || !looksLikeEmail(lead.email)) {
+      errors.push({ row: rowNumber, error: 'Ungültige oder fehlende E-Mail (Spalte 3)' });
+      continue;
+    }
+    if (leadEmailExistsInDatabase(lead.email)) {
+      skippedDup += 1;
+      continue;
+    }
+    try {
+      const out = await appendLead({
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        street: lead.street,
+        zip: lead.zip,
+        city: lead.city,
+        country: lead.country || 'Österreich',
+        source: lead.source,
+        info: lead.info,
+        date: createdAtIsoFromCell(lead.date),
+      }, { skipGeocode });
+      inserted += 1;
+      imported.push({ row: rowNumber, id: out && out.id != null ? Number(out.id) : null, email: lead.email });
+    } catch (err) {
+      errors.push({ row: rowNumber, error: err.message || String(err) });
+    }
+  }
+
+  return res.json({
+    ok: true,
+    inserted,
+    skippedDup,
+    errorCount: errors.length,
+    errors: errors.slice(0, 200),
+    imported: imported.slice(0, 200),
+    note: skipGeocode
+      ? 'Import ohne Geocoding: Leads können ohne Kartenpunkt sein (später /api/leads/:email/regeocode oder Adresse-Geocode im UI).'
+      : 'Import mit Geocoding (falls Koordinaten fehlen).',
+  });
 });
 
 app.get('/profil.html', (req, res) => {

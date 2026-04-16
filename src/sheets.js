@@ -294,7 +294,7 @@ function iso8601FromLeadDate(raw) {
   return new Date().toISOString();
 }
 
-async function appendLead(lead) {
+async function appendLead(lead, opts = {}) {
   const db = getDb();
   const nr = nextAnfrageNr(db);
   const email = String(lead.email || '').trim();
@@ -333,7 +333,8 @@ async function appendLead(lead) {
   });
   const rid = Number(info.lastInsertRowid);
   const needsGeo = rid > 0 && (lat == null || lng == null || lat === 0 || lng === 0);
-  if (needsGeo) {
+  const skipGeocode = !!(opts && opts.skipGeocode);
+  if (needsGeo && !skipGeocode) {
     const r = db.prepare('SELECT strasse, plz, ort FROM leads WHERE id = ?').get(rid);
     if (r) {
       const g = await geocodeAddressCascade({

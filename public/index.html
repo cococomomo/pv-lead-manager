@@ -325,6 +325,41 @@
     .pvl-map-legend .pvl-ml-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(15,23,42,0.15); }
     .pvl-map-legend .pvl-ml-pin { width: 14px; height: 14px; flex-shrink: 0; }
 
+    .pvl-map-legend details.pvl-ml-details { margin: 0; padding: 0; }
+    .pvl-map-legend details.pvl-ml-details > summary {
+      list-style: none;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 0.64rem;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.45rem;
+      user-select: none;
+    }
+    .pvl-map-legend details.pvl-ml-details > summary::-webkit-details-marker { display: none; }
+    .pvl-map-legend details.pvl-ml-details > summary::after {
+      content: '';
+      width: 0.42rem;
+      height: 0.42rem;
+      border-right: 2px solid rgba(15, 23, 42, 0.55);
+      border-bottom: 2px solid rgba(15, 23, 42, 0.55);
+      transform: rotate(-45deg);
+      margin-top: -0.12rem;
+      opacity: 0.85;
+      flex: 0 0 auto;
+    }
+    .pvl-map-legend details.pvl-ml-details[open] > summary::after {
+      transform: rotate(45deg);
+      margin-top: 0.08rem;
+    }
+    .pvl-map-legend details.pvl-ml-details .pvl-ml-body {
+      margin-top: 0.28rem;
+      padding-top: 0.22rem;
+      border-top: 1px solid rgba(15, 23, 42, 0.10);
+    }
+
     .sidebar-foot-warn {
       flex-shrink: 0;
       margin: 0;
@@ -431,42 +466,36 @@
       color: var(--pvl-text);
     }
 
-    /* Liste + Detail nebeneinander (Desktop) bzw. gestapelt (schmal) */
+    /* Liste + Detail: Detail ist ein Panel oberhalb der Liste (nicht daneben / nicht als Overlay). */
+    .sidebar-pane {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
     .sidebar-split {
+      position: relative;
       display: flex;
       flex-direction: column;
       flex: 1;
       min-height: 0;
       min-width: 0;
     }
-    .sidebar-detail-open #lead-list { display: none !important; }
-    .sidebar-detail-open #sidebar-detail.open {
-      display: flex;
-      flex: 1;
+    #sidebar-detail {
+      position: relative;
+      inset: auto;
+      z-index: 5;
+      display: none;
       flex-direction: column;
-      min-height: 0;
-      min-width: 0;
+      overflow: hidden;
+      background: var(--pvl-surface);
+      border-bottom: 1px solid var(--pvl-border);
+      max-height: min(72vh, 640px);
     }
-    @media (min-width: 1024px) {
-      .sidebar-detail-open .sidebar-split {
-        flex-direction: row;
-        align-items: stretch;
-      }
-      .sidebar-detail-open #lead-list {
-        display: flex !important;
-        flex-direction: column;
-        flex: 0 0 clamp(200px, 34%, 300px);
-        max-width: 300px;
-        min-width: 200px;
-        border-right: 1px solid var(--pvl-border);
-        overflow-y: auto;
-      }
-      .sidebar-detail-open #sidebar-detail.open {
-        flex: 1;
-        min-width: 0;
-        animation: none;
-      }
-    }
+    #sidebar-detail.open { display: flex; animation: pvl-fade-in 0.22s ease-out; }
+    /* (historisch) `.sidebar-detail-open` wurde für Overlay genutzt; bleibt ohne Effekt für Kompatibilität. */
 
     /* Lead list */
     #lead-list { overflow-y: auto; flex: 1; scroll-behavior: smooth; min-height: 0; }
@@ -561,9 +590,7 @@
       color: var(--pvl-text);
     }
 
-    /* Sidebar detail panel (replaces list) */
-    #sidebar-detail { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-    #sidebar-detail.open { display: flex; animation: pvl-fade-in 0.22s ease-out; }
+    /* Lead-Detail Overlay (liegt über Tabs/Filter/Suche/Liste; Position: siehe `.sidebar-split`) */
     .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--pvl-border); font-size: 0.82rem; color: var(--pvl-accent); cursor: pointer; flex-shrink: 0; }
     .detail-back:hover { background: var(--pvl-stat-bg); }
     .detail-body { overflow-y: auto; flex: 1; padding: 0.9rem; }
@@ -722,7 +749,7 @@
       .lead-item:hover { transform: none; }
       .refresh-btn.spin { animation: none; }
       .sync-leads-btn.spin { animation: none; }
-      #sidebar-detail.open { animation: none; }
+      .sidebar-detail-open #sidebar-detail.open { animation: none; }
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
       .stats-kpi-val { transition: none; }
@@ -747,7 +774,7 @@
       <option value="apple">Apple</option>
     </select>
     <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
-    <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromN8n()" title="Alle Leads aus dem Postfach über n8n importieren" aria-label="Alle Leads über n8n importieren">Leads importieren</button>
+    <!-- Import bewusst nur neben der Leadliste (nicht in der Kopfzeile). -->
     <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 0 1 1-9-9Z"/></svg></button>
     <span style="font-size:0.74rem"><a href="/profile" style="color:#fff;text-decoration:underline">Profil</a></span>
     <span style="font-size:0.74rem"><a href="/admin/users" style="color:#fff;text-decoration:underline">Admin</a></span>
@@ -797,49 +824,13 @@
   <div class="sidebar" id="sidebar-main" aria-label="NOORTEC Lead-Bereich">
     <div class="sidebar-header">
       <h2>Leads (<span id="lead-count">0</span>)</h2>
-      <button type="button" class="refresh-btn" onclick="loadLeads()" title="Liste neu laden" aria-label="Lead-Liste neu laden"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg></button>
-    </div>
-    <div class="sidebar-tabs" role="tablist" aria-label="NOORTEC Lead-Listen">
-      <button type="button" class="sidebar-tab is-active" id="tab-leads-active" role="tab" aria-selected="true" aria-controls="lead-list" onclick="setSidebarListTab('active')">Aktive Leads</button>
-      <button type="button" class="sidebar-tab" id="tab-leads-done" role="tab" aria-selected="false" aria-controls="lead-list" onclick="setSidebarListTab('done')">Abgearbeitet</button>
-    </div>
-    <details class="pvl-filter-panel" id="pvl-filter-panel">
-      <summary>Filter &amp; Sortierung</summary>
-      <div class="pvl-filter-body">
-        <label class="pvl-filter-check"><input type="checkbox" id="filter-geo-only-missing" /> Nur ohne Kartenpunkt anzeigen</label>
-        <input type="hidden" id="filter-betreuer" value="" />
-        <span class="pvl-filter-lbl">Vertriebler</span>
-        <div class="pvl-betreuer-pills" role="group" aria-label="Leads nach Zuweisung filtern">
-          <button type="button" class="is-active" data-betreuer="" id="pill-betreuer-all">Alle Leads</button>
-          <button type="button" data-betreuer="meine" id="pill-betreuer-meine">Meine Leads</button>
-          <button type="button" data-betreuer="unbetreut" id="pill-betreuer-unbetreut">Unbetreut</button>
-        </div>
-        <span class="pvl-filter-lbl">Status</span>
-        <select id="filter-status" aria-label="Nach Status filtern">
-          <option value="">Alle (nach Tab)</option>
-          <option value="aktiv">Aktiv</option>
-          <option value="terminiert">Terminiert</option>
-          <option value="verloren">Verloren</option>
-          <option value="abgearbeitet">Abgearbeitet</option>
-        </select>
-        <span class="pvl-filter-lbl">Sortierung</span>
-        <select id="sort-leads" onchange="renderList(); renderMarkers();">
-          <option value="created_at_desc" selected>Erstelldatum (neueste zuerst)</option>
-          <option value="created_at_asc">Erstelldatum (älteste zuerst)</option>
-          <option value="last_updated_desc">Zuletzt bearbeitet</option>
-        </select>
+      <div style="display:flex;align-items:center;gap:0.35rem">
+        <button type="button" class="sync-leads-btn pvl-admin-only" onclick="openCsvImportModal()" title="Leads manuell per Copy/Paste CSV importieren" aria-label="Leads manuell per CSV importieren">Import</button>
+        <button type="button" class="refresh-btn" onclick="loadLeads()" title="Liste neu laden" aria-label="Lead-Liste neu laden"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg></button>
       </div>
-    </details>
-    <div class="filter-bar">
-      <input type="text" id="search-input" placeholder="Name, E-Mail, Telefon, Ort…" oninput="renderList(); renderMarkers();" />
-      <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
-      <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
     </div>
-    <div id="geo-status"></div>
     <div class="sidebar-split" id="sidebar-split">
-    <div id="lead-list" role="tabpanel" aria-label="NOORTEC Lead-Liste"></div>
-
-    <!-- Detail panel inside sidebar -->
+    <div class="sidebar-pane" id="sidebar-pane">
     <div id="sidebar-detail">
       <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste · NOORTEC</div>
       <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem zweiten Lead-Blatt (Legacy) — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
@@ -910,6 +901,44 @@
 
       </div>
     </div>
+    <div class="sidebar-tabs" role="tablist" aria-label="NOORTEC Lead-Listen">
+      <button type="button" class="sidebar-tab is-active" id="tab-leads-active" role="tab" aria-selected="true" aria-controls="lead-list" onclick="setSidebarListTab('active')">Aktive Leads</button>
+      <button type="button" class="sidebar-tab" id="tab-leads-done" role="tab" aria-selected="false" aria-controls="lead-list" onclick="setSidebarListTab('done')">Abgearbeitet</button>
+    </div>
+    <details class="pvl-filter-panel" id="pvl-filter-panel">
+      <summary>Filter &amp; Sortierung</summary>
+      <div class="pvl-filter-body">
+        <label class="pvl-filter-check"><input type="checkbox" id="filter-geo-only-missing" /> Nur ohne Kartenpunkt anzeigen</label>
+        <input type="hidden" id="filter-betreuer" value="" />
+        <span class="pvl-filter-lbl">Vertriebler</span>
+        <div class="pvl-betreuer-pills" role="group" aria-label="Leads nach Zuweisung filtern">
+          <button type="button" class="is-active" data-betreuer="" id="pill-betreuer-all">Alle Leads</button>
+          <button type="button" data-betreuer="meine" id="pill-betreuer-meine">Meine Leads</button>
+          <button type="button" data-betreuer="unbetreut" id="pill-betreuer-unbetreut">Unbetreut</button>
+        </div>
+        <span class="pvl-filter-lbl">Status</span>
+        <select id="filter-status" aria-label="Nach Status filtern">
+          <option value="">Alle (nach Tab)</option>
+          <option value="aktiv">Aktiv</option>
+          <option value="terminiert">Terminiert</option>
+          <option value="verloren">Verloren</option>
+          <option value="abgearbeitet">Abgearbeitet</option>
+        </select>
+        <span class="pvl-filter-lbl">Sortierung</span>
+        <select id="sort-leads" onchange="renderList(); renderMarkers();">
+          <option value="created_at_desc" selected>Erstelldatum (neueste zuerst)</option>
+          <option value="created_at_asc">Erstelldatum (älteste zuerst)</option>
+          <option value="last_updated_desc">Zuletzt bearbeitet</option>
+        </select>
+      </div>
+    </details>
+    <div class="filter-bar">
+      <input type="text" id="search-input" placeholder="Name, E-Mail, Telefon, Ort…" oninput="renderList(); renderMarkers();" />
+      <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
+      <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
+    </div>
+    <div id="geo-status"></div>
+      <div id="lead-list" role="tabpanel" aria-label="NOORTEC Lead-Liste"></div>
     </div>
     <button type="button" class="sidebar-foot-warn is-hidden" id="sidebar-foot-warn" aria-label="Hinweis Leads ohne Kartenpunkt"></button>
   </div>
@@ -930,6 +959,34 @@
       <button type="button" class="pvl-modal-close" id="modal-missing-close" aria-label="Schließen">&times;</button>
     </div>
     <div class="pvl-modal-body" id="modal-missing-coords-body"></div>
+  </div>
+</div>
+
+<div id="modal-csv-import" class="pvl-modal" role="dialog" aria-modal="true" aria-labelledby="modal-csv-import-title">
+  <div class="pvl-modal-backdrop" id="modal-csv-import-backdrop"></div>
+  <div class="pvl-modal-panel">
+    <div class="pvl-modal-head">
+      <h2 id="modal-csv-import-title">Leads importieren (Copy/Paste)</h2>
+      <button type="button" class="pvl-modal-close" id="modal-csv-import-close" aria-label="Schließen">&times;</button>
+    </div>
+    <div class="pvl-modal-body">
+      <div style="color:var(--pvl-muted);font-size:0.85rem;line-height:1.45;margin-bottom:0.55rem">
+        Pro Zeile: <code style="font-size:0.82rem">Name, Telefon, E-Mail, Straße, PLZ, Ort, Land, Quelle, Datum, Info</code>
+      </div>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--pvl-text);margin:0.15rem 0">
+        <input type="checkbox" id="csv-import-has-header" /> Erste Zeile ist Header (überspringen)
+      </label>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--pvl-text);margin:0.15rem 0 0.55rem">
+        <input type="checkbox" id="csv-import-skip-geocode" /> Import ohne Geocoding (schneller, Karte ggf. ohne Punkt)
+      </label>
+      <textarea id="csv-import-text" rows="10" style="width:100%;padding:0.6rem;border:1px solid var(--pvl-border);border-radius:10px;font-size:0.86rem;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;resize:vertical" placeholder="Reitinger Thomas, 0043 664 ..., thomas@example.com, Eglseegasse 7, 1120, Wien, Österreich, pv-ersparnis.at, 2026-03-20, Mehrfamilienhaus ..."></textarea>
+      <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.65rem">
+        <button type="button" class="btn-mini btn-mini-save" id="btn-csv-import-run" onclick="runCsvImport()">Importieren</button>
+        <button type="button" class="btn-mini btn-mini-warn" onclick="document.getElementById('csv-import-text').value='';document.getElementById('csv-import-result').textContent='';document.getElementById('csv-import-errors').textContent=''">Leeren</button>
+        <span id="csv-import-result" style="font-size:0.85rem;color:var(--pvl-muted)"></span>
+      </div>
+      <div id="csv-import-errors" style="margin-top:0.55rem;white-space:pre-wrap;font-size:0.83rem;color:#b91c1c"></div>
+    </div>
   </div>
 </div>
 
@@ -972,9 +1029,9 @@
   let syncLeadsInFlight = false;
   async function syncLeadsFromN8n() {
     if (syncLeadsInFlight) return;
-    const btn = document.getElementById('btn-sync-leads');
+    const btns = [];
     syncLeadsInFlight = true;
-    if (btn) {
+    for (const btn of btns) {
       btn.disabled = true;
       btn.classList.add('spin');
     }
@@ -1008,10 +1065,100 @@
       showToast(e.message || String(e), 'err');
     } finally {
       syncLeadsInFlight = false;
-      if (btn) {
+      for (const btn of btns) {
         btn.disabled = false;
         btn.classList.remove('spin');
       }
+    }
+  }
+
+  function closeCsvImportModal() {
+    const m = document.getElementById('modal-csv-import');
+    if (m) m.classList.remove('open');
+  }
+
+  function openCsvImportModal() {
+    const m = document.getElementById('modal-csv-import');
+    if (!m) return;
+    m.classList.add('open');
+    const res = document.getElementById('csv-import-result');
+    const err = document.getElementById('csv-import-errors');
+    if (res) res.textContent = '';
+    if (err) err.textContent = '';
+    const skip = document.getElementById('csv-import-skip-geocode');
+    if (skip && skip.checked === false && skip.dataset && !skip.dataset.pvlTouched) {
+      // Default: schneller Import ohne Geocoding, User kann aktiv abwählen.
+      skip.checked = true;
+    }
+    const ta = document.getElementById('csv-import-text');
+    setTimeout(() => { try { ta && ta.focus(); } catch (_) { /* ignore */ } }, 0);
+  }
+
+  async function runCsvImport() {
+    const ta = document.getElementById('csv-import-text');
+    const btn = document.getElementById('btn-csv-import-run');
+    const out = document.getElementById('csv-import-result');
+    const errEl = document.getElementById('csv-import-errors');
+    if (!ta) return;
+    const csvText = String(ta.value || '').trim();
+    if (!csvText) {
+      showToast('Bitte CSV-Text einfügen.', 'info');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    if (out) out.textContent = 'Import läuft…';
+    if (errEl) errEl.textContent = '';
+    try {
+      const hasHeader = !!document.getElementById('csv-import-has-header')?.checked;
+      const skipGeocodeEl = document.getElementById('csv-import-skip-geocode');
+      const skipGeocode = !!skipGeocodeEl?.checked;
+      const r = await apiFetch('/api/admin/import-leads-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvText, hasHeader, skipGeocode }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401 && j.error === 'login_required') {
+        window.location.href = '/login.html?next=' + encodeURIComponent(pvlSafeReturnPath());
+        return;
+      }
+      if (r.status === 401 && j.error === 'Unauthorized') {
+        showToast('Nur für Admins verfügbar.', 'err');
+        if (out) out.textContent = '';
+        return;
+      }
+      if (!r.ok) {
+        const msg = j.error || r.statusText || 'Import fehlgeschlagen';
+        if (out) out.textContent = '';
+        showToast(msg, 'err');
+        if (errEl) errEl.textContent = msg;
+        return;
+      }
+      const ins = parseInt(String(j.inserted ?? 0), 10) || 0;
+      const dup = parseInt(String(j.skippedDup ?? 0), 10) || 0;
+      const ec = parseInt(String(j.errorCount ?? 0), 10) || 0;
+      if (out) out.textContent = `Fertig: ${ins} eingefügt, ${dup} Duplikate, ${ec} Fehler.`;
+      if (ins > 0) showToast(`Import ok: ${ins} neue Leads.`, 'ok');
+      else if (dup > 0 && ec === 0) showToast('Keine neuen Leads (nur Duplikate).', 'info');
+      else if (ec === 0) showToast('Import fertig.', 'ok');
+      if (errEl) {
+        const lines = [];
+        if (j.note) lines.push(String(j.note));
+        if (Array.isArray(j.errors) && j.errors.length) {
+          lines.push('');
+          lines.push('Fehler:');
+          for (const e of j.errors) lines.push(`- Zeile ${e.row}: ${e.error}`);
+        }
+        errEl.textContent = lines.join('\n').trim();
+      }
+      await loadLeads();
+    } catch (e) {
+      const msg = e.message || String(e);
+      if (out) out.textContent = '';
+      if (errEl) errEl.textContent = msg;
+      showToast(msg, 'err');
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -1055,7 +1202,9 @@
 
   function pvlMapLegendHtml() {
     return '<div class="pvl-map-legend">'
-      + '<div class="pvl-ml-title">Kartenlegende</div>'
+      + '<details class="pvl-ml-details">'
+      + '<summary>Kartenlegende</summary>'
+      + '<div class="pvl-ml-body">'
       + '<div class="pvl-ml-sub">Dunkler = frischer Lead (Erstelldatum) · heller = älter</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#8B0000"></span>&lt; 1 Monat (neu)</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#D60000"></span>1–3 Monate</div>'
@@ -1066,6 +1215,8 @@
       + '<div class="pvl-ml-row">' + pvlPinLegendSvg('#0f172a', '#94a3b8') + '<span style="margin-left:2px">Hauptblatt</span></div>'
       + '<div class="pvl-ml-row">' + pvlPinLegendSvg('#ffffff', '#94a3b8') + '<span style="margin-left:2px">Legacy / Archiv-Blatt</span></div>'
       + '<div class="pvl-ml-row"><span style="opacity:.72">' + pvlPinLegendSvg('#0f172a', '#cbd5e1') + '</span><span style="margin-left:2px">Abgearbeitet</span></div>'
+      + '</div>'
+      + '</details>'
       + '</div>';
   }
 
@@ -1077,6 +1228,10 @@
       wrap.innerHTML = pvlMapLegendHtml();
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
+      try {
+        const det = wrap.querySelector && wrap.querySelector('details.pvl-ml-details');
+        if (det) det.open = false;
+      } catch (e) { /* ignore */ }
       return wrap;
     };
     mapLegendControl.addTo(map);
@@ -1447,7 +1602,7 @@
     const detail = document.getElementById('sidebar-detail');
     const hadOpenDetail = !!(detail && detail.classList.contains('open'));
     if (hadOpenDetail) closeSidebarDetail();
-    if (!hadOpenDetail) renderList();
+    renderList();
     renderMarkers();
   }
 
@@ -1456,13 +1611,20 @@
     return digits ? `tel:${digits}` : '';
   }
 
-  function leadListPhoneHtml(lead) {
-    if (!lead[COL.phone]) return '';
-    const h = telHref(lead[COL.phone]);
-    const inner = h
-      ? `<a class="tel-link" href="${esc(h)}">${esc(lead[COL.phone])}</a>`
-      : esc(lead[COL.phone]);
-    return `<div class="lead-meta">${inner}</div>`;
+  function mailtoHref(email) {
+    const e = String(email || '').trim();
+    if (!e) return '';
+    return `mailto:${e}`;
+  }
+
+  function googleMapsSearchHref(addressLine) {
+    const q = String(addressLine || '').trim();
+    if (!q) return '';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  }
+
+  function stopPropAttr() {
+    return 'onclick="event.stopPropagation()"';
   }
 
   function syncNachfassTerminVisibility() {
@@ -2302,6 +2464,23 @@
         ? '<span class="lead-map-warn-icon" title="Kein gültiger Kartenpunkt in der Datenbank — Adresse prüfen" aria-label="Warnung: keine Kartenkoordinaten">' + PVL_SVG_WARN_TRI + '</span>'
         : '';
       const tabDoneCls = sidebarListTab === 'done' ? ' lead-item-abgearbeitet' : '';
+      const emailRaw = String(l[COL.email] || '').trim();
+      const emailH = mailtoHref(emailRaw);
+      const phoneRaw = String(l[COL.phone] || '').trim();
+      const phoneH = telHref(phoneRaw);
+      const addr = [l[COL.street], l[COL.zip], l[COL.city]].filter(Boolean).map((x) => String(x).trim()).filter(Boolean).join(', ');
+      const addrH = googleMapsSearchHref(addr);
+
+      const emailHtml = emailRaw
+        ? (emailH ? `<a href="${esc(emailH)}" ${stopPropAttr()}>${esc(emailRaw)}</a>` : esc(emailRaw))
+        : '';
+      const phoneHtml = phoneRaw
+        ? (phoneH ? `<a class="tel-link" href="${esc(phoneH)}" ${stopPropAttr()}>${esc(phoneRaw)}</a>` : esc(phoneRaw))
+        : '';
+      const addrHtml = addr
+        ? (addrH ? `<a href="${esc(addrH)}" target="_blank" rel="noopener noreferrer" ${stopPropAttr()}>${esc(addr)}</a>` : esc(addr))
+        : '';
+
       return `<div class="lead-item${act ? ' active' : ''}${arch ? ' lead-archived' : ''}${tabDoneCls}"
            data-lk="${lk}"
            style="border-left-color:${color}"
@@ -2313,7 +2492,11 @@
           ${esc(l[COL.city] || '')}${l[COL.zip] ? ' ' + esc(l[COL.zip]) : ''}
           &nbsp;·&nbsp;${esc(l[COL.date] || '')}${stShow ? ` · <span style="font-weight:600">${esc(stShow)}</span>` : ''}
         </div>
-        ${leadListPhoneHtml(l)}
+        ${(emailHtml || phoneHtml || addrHtml) ? `<div class="lead-meta" style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
+          ${phoneHtml ? `<div>Tel. ${phoneHtml}</div>` : ''}
+          ${emailHtml ? `<div>E‑Mail ${emailHtml}</div>` : ''}
+          ${addrHtml ? `<div>Adresse ${addrHtml}</div>` : ''}
+        </div>` : ''}
         ${l[COL.betreut] ? `<div class="lead-betreut">Betreut: ${esc(l[COL.betreut])}</div>` : ''}
       </div>`;
     }).join('');
@@ -2525,8 +2708,9 @@
     if (pvlLayout && pvlLayout.classList.contains('pvl-is-mobile')) {
       setMobileTab('list', true);
     }
-    document.getElementById('sidebar-main')?.classList.add('sidebar-detail-open');
+    maybeExpandSidebarForDetail();
     document.getElementById('sidebar-detail').classList.add('open');
+    document.getElementById('sidebar-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     const legacy = !!lead.__pvlLegacy;
     const arch = isCrmArchived(lead);
@@ -2574,10 +2758,20 @@
     }
 
     const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
+    const emailRaw = String(lead[COL.email] || '').trim();
+    const emailH = mailtoHref(emailRaw);
+    const addrH = googleMapsSearchHref(addr);
+    const emailCell = emailH
+      ? `<a href="${esc(emailH)}">${esc(emailRaw)}</a>`
+      : esc(emailRaw);
+    const addrCell = addrH
+      ? `<a href="${esc(addrH)}" target="_blank" rel="noopener noreferrer">${esc(addr)}</a>`
+      : esc(addr);
+
     const infoRows = [
-      ['Anfrage Nr.', anfrageNr(lead)],
-      ['E-Mail',      lead[COL.email]],
-      ['Adresse',     addr],
+      ['Anfrage Nr.', esc(anfrageNr(lead))],
+      ['E-Mail',      emailCell],
+      ['Adresse',     addrCell],
       ['Quelle',      getSource(lead)],
       ['Datum',       lead[COL.date]],
       ['Info',        lead[COL.info]],
@@ -2587,7 +2781,7 @@
       ['Termintyp', (String(lead[COL.termintyp] || lead.Termintyp || '').toLowerCase() === 'online') ? 'Online' : 'Vor-Ort'],
     ].filter(([, v]) => v);
 
-    let infoHtml = infoRows.map(([l, v]) => `<b>${esc(l)}:</b><span>${esc(v)}</span>`).join('');
+    let infoHtml = infoRows.map(([l, v]) => `<b>${esc(l)}:</b><span>${v}</span>`).join('');
     if (lead[COL.phone]) {
       const th = telHref(lead[COL.phone]);
       const phoneCell = th
@@ -2630,7 +2824,7 @@
     clearTempFocusMarker();
     restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
-    document.getElementById('sidebar-main')?.classList.remove('sidebar-detail-open');
+    restoreSidebarAfterDetail();
     const restoreBtn = document.getElementById('btn-restore-archive');
     if (restoreBtn) restoreBtn.style.display = 'none';
     activeEmail = null;
@@ -2797,7 +2991,7 @@
       const r = await apiFetch('/api/auth/me');
       const j = await r.json();
       const el = document.getElementById('session-user');
-      const syncBtn = document.getElementById('btn-sync-leads');
+      const adminOnly = Array.from(document.querySelectorAll('.pvl-admin-only'));
       if (!el) return;
       if (j.user) {
         window.__pvlSessionUser = j.user;
@@ -2806,7 +3000,8 @@
         userCalendarPreference = j.user.calendarPreference || 'google';
         const nav = document.getElementById('nav-cal-pref');
         if (nav) nav.value = userCalendarPreference;
-        if (syncBtn) syncBtn.style.display = j.user.role === 'admin' ? 'inline-flex' : 'none';
+        const showImport = j.user.role === 'admin';
+        for (const b of adminOnly) b.style.display = showImport ? 'inline-flex' : 'none';
         if (j.user.profileComplete === false && !/\/profile(\.html)?\/?$/i.test(location.pathname)) {
           window.location.replace(`/profile?next=${encodeURIComponent(pvlSafeReturnPath())}`);
           return;
@@ -2815,19 +3010,48 @@
         window.__pvlSessionUser = null;
         calendarPartnerName = '';
         el.textContent = '';
-        if (syncBtn) syncBtn.style.display = 'none';
+        for (const b of adminOnly) b.style.display = 'none';
       }
     } catch {
       window.__pvlSessionUser = null;
       document.getElementById('session-user').textContent = '';
-      const syncBtn = document.getElementById('btn-sync-leads');
-      if (syncBtn) syncBtn.style.display = 'none';
+      const adminOnly = Array.from(document.querySelectorAll('.pvl-admin-only'));
+      for (const b of adminOnly) b.style.display = 'none';
     }
   }
 
   const PVL_LS_THEME = 'pv_lead_manager_theme';
   const PVL_LS_SIDEBAR = 'pv_lead_manager_sidebar_width';
   const PVL_LS_MOBILE_VIEW = 'pv_lead_manager_mobile_view';
+
+  function pvlReadSidebarW() {
+    const cs = getComputedStyle(document.documentElement).getPropertyValue('--pvl-sidebar-w').trim();
+    const m = /^([\d.]+)px$/.exec(cs);
+    return m ? parseFloat(m[1]) : 360;
+  }
+
+  function pvlSetSidebarW(px) {
+    const clamped = Math.round(Math.min(520, Math.max(280, px)));
+    document.documentElement.style.setProperty('--pvl-sidebar-w', `${clamped}px`);
+    try { localStorage.setItem(PVL_LS_SIDEBAR, String(clamped)); } catch (e) { /* ignore */ }
+    pvlInvalidateMap();
+  }
+
+  let _sidebarWidthBeforeDetail = null;
+  function maybeExpandSidebarForDetail() {
+    if (_sidebarWidthBeforeDetail != null) return;
+    _sidebarWidthBeforeDetail = pvlReadSidebarW();
+    // Breiter machen nur, wenn aktuell recht schmal.
+    const target = Math.max(_sidebarWidthBeforeDetail, 460);
+    if (target !== _sidebarWidthBeforeDetail) pvlSetSidebarW(target);
+  }
+
+  function restoreSidebarAfterDetail() {
+    if (_sidebarWidthBeforeDetail == null) return;
+    const w = _sidebarWidthBeforeDetail;
+    _sidebarWidthBeforeDetail = null;
+    pvlSetSidebarW(w);
+  }
 
   function syncThemeToggleUi() {
     const btn = document.getElementById('pvl-theme-toggle');
@@ -2894,31 +3118,24 @@
     let dragging = false;
     let startX = 0;
     let startW = 360;
-    function readSidebarW() {
-      const cs = getComputedStyle(document.documentElement).getPropertyValue('--pvl-sidebar-w').trim();
-      const m = /^([\d.]+)px$/.exec(cs);
-      return m ? parseFloat(m[1]) : 360;
-    }
-    function setSidebarW(px) {
-      const clamped = Math.round(Math.min(520, Math.max(280, px)));
-      document.documentElement.style.setProperty('--pvl-sidebar-w', `${clamped}px`);
-      try { localStorage.setItem(PVL_LS_SIDEBAR, String(clamped)); } catch (e) { /* ignore */ }
-      pvlInvalidateMap();
-    }
     resizer.addEventListener('pointerdown', (e) => {
       if (layout.classList.contains('pvl-is-mobile')) return;
       if (e.button != null && e.button !== 0) return;
       dragging = true;
       resizer.classList.add('is-dragging');
       startX = e.clientX;
-      startW = readSidebarW();
+      startW = pvlReadSidebarW();
       try { resizer.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     });
     resizer.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const dx = e.clientX - startX;
-      /* Sidebar rechts: Griff nach rechts = breiter → Breite steigt mit clientX. */
-      setSidebarW(startW + dx);
+      /*
+        Sidebar rechts, Resizer links davon:
+        - nach rechts ziehen -> Sidebar wird SCHMÄLER
+        - nach links ziehen  -> Sidebar wird BREITER
+      */
+      pvlSetSidebarW(startW - dx);
     });
     function endDrag(e) {
       if (!dragging) return;
@@ -2979,6 +3196,17 @@
   });
   document.getElementById('modal-missing-close')?.addEventListener('click', () => { closeMissingCoordsModal(); });
   document.getElementById('modal-missing-backdrop')?.addEventListener('click', () => { closeMissingCoordsModal(); });
+  document.getElementById('modal-csv-import-close')?.addEventListener('click', () => { closeCsvImportModal(); });
+  document.getElementById('modal-csv-import-backdrop')?.addEventListener('click', () => { closeCsvImportModal(); });
+  document.getElementById('csv-import-skip-geocode')?.addEventListener('change', (e) => {
+    const el = e && e.target;
+    if (el && el.dataset) el.dataset.pvlTouched = '1';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e && e.key === 'Escape') {
+      closeCsvImportModal();
+    }
+  });
 
   document.getElementById('logout-link').addEventListener('click', async (e) => {
     e.preventDefault();

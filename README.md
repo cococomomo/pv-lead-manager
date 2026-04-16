@@ -148,6 +148,8 @@ server {
 - Karte: Leads mit Status **Termin** oder **Verloren** erscheinen nicht (keine Doppel-Anrufe). Optional: Checkbox „Abgeschlossene anzeigen“ in der Liste.
 - **Warn-Badge** (gelb): Leads ohne gültigen Kartenpunkt (Koordinaten NULL oder 0) — Klick öffnet die Verwaltungsliste mit Adresse korrigieren, **Geocoding**, **tel:** und Status/Archiv.
 - **CSV Export** (Header-Link): `GET /api/export/leads.csv` — alle Zeilen inkl. Archiv (`leads_export.csv`).
+- **CSV Import (manuell)**: Als Admin unter `**/admin.html`** im Abschnitt „Leads per CSV importieren“ CSV-Zeilen einfügen und importieren.  
+  Format pro Zeile: `Name, Telefon, E-Mail, Straße, PLZ, Ort, Land, Quelle, Datum, Info` (ohne Header möglich).
 - **tel:**-Links in Liste, Popup und Detailansicht.
 - **Google Kalender …** (Button): sofortiger Google-Link (Standardslot), ohne Pflicht auf Terminfelder.
 - „Betreut durch“-Chips: `**/api/vertriebler`** (= Benutzer-Logins), Pflege unter `**/admin.html**`.

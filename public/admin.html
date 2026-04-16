@@ -138,6 +138,27 @@
     </table>
   </section>
 
+  <section id="sec-import" style="margin-top:1.35rem;padding-top:1rem;border-top:1px solid #e2e8f0">
+    <h2 style="font-size:1rem;margin:0 0 0.5rem 0">Leads per CSV importieren</h2>
+    <p>Einfach die CSV-Zeilen (kommagetrennt) einfügen und importieren. Reihenfolge pro Zeile:</p>
+    <p style="margin-top:0.2rem"><code>Name, Telefon, E-Mail, Straße, PLZ, Ort, Land, Quelle, Datum, Info</code></p>
+    <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-top:0.55rem">
+      <input type="checkbox" id="ic-has-header" /> Erste Zeile ist Header (überspringen)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-top:0.25rem">
+      <input type="checkbox" id="ic-skip-geocode" /> Import ohne Geocoding (schneller, Karte ggf. ohne Punkt)
+    </label>
+    <p style="margin-top:0.5rem">
+      <textarea id="ic-text" rows="8" style="width:100%;padding:0.55rem;border:1px solid #cbd5e1;border-radius:10px;font-size:0.86rem;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace" placeholder="Reitinger Thomas, 0043 664 ..., thomas@example.com, Eglseegasse 7, 1120, Wien, Österreich, pv-ersparnis.at, 2026-03-20, Mehrfamilienhaus ..."></textarea>
+    </p>
+    <p>
+      <button type="button" class="primary" id="btn-import-csv" onclick="importCsvLeads()">CSV importieren</button>
+      <button type="button" class="secondary" onclick="document.getElementById('ic-text').value='';document.getElementById('m-import').textContent=''">Feld leeren</button>
+    </p>
+    <div class="msg" id="m-import"></div>
+    <div class="msg" id="m-import-details" style="white-space:pre-wrap"></div>
+  </section>
+
   <p style="margin-top:1.5rem"><a href="/">← Zurück zum NOORTEC Vertriebs-Dashboard</a> · <a href="#" onclick="logout();return false">Abmelden</a></p>
 
   <script>
@@ -307,6 +328,47 @@
     async function logout() {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
       location.href = '/login.html';
+    }
+
+    async function importCsvLeads() {
+      const msg = document.getElementById('m-import');
+      const details = document.getElementById('m-import-details');
+      const btn = document.getElementById('btn-import-csv');
+      msg.textContent = '';
+      details.textContent = '';
+      btn.disabled = true;
+      try {
+        const csvText = document.getElementById('ic-text').value;
+        const r = await fetch('/api/admin/import-leads-csv', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            csvText,
+            hasHeader: document.getElementById('ic-has-header').checked,
+            skipGeocode: document.getElementById('ic-skip-geocode').checked,
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+        if (!r.ok) {
+          msg.textContent = j.error || r.statusText;
+          return;
+        }
+        msg.textContent = `Import fertig: ${j.inserted || 0} eingefügt, ${j.skippedDup || 0} Duplikate übersprungen, ${j.errorCount || 0} Fehler.`;
+        const lines = [];
+        if (j.note) lines.push(j.note);
+        if (Array.isArray(j.errors) && j.errors.length) {
+          lines.push('\nFehler (max 200):');
+          for (const e of j.errors) lines.push(`- Zeile ${e.row}: ${e.error}`);
+        }
+        details.textContent = lines.join('\n').trim();
+      } catch (e) {
+        msg.className = 'msg err';
+        msg.textContent = e.message || String(e);
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     loadUsers();
