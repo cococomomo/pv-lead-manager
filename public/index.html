@@ -42,12 +42,34 @@
       --pvl-bg: #1e293b;
       --pvl-surface: #0f172a;
       --pvl-surface-2: #1e293b;
-      --pvl-text: #f1f5f9;
-      --pvl-muted: #94a3b8;
-      --pvl-border: #334155;
-      --pvl-accent: #3b82f6;
+      --pvl-text: #f8fafc;
+      --pvl-muted: #cbd5e1;
+      --pvl-border: #475569;
+      --pvl-accent: #60a5fa;
       --pvl-stat-bg: #1e3a5f;
     }
+    html[data-theme="dark"] .filter-archive-btn {
+      background: var(--pvl-surface-2);
+      border-color: var(--pvl-border);
+      color: var(--pvl-text);
+    }
+    html[data-theme="dark"] .filter-archive-btn:hover { background: #334155; }
+    html[data-theme="dark"] .filter-archive-btn[aria-pressed="true"] {
+      background: #1e3a8a;
+      border-color: var(--pvl-accent);
+      color: #eff6ff;
+    }
+    html[data-theme="dark"] .lead-item.lead-archived,
+    html[data-theme="dark"] .lead-item.lead-archived .lead-name { color: var(--pvl-muted); }
+    html[data-theme="dark"] .pvl-map-legend {
+      background: rgba(15, 23, 42, 0.94);
+      border-color: rgba(148, 163, 184, 0.35);
+      color: #e2e8f0;
+    }
+    html[data-theme="dark"] .pvl-map-legend .pvl-ml-title,
+    html[data-theme="dark"] .pvl-map-legend details.pvl-ml-details > summary { color: #f8fafc; }
+    html[data-theme="dark"] .pvl-map-legend .pvl-ml-sub { color: #94a3b8; }
+    html[data-theme="dark"] .pvl-map-legend .pvl-ml-row { color: #e2e8f0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--pvl-bg); color: var(--pvl-text); animation: pvl-fade-in 0.35s ease-out; }
 
     header {
@@ -552,7 +574,7 @@
       overflow: hidden;
       background: var(--pvl-surface);
       border-bottom: 1px solid var(--pvl-border);
-      max-height: min(72vh, 640px);
+      max-height: min(92vh, 900px);
     }
     #sidebar-detail.open { display: flex; animation: pvl-fade-in 0.22s ease-out; }
     /* (historisch) `.sidebar-detail-open` wurde für Overlay genutzt; bleibt ohne Effekt für Kompatibilität. */
@@ -653,16 +675,82 @@
     /* Lead-Detail Overlay (liegt über Tabs/Filter/Suche/Liste; Position: siehe `.sidebar-split`) */
     .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--pvl-border); font-size: 0.82rem; color: var(--pvl-accent); cursor: pointer; flex-shrink: 0; }
     .detail-back:hover { background: var(--pvl-stat-bg); }
-    .detail-body { overflow-y: auto; flex: 1; padding: 0.9rem; }
-    .detail-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.6rem; padding-left: 0.6rem; }
-    .detail-info { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 0.8rem; margin-bottom: 0.9rem; }
-    .detail-info b { color: #475569; white-space: nowrap; }
-    .detail-info span { color: #1a202c; word-break: break-word; }
-    .field-group { margin-bottom: 0.7rem; }
-    .field-group label { display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
-    .field-group input, .field-group textarea { width: 100%; padding: 0.35rem 0.55rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-family: inherit; }
-    .field-group textarea { resize: vertical; min-height: 60px; }
-    .detail-actions { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+    .detail-body { overflow-y: auto; flex: 1; padding: 0.55rem 0.72rem 0.65rem; }
+    .detail-title { font-size: 0.98rem; font-weight: 700; margin-bottom: 0.4rem; padding-left: 0.45rem; }
+    .detail-info { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 0.78rem; margin-bottom: 0.55rem; }
+    .detail-info b { color: var(--pvl-muted); white-space: nowrap; font-weight: 600; }
+    .detail-info span { color: var(--pvl-text); word-break: break-word; }
+    .field-group { margin-bottom: 0.45rem; }
+    .field-group label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--pvl-muted); margin-bottom: 0.2rem; }
+    .field-group input, .field-group textarea { width: 100%; padding: 0.32rem 0.5rem; border: 1px solid var(--pvl-border); border-radius: 6px; font-size: 0.8rem; font-family: inherit; background: var(--pvl-surface); color: var(--pvl-text); }
+    .field-group textarea { resize: vertical; min-height: 52px; }
+
+    details.sd-contact-details {
+      margin-bottom: 0.45rem;
+      border: 1px solid var(--pvl-border);
+      border-radius: 8px;
+      background: var(--pvl-surface-2);
+    }
+    details.sd-contact-details > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 0.38rem 0.55rem;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--pvl-accent);
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    details.sd-contact-details > summary::-webkit-details-marker { display: none; }
+    details.sd-contact-details[open] > summary {
+      border-bottom: 1px solid var(--pvl-border);
+    }
+    .sd-contact-details-body { padding: 0.35rem 0.5rem 0.5rem; }
+
+    .sd-termin-inline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem 0.45rem;
+    }
+    .sd-termin-input {
+      flex: 1 1 11rem;
+      min-width: 10rem;
+      max-width: 100%;
+      padding: 0.24rem 0.42rem !important;
+      font-size: 0.74rem !important;
+    }
+    .sd-termin-typ-pills {
+      display: flex;
+      gap: 0.28rem;
+      flex-shrink: 0;
+      align-items: center;
+    }
+    .sd-termin-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.18rem;
+      padding: 0.2rem 0.42rem;
+      border-radius: 999px;
+      border: 1px solid var(--pvl-border);
+      background: var(--pvl-surface);
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--pvl-text);
+      margin: 0;
+    }
+    .sd-termin-pill input { margin: 0; width: auto; min-width: 13px; accent-color: var(--pvl-accent); }
+    .sd-termin-pill:has(input:checked) {
+      background: var(--pvl-accent);
+      border-color: var(--pvl-accent);
+      color: #fff;
+    }
+    .sd-hint-muted { font-size: 0.72rem; color: var(--pvl-muted); margin: 0 0 0.35rem 0; line-height: 1.35; }
+    .detail-actions { display: flex; gap: 0.45rem; margin-top: 0.45rem; flex-wrap: wrap; align-items: center; }
     .btn { padding: 0.4rem 0.9rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
     .btn-save { background: var(--pvl-accent); color: #fff; transition: background 0.18s ease, opacity 0.18s ease; }
     .btn-save:hover:not(:disabled) { background: #1e40af; }
@@ -719,6 +807,11 @@
     #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
+    html[data-theme="dark"] #sd-legacy-banner {
+      background: #422006;
+      color: #fef9c3;
+      border-bottom-color: #b45309;
+    }
     .sd-map-warn {
       display: none;
       margin: 0 0 0.65rem 0;
@@ -731,26 +824,33 @@
       font-weight: 600;
       line-height: 1.4;
     }
+    html[data-theme="dark"] .sd-map-warn {
+      background: #422006;
+      color: #fef3c7;
+      border-color: #d97706;
+    }
     .sd-map-warn.show { display: block; }
 
     /* Leaflet popup overrides */
     .leaflet-popup-content { margin: 10px 14px; min-width: 220px; max-width: 300px; }
     .leaflet-popup-content b { color: #1a202c; }
+    html[data-theme="dark"] .leaflet-popup-content b { color: #f8fafc; }
     .popup-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
     .popup-row { font-size: 0.78rem; color: #334155; margin-bottom: 2px; }
+    html[data-theme="dark"] .popup-row { color: #e2e8f0; }
     .popup-open-btn { margin-top: 8px; background: #1a56db; color: #fff; border: none; border-radius: 5px; padding: 4px 12px; font-size: 0.78rem; cursor: pointer; width: 100%; }
     .popup-open-btn:hover { background: #1e40af; }
 
-    .tel-link { color: #1a56db; text-decoration: none; font-weight: 600; }
+    .tel-link { color: var(--pvl-accent); text-decoration: none; font-weight: 600; }
     .tel-link:hover { text-decoration: underline; }
     .chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.15rem; }
-    .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 0.76rem; cursor: pointer; font-family: inherit; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
-    .chip:hover { background: #e0e7ff; border-color: #6366f1; }
+    .chip { padding: 0.22rem 0.55rem; border-radius: 999px; border: 1px solid var(--pvl-border); background: var(--pvl-surface-2); color: var(--pvl-text); font-size: 0.76rem; cursor: pointer; font-family: inherit; transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease; }
+    .chip:hover { background: var(--pvl-stat-bg); border-color: var(--pvl-accent); }
     .chip:active { transform: scale(0.97); }
     .chip.chip-active { background: var(--pvl-accent); border-color: var(--pvl-accent); color: #fff; }
     .btn-gcal { background: #fff; color: #1a56db; border: 2px solid #1a56db; }
     .btn-gcal:hover { background: #eef2ff; }
-    .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: #475569; margin-top: 0.25rem; }
+    .filter-check { display: flex; align-items: center; gap: 0.35rem; font-size: 0.76rem; color: var(--pvl-muted); margin-top: 0.25rem; }
     .filter-archive-btn {
       width: 100%;
       margin-top: 0.35rem;
@@ -782,11 +882,11 @@
     .leaflet-div-icon.pvl-pin-done { opacity: 0.62; filter: grayscale(0.55); }
     .status-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
     .status-btn {
-      padding: 0.32rem 0.55rem; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc;
-      font-size: 0.74rem; font-weight: 600; cursor: pointer; font-family: inherit;
+      padding: 0.3rem 0.5rem; border-radius: 8px; border: 1px solid var(--pvl-border); background: var(--pvl-surface-2);
+      font-size: 0.72rem; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--pvl-text);
       transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
     }
-    .status-btn:hover:not(:disabled) { background: #e0e7ff; border-color: #6366f1; }
+    .status-btn:hover:not(:disabled) { background: var(--pvl-stat-bg); border-color: var(--pvl-accent); color: var(--pvl-text); }
     .status-btn:active:not(:disabled) { transform: scale(0.98); }
     .status-btn.active { background: var(--pvl-accent); border-color: var(--pvl-accent); color: #fff; }
     .status-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -943,30 +1043,23 @@
         </p>
         <div id="sd-map-warn" class="sd-map-warn" role="alert"></div>
         <div class="detail-info" id="sd-info"></div>
-        <div class="field-group" id="sd-contact-wrap">
-          <label>Kontakt &amp; Adresse bearbeiten</label>
-          <input type="email" id="sd-c-email" placeholder="E-Mail" autocomplete="email" />
-          <input type="tel" id="sd-c-phone" placeholder="Telefon" autocomplete="tel" style="margin-top:0.35rem" />
-          <input type="text" id="sd-c-street" placeholder="Straße" autocomplete="street-address" style="margin-top:0.35rem" />
-          <div style="display:flex;gap:0.35rem;margin-top:0.35rem">
-            <input type="text" id="sd-c-zip" placeholder="PLZ" autocomplete="postal-code" style="flex:0 0 38%" />
-            <input type="text" id="sd-c-city" placeholder="Ort" autocomplete="address-level2" style="flex:1" />
+        <details class="sd-contact-details" id="sd-contact-details">
+          <summary>Kontaktdaten bearbeiten</summary>
+          <div class="sd-contact-details-body">
+            <div class="field-group" id="sd-contact-wrap" style="margin-bottom:0.35rem">
+              <input type="email" id="sd-c-email" placeholder="E-Mail" autocomplete="email" />
+              <input type="tel" id="sd-c-phone" placeholder="Telefon" autocomplete="tel" style="margin-top:0.3rem" />
+              <input type="text" id="sd-c-street" placeholder="Straße" autocomplete="street-address" style="margin-top:0.3rem" />
+              <div style="display:flex;gap:0.3rem;margin-top:0.3rem">
+                <input type="text" id="sd-c-zip" placeholder="PLZ" autocomplete="postal-code" style="flex:0 0 38%" />
+                <input type="text" id="sd-c-city" placeholder="Ort" autocomplete="address-level2" style="flex:1" />
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="field-group" id="sd-termin-typ-wrap">
-          <label>Termintyp</label>
-          <div style="display:flex;flex-direction:column;gap:0.4rem;font-size:0.88rem">
-            <label style="font-weight:500;cursor:pointer"><input type="radio" name="sd-termin-typ" value="vor_ort" /> Vor-Ort-Termin (Adresse des Leads)</label>
-            <label style="font-weight:500;cursor:pointer"><input type="radio" name="sd-termin-typ" value="online" /> Online-Termin (Google Meet)</label>
-          </div>
-        </div>
-        <div class="field-group" id="sd-meet-wrap" style="display:none">
-          <label>Google Meet-Link (optional, z. B. nach dem Speichern des Kalendereintrags)</label>
-          <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
-        </div>
+        </details>
         <div class="field-group" id="sd-setter-assign-wrap" style="display:none">
           <label>Betreut durch</label>
-          <p style="font-size:0.74rem;color:#64748b;margin:0 0 0.4rem 0;line-height:1.4">Vertriebler zuweisen (NOORTEC) — ein Klick setzt den zuständigen Vertrieb für Terminbestätigung und Kunden-E-Mail.</p>
+          <p class="sd-hint-muted">Vertriebler zuweisen (NOORTEC) — ein Klick setzt den zuständigen Vertrieb für Terminbestätigung und Kunden-E-Mail.</p>
           <div class="chip-row" id="sd-setter-sales-chips" aria-label="Vertriebler per Login zuweisen"></div>
         </div>
         <div class="field-group" id="sd-betreut-field-wrap">
@@ -986,8 +1079,18 @@
           <input type="date" id="sd-nachfass" />
         </div>
         <div class="field-group" id="sd-termin-wrap" style="display:none">
-          <label>Termin (Datum &amp; Uhrzeit)</label>
-          <input type="datetime-local" id="sd-termin" step="900" title="Zeit in 15-Minuten-Schritten" />
+          <label>Termin</label>
+          <div class="sd-termin-inline">
+            <input type="datetime-local" id="sd-termin" class="sd-termin-input" step="900" title="Zeit in 15-Minuten-Schritten" />
+            <div class="sd-termin-typ-pills" role="group" aria-label="Termintyp">
+              <label class="sd-termin-pill"><input type="radio" name="sd-termin-typ" value="vor_ort" /> Vor-Ort</label>
+              <label class="sd-termin-pill"><input type="radio" name="sd-termin-typ" value="online" /> Online</label>
+            </div>
+          </div>
+        </div>
+        <div class="field-group" id="sd-meet-wrap" style="display:none">
+          <label>Google Meet-Link (optional)</label>
+          <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
         </div>
         <div class="field-group" id="sd-betreut-chips-wrap">
           <label>Betreut durch (Benutzer)</label>
@@ -995,7 +1098,6 @@
         </div>
         <div class="detail-actions" style="flex-wrap:wrap">
           <button type="button" class="btn btn-cal" id="btn-cal-appointment" onclick="openCalendarAppointment()">Termin und Kalender</button>
-          <button type="button" class="btn" id="btn-notify-customer" style="background:#7c3aed;color:#fff;border:none" onclick="notifyCustomerAppointment()">Kunden informieren</button>
           <button type="button" class="btn btn-save" id="btn-restore-archive" style="display:none;background:#15803d" onclick="restoreLeadFromArchive()">Wiederherstellen</button>
           <button type="button" class="btn btn-save" id="btn-save" onclick="saveFields()">Speichern</button>
           <span class="save-hint" id="save-hint">Gespeichert!</span>
@@ -1732,7 +1834,15 @@
   function syncNachfassTerminVisibility() {
     const st = normalizeStatusDisplay(detailCurrentStatus);
     document.getElementById('sd-nachfass-wrap').style.display = st === 'Nachfassen' ? 'block' : 'none';
-    document.getElementById('sd-termin-wrap').style.display = st === 'Termin vereinbart' ? 'block' : 'none';
+    const tw = document.getElementById('sd-termin-wrap');
+    const mw = document.getElementById('sd-meet-wrap');
+    if (st === 'Termin vereinbart') {
+      if (tw) tw.style.display = 'block';
+      syncMeetLinkRow();
+    } else {
+      if (tw) tw.style.display = 'none';
+      if (mw) mw.style.display = 'none';
+    }
     const rowLead = activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null;
     const arch = rowLead && isCrmArchived(rowLead);
     const suN = window.__pvlSessionUser;
@@ -1740,8 +1850,6 @@
       && !(Number(rowLead.assigned_to_user_id) > 0));
     const calBtn = document.getElementById('btn-cal-appointment');
     if (calBtn) calBtn.disabled = !!activeIsLegacy || !!arch || setterNeedsAssign;
-    const notifyBtn = document.getElementById('btn-notify-customer');
-    if (notifyBtn) notifyBtn.disabled = !!activeIsLegacy || !!arch || setterNeedsAssign;
   }
 
   function normalizeLocalDatetime(v) {
@@ -2012,58 +2120,6 @@
       } catch (_) {
         fail();
       }
-    }
-  }
-
-  async function notifyCustomerAppointment() {
-    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-    if (rowLead && isCrmArchived(rowLead)) {
-      showToast('Archivierter Lead: zuerst wiederherstellen.', 'info');
-      return;
-    }
-    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
-    if (!apiEmail) {
-      showToast('Keine E-Mail beim Lead.', 'err');
-      return;
-    }
-    const termin = document.getElementById('sd-termin').value;
-    if (!termin || !String(termin).trim()) {
-      showToast('Bitte Termin (Datum & Uhrzeit) setzen.', 'info');
-      return;
-    }
-    const su = window.__pvlSessionUser;
-    const hasSalesAssign = rowLead && Number(rowLead.assigned_to_user_id) > 0;
-    if (su && su.role === 'setter' && !hasSalesAssign) {
-      showToast('NOORTEC: Bitte zuerst einen Vertriebler unter „Betreut durch“ zuweisen.', 'info');
-      return;
-    }
-    if (!hasSalesAssign && (!su || su.profileComplete === false)) {
-      showToast('Bitte Profil (Name, Telefon, Kontakt-E-Mail) unter „Profil“ vervollständigen.', 'info');
-      return;
-    }
-    const btn = document.getElementById('btn-notify-customer');
-    if (btn) btn.disabled = true;
-    try {
-      const r = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/notify-appointment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          terminTyp: getSelectedTerminTyp(),
-          meetUrl: (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '',
-          termin,
-        }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        showToast(j.error || 'Versand fehlgeschlagen', 'err');
-        return;
-      }
-      showToast('Bestätigungsmail gesendet.', 'ok');
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    } finally {
-      if (btn) btn.disabled = false;
-      syncNachfassTerminVisibility();
     }
   }
 
@@ -2836,8 +2892,6 @@
     document.querySelectorAll('input[name="sd-termin-typ"]').forEach((inp) => { inp.disabled = readOnly; });
     document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = readOnly; });
     document.getElementById('btn-save').disabled = readOnly;
-    const notifyOpenBtn = document.getElementById('btn-notify-customer');
-    if (notifyOpenBtn) notifyOpenBtn.disabled = readOnly;
     const chipRow = document.getElementById('sd-betreut-chips');
     if (chipRow) {
       chipRow.style.pointerEvents = readOnly ? 'none' : '';
@@ -2929,6 +2983,8 @@
     renderSetterSalesChips(lead);
     document.getElementById('save-hint').style.display = 'none';
     syncTempFocusMarker(lead);
+    const cd = document.getElementById('sd-contact-details');
+    if (cd) cd.removeAttribute('open');
     pvlInvalidateMap();
   }
 
@@ -2952,8 +3008,6 @@
     document.getElementById('btn-save').disabled = false;
     const calBtn = document.getElementById('btn-cal-appointment');
     if (calBtn) calBtn.disabled = false;
-    const nbtn = document.getElementById('btn-notify-customer');
-    if (nbtn) nbtn.disabled = false;
     const chipRow = document.getElementById('sd-betreut-chips');
     if (chipRow) {
       chipRow.style.pointerEvents = '';
