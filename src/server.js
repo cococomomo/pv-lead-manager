@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
+const { URL } = require('url');
 const session = require('express-session');
 const FileStore = require('session-file-store')(session);
 
@@ -105,6 +106,39 @@ function allowAdmin(req) {
   const token = process.env.ADMIN_TOKEN;
   if (token && req.headers.authorization === `Bearer ${token}`) return true;
   return false;
+}
+
+function allowAdminSessionOnly(req) {
+  return !!(req.session && req.session.user && req.session.user.role === 'admin');
+}
+
+function parseCsvHosts(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isAllowedN8nImportWebhookUrl(urlStr) {
+  let u;
+  try {
+    u = new URL(String(urlStr || '').trim());
+  } catch {
+    return false;
+  }
+  const host = String(u.hostname || '').trim().toLowerCase();
+  if (!host) return false;
+  const isProd = process.env.NODE_ENV === 'production';
+  if (u.protocol !== 'https:') {
+    if (isProd) return false;
+    if (u.protocol !== 'http:') return false;
+    if (!/^127\.0\.0\.1$|^localhost$/i.test(host)) return false;
+  }
+  const allow = new Set(parseCsvHosts(process.env.N8N_IMPORT_WEBHOOK_ALLOWED_HOSTS));
+  if (!allow.size) {
+    allow.add('n8n.lifeco.at');
+  }
+  return allow.has(host);
 }
 
 /** Setter oder Admin: Lead einem Vertriebler (sales) zuweisen. */
@@ -325,6 +359,77 @@ app.post('/api/auth/smtp-test', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+/**
+ * Admin: n8n-Import-Workflow triggern (z. B. IMAP → KI → CRM Webhook).
+ * Historischer Endpunkt aus der IMAP-Sync-Ära, jetzt als n8n-Webhook-Proxy.
+ */
+app.post('/api/sync-leads', async (req, res) => {
+  if (!allowAdminSessionOnly(req)) {
+    return res.status(401).json({ error: 'Unauthorized', success: false });
+  }
+  const webhookUrl = String(process.env.N8N_IMPORT_LEADS_WEBHOOK_URL || '').trim();
+  if (!webhookUrl) {
+    return res.status(503).json({
+      error: 'N8N_IMPORT_LEADS_WEBHOOK_URL ist nicht konfiguriert',
+      success: false,
+    });
+  }
+  if (!isAllowedN8nImportWebhookUrl(webhookUrl)) {
+    return res.status(400).json({
+      error: 'N8N_IMPORT_LEADS_WEBHOOK_URL ist nicht erlaubt (Host nicht in N8N_IMPORT_WEBHOOK_ALLOWED_HOSTS)',
+      success: false,
+    });
+  }
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 120000);
+  try {
+    const r = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+      signal: ac.signal,
+    });
+    const text = await r.text();
+    let imported = null;
+    try {
+      const j = JSON.parse(text);
+      if (j && typeof j === 'object') {
+        if (j.imported != null) imported = Number(j.imported);
+        else if (j.count != null) imported = Number(j.count);
+      }
+    } catch (_) { /* ignore */ }
+    if (!Number.isFinite(imported)) {
+      const m = String(text || '').match(/"imported"\s*:\s*(\d+)/);
+      if (m) imported = Number(m[1]);
+    }
+    const count = Number.isFinite(imported) ? imported : 0;
+    if (!r.ok) {
+      return res.status(502).json({
+        success: false,
+        error: `n8n Webhook HTTP ${r.status}`,
+        webhookStatus: r.status,
+        webhookText: text ? text.slice(0, 2000) : '',
+      });
+    }
+    return res.json({
+      ok: true,
+      success: true,
+      count,
+      imported: count,
+      webhookStatus: r.status,
+      webhookText: text ? text.slice(0, 2000) : '',
+    });
+  } catch (err) {
+    const msg = err && err.name === 'AbortError' ? 'n8n Webhook Timeout' : (err && err.message ? String(err.message) : String(err));
+    return res.status(502).json({ success: false, error: msg });
+  } finally {
+    clearTimeout(t);
   }
 });
 
