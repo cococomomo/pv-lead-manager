@@ -370,6 +370,40 @@ app.get('/api/leads', async (req, res) => {
   }
 });
 
+/** Session: triggert n8n-Workflow (wartet bis HTTP-Response = Workflow fertig). */
+app.post('/api/sync-leads', async (req, res) => {
+  const webhookUrl = String(process.env.N8N_WEBHOOK_URL || '').trim();
+  if (!webhookUrl) {
+    return res.status(503).json({ success: false, error: 'N8N_WEBHOOK_URL nicht konfiguriert' });
+  }
+  const headers = { 'Content-Type': 'application/json' };
+  const n8nKey = String(process.env.N8N_API_KEY || '').trim();
+  if (n8nKey) headers['x-n8n-api-key'] = n8nKey;
+  try {
+    const n8nRes = await fetch(webhookUrl, {
+      method: 'POST',
+      headers,
+      body: '{}',
+      signal: AbortSignal.timeout(120000),
+    });
+    if (!n8nRes.ok) {
+      const errText = await n8nRes.text().catch(() => '');
+      return res.status(502).json({
+        success: false,
+        error: `n8n antwortete mit HTTP ${n8nRes.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
+      });
+    }
+    res.json({ success: true, message: 'Sync abgeschlossen' });
+  } catch (err) {
+    let msg = formatLeadsApiError(err);
+    if (err && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+      msg = 'n8n-Timeout (über 120s)';
+    }
+    console.error('POST /api/sync-leads:', msg);
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
 app.get('/api/leads/missing-coords/count', (req, res) => {
   try {
     res.json({ count: countLeadsMissingMapCoords() });

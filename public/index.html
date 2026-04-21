@@ -6,8 +6,6 @@
   <title>NOORTEC Vertriebs-Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script>
     (function () {
       try {
@@ -78,6 +76,21 @@
       text-decoration: underline;
       opacity: 0.92;
     }
+    .header-sync-leads {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      background: rgba(15, 118, 110, 0.55);
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: opacity 0.18s ease, background 0.18s ease;
+    }
+    .header-sync-leads:hover:not(:disabled) { background: rgba(15, 118, 110, 0.85); }
+    .header-sync-leads:disabled { opacity: 0.72; cursor: wait; }
     .header-actions { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; margin-left: auto; }
 
     .header-theme-toggle {
@@ -169,6 +182,7 @@
       .pvl-filter-panel > summary { min-height: 44px; padding: 0.5rem 0.85rem; font-size: 0.82rem; }
       .pvl-filter-body select { min-height: 44px; padding: 0.5rem 0.55rem; font-size: 0.88rem; }
       .pvl-filter-body label.pvl-filter-check { min-height: 44px; align-items: center; font-size: 0.88rem; }
+      .sync-leads-btn { padding: 0.55rem 0.75rem; min-height: 46px; font-size: 0.88rem; }
       .filter-archive-btn { padding: 0.5rem 0.75rem; min-height: 44px; font-size: 0.85rem; }
       .refresh-btn { padding: 0.45rem 0.75rem; min-height: 40px; font-size: 0.85rem; }
       #pvl-toast { bottom: 4.25rem; max-width: min(420px, 94vw); }
@@ -372,12 +386,6 @@
     .missing-lead-tel-num { font-variant-numeric: tabular-nums; }
 
     /* Map — Fläche in .map-wrap (position absolute) */
-    .marker-cluster-small { background-color: rgba(214, 0, 0, 0.55); }
-    .marker-cluster-small div { background-color: rgba(139, 0, 0, 0.85); color: #fff; }
-    .marker-cluster-medium { background-color: rgba(255, 92, 92, 0.5); }
-    .marker-cluster-medium div { background-color: rgba(214, 0, 0, 0.8); color: #fff; }
-    .marker-cluster-large { background-color: rgba(255, 199, 199, 0.55); }
-    .marker-cluster-large div { background-color: rgba(214, 0, 0, 0.75); color: #fff; }
 
     /* Sidebar */
     .sidebar {
@@ -595,6 +603,29 @@
     .refresh-btn.spin { animation: pvl-spin 0.75s linear infinite; }
     .refresh-btn svg { flex-shrink: 0; }
 
+    .sync-leads-btn {
+      width: 100%;
+      margin-bottom: 0.35rem;
+      padding: 0.38rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      background: #0f766e;
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.18s ease, opacity 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+    }
+    .sync-leads-btn:hover:not(:disabled) { background: #115e59; }
+    .sync-leads-btn:disabled { opacity: 0.72; cursor: wait; }
+    .sync-leads-btn.spin { animation: pvl-spin 0.75s linear infinite; }
+    .sync-leads-btn svg { flex-shrink: 0; }
+
     #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
@@ -704,6 +735,7 @@
       .lead-item { transition: none; }
       .lead-item:hover { transform: none; }
       .refresh-btn.spin { animation: none; }
+      .sync-leads-btn.spin { animation: none; }
       #sidebar-detail.open { animation: none; }
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
@@ -728,6 +760,7 @@
       <option value="outlook">Outlook</option>
       <option value="apple">Apple</option>
     </select>
+    <button type="button" class="header-sync-leads" id="btn-sync-leads-header" onclick="syncLeadsFromN8n()" title="n8n-Workflow ausführen und Leads aktualisieren">Leads synchronisieren</button>
     <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
     <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 0 1 1-9-9Z"/></svg></button>
     <span style="font-size:0.74rem"><a href="/profile" style="color:#fff;text-decoration:underline">Profil</a></span>
@@ -812,6 +845,7 @@
       </div>
     </details>
     <div class="filter-bar">
+      <button type="button" id="btn-sync-leads" class="sync-leads-btn" onclick="syncLeadsFromN8n()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg><span id="btn-sync-leads-label">Leads synchronisieren</span></button>
       <input type="text" id="search-input" placeholder="Name, E-Mail, Telefon, Ort…" oninput="renderList(); renderMarkers();" />
       <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
@@ -915,7 +949,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=pvl1.2"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js?v=pvl1.2"></script>
 <script>
   /** Session-Cookie: `credentials: 'include'` sendet das Cookie zuverlässig mit. */
   function apiFetch(url, opts = {}) {
@@ -984,6 +1017,10 @@
 
   let mapLegendControl = null;
 
+  /** Neu-Leads nach Erstellungsdatum: gelber Karten-Marker (Grenze ≈ ein Monat). */
+  const PVL_MAP_NEW_LEAD_MAX_DAYS = 30;
+  const PVL_MAP_NEW_LEAD_COLOR = '#EAB308';
+
   function pvlPinLegendSvg(stroke, fill) {
     return '<svg class="pvl-ml-pin" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 40" aria-hidden="true"><path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z" fill="' + fill + '" stroke="' + stroke + '" stroke-width="2.5"/></svg>';
   }
@@ -991,8 +1028,8 @@
   function pvlMapLegendHtml() {
     return '<div class="pvl-map-legend">'
       + '<div class="pvl-ml-title">Kartenlegende</div>'
-      + '<div class="pvl-ml-sub">Dunkler = frischer Lead (Erstelldatum) · heller = älter</div>'
-      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#8B0000"></span>&lt; 1 Monat (neu)</div>'
+      + '<div class="pvl-ml-sub">Gelb = neu (erstellt innerhalb von ' + PVL_MAP_NEW_LEAD_MAX_DAYS + ' Tagen) · Rot-Töne = älter (Erstelldatum)</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:' + PVL_MAP_NEW_LEAD_COLOR + '"></span>&lt; 1 Monat (neu)</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#D60000"></span>1–3 Monate</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#FF5C5C"></span>3–6 Monate</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#FFA0A0"></span>6–12 Monate</div>'
@@ -1048,21 +1085,10 @@
 
   pvlInitMapLayersSatelliteOnly();
 
-  const markerLayer = (typeof L.markerClusterGroup === 'function'
-    ? L.markerClusterGroup({
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        maxClusterRadius: 72,
-        spiderfyDistanceMultiplier: 2,
-        removeOutsideVisibleBounds: true,
-        animateAddingMarkers: false,
-        spiderLegPolylineOptions: { weight: 1.5, color: '#8B0000', opacity: 0.75 },
-      })
-    : L.layerGroup()
-  ).addTo(map);
+  /** Alle Lead-Pins einzeln (kein Marker-Clustering). */
+  const markerLayer = L.layerGroup().addTo(map);
 
-  /** NOORTEC: eigene Pane über Cluster-Markern; Klicks gehen zur Karte (Detail schließen). */
+  /** NOORTEC: eigene Pane über Lead-Markern; Klicks gehen zur Karte (Detail schließen). */
   const PVL_TEMP_FOCUS_PANE = 'pvlTempFocus';
   if (!map.getPane(PVL_TEMP_FOCUS_PANE)) {
     map.createPane(PVL_TEMP_FOCUS_PANE);
@@ -1072,28 +1098,10 @@
   }
   const tempFocusLayer = L.layerGroup().addTo(map);
 
-  /** Kartenansicht vor Lead-Fokus (`previousViewState`) — für „Klick ins Leere → zurück“. */
-  var previousViewState = null;
-
-  function captureLastMapStateIfNeeded() {
-    const detail = document.getElementById('sidebar-detail');
-    if (!detail || detail.classList.contains('open')) return;
-    const c = map.getCenter();
-    previousViewState = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
-  }
-
-  function restoreLastMapState() {
-    if (!previousViewState) return;
-    const { lat, lng, zoom } = previousViewState;
-    map.flyTo([lat, lng], zoom, { duration: 0.55, animate: true });
-    previousViewState = null;
-  }
-
   function isMapClickOnLeadUi(ev) {
     const t = ev && ev.originalEvent && ev.originalEvent.target;
     if (!t || !t.closest) return false;
     return !!(t.closest('.leaflet-marker-icon')
-      || t.closest('.marker-cluster')
       || t.closest('.leaflet-popup'));
   }
 
@@ -1159,9 +1167,17 @@
     return leadDateMs(lead);
   }
 
+  function isLeadCreatedWithinLastMonth(lead) {
+    const ms = leadCreatedAtMs(lead);
+    if (!ms || Number.isNaN(ms)) return false;
+    const days = (Date.now() - ms) / 86400000;
+    return days >= 0 && days < PVL_MAP_NEW_LEAD_MAX_DAYS;
+  }
+
   /**
    * „Frische“-Skala: neueste Leads am dunkelsten/intensivsten, mit zunehmendem Alter heller (invertiert zur reinen Altersstufe).
    * Nur Rot-Töne; kein Wechsel der Kartenbasis nach UI-Theme.
+   * (Karten-Marker: `getMarkerColorForLead` setzt Leads der letzten 30 Tage auf Gelb.)
    */
   function getMarkerColor(msOrLead) {
     let ms;
@@ -1183,6 +1199,7 @@
   }
 
   function getMarkerColorForLead(lead) {
+    if (isLeadCreatedWithinLastMonth(lead)) return PVL_MAP_NEW_LEAD_COLOR;
     return getMarkerColor(lead);
   }
 
@@ -1439,6 +1456,56 @@
     const H2 = Math.floor(snapped / 60) % 24;
     const M2 = ((snapped % 60) + 60) % 60;
     return `${datePart}T${String(H2).padStart(2, '0')}:${String(M2).padStart(2, '0')}`;
+  }
+
+  let syncLeadsInFlight = false;
+  async function syncLeadsFromN8n() {
+    if (syncLeadsInFlight) return;
+    const btn = document.getElementById('btn-sync-leads');
+    const btnHead = document.getElementById('btn-sync-leads-header');
+    const label = document.getElementById('btn-sync-leads-label');
+    syncLeadsInFlight = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('spin');
+    }
+    if (btnHead) {
+      btnHead.disabled = true;
+      btnHead.dataset.labelBackup = btnHead.textContent;
+      btnHead.textContent = 'Synchronisiere…';
+    }
+    if (label) label.textContent = 'Synchronisiere…';
+    try {
+      const r = await apiFetch('/api/sync-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401) {
+        pvlRedirectToLoginAfter401();
+        return;
+      }
+      if (!r.ok || j.success === false) {
+        showToast(j.error || 'Synchronisation fehlgeschlagen.', 'err');
+        return;
+      }
+      showToast(j.message || 'Sync abgeschlossen.', 'ok');
+      await loadLeads();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    } finally {
+      syncLeadsInFlight = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('spin');
+      }
+      if (btnHead) {
+        btnHead.disabled = false;
+        if (btnHead.dataset.labelBackup != null) btnHead.textContent = btnHead.dataset.labelBackup;
+      }
+      if (label) label.textContent = 'Leads synchronisieren';
+    }
   }
 
   async function loadVertrieblerNames() {
@@ -2268,14 +2335,6 @@
     return [la, lo];
   }
 
-  function getLeadFocusLatLng(lead) {
-    const m = markerMap[leadKey(lead)];
-    if (m) return m.getLatLng();
-    const c = coordsFromDb(lead);
-    if (c) return L.latLng(c[0], c[1]);
-    return null;
-  }
-
   let markerRenderGen = 0;
 
   /** Marker nur aus DB-Koordinaten — kein Browser-Geocoding (Performance / Nominatim-Fair-Use). */
@@ -2340,14 +2399,13 @@
       <div class="popup-row" style="color:#64748b">${esc(src)} · ${esc(lead[COL.date]||'')}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
       ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
       ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
-      <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(leadKey(lead))}', { skipZoom: true })">
+      <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(leadKey(lead))}')">
         Bearbeiten / Details
       </button>`;
 
     marker.on('click', (ev) => {
       if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
-      zoomMapToLead(lead);
-      selectLead(encodeURIComponent(leadKey(lead)), { skipZoom: true });
+      selectLead(encodeURIComponent(leadKey(lead)));
     });
     marker.bindPopup(popupContent, { maxWidth: 320 });
     marker.addTo(markerLayer);
@@ -2408,32 +2466,10 @@
     else clearTempFocusMarker();
   }
 
-  /** Zoom auf Lead-Position (NOORTEC: Ziel-Zoom 18, begrenzt durch Karten-max). */
-  function zoomMapToLead(lead) {
-    captureLastMapStateIfNeeded();
-    const marker = markerMap[leadKey(lead)];
-    const target = getLeadFocusLatLng(lead);
-    const rawZ = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 19;
-    const zMax = Number.isFinite(rawZ) && rawZ > 0 && rawZ < 99 ? rawZ : 19;
-    const zFly = Math.min(18, zMax);
-    const flyMax = () => {
-      if (!target) return;
-      if (marker) marker.closePopup();
-      map.flyTo([target.lat, target.lng], zFly, { duration: 1.2, animate: true });
-    };
-    if (marker && typeof markerLayer.zoomToShowLayer === 'function') {
-      markerLayer.zoomToShowLayer(marker, flyMax);
-    } else {
-      flyMax();
-    }
-  }
-
   /**
    * @param {string} encodedKey
-   * @param {{ skipZoom?: boolean }} [opts] — `skipZoom`: Zoom bereits z. B. durch Marker-Klick oder Popup-Button ausgeführt
    */
-  function selectLead(encodedKey, opts) {
-    const skipZoom = !!(opts && opts.skipZoom);
+  function selectLead(encodedKey) {
     const raw = decodeURIComponent(encodedKey);
     const { base, isLegacy } = parseLeadKey(raw);
     const lead = allLeads.find((l) => {
@@ -2444,8 +2480,6 @@
     activeEmail = lead[COL.email] || lead[COL.name] || '';
     activeIsLegacy = !!lead.__pvlLegacy;
     activeLeadKeyStr = leadKey(lead);
-
-    if (!skipZoom) zoomMapToLead(lead);
 
     renderList();
     const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
@@ -2563,7 +2597,6 @@
 
   function closeSidebarDetail() {
     clearTempFocusMarker();
-    restoreLastMapState();
     document.getElementById('sidebar-detail').classList.remove('open');
     document.getElementById('sidebar-main')?.classList.remove('sidebar-detail-open');
     const restoreBtn = document.getElementById('btn-restore-archive');
@@ -2712,13 +2745,6 @@
       const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
       if (openLead && document.getElementById('sidebar-detail')?.classList.contains('open')) {
         openSidebarDetail(openLead);
-      }
-      if (hadMissingCoords && addrChanged && openLead && coordsFromDb(openLead)) {
-        const c = coordsFromDb(openLead);
-        if (c) {
-          const zCur = typeof map.getZoom === 'function' ? map.getZoom() : 9;
-          map.flyTo(L.latLng(c[0], c[1]), Math.min(16, Math.max(zCur, 14)), { duration: 0.55, animate: true });
-        }
       }
     } catch (e) {
       showToast('Netzwerkfehler beim Speichern: ' + (e.message || String(e)), 'err');
