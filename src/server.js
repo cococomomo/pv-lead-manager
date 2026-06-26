@@ -48,6 +48,7 @@ const { sendAppointmentConfirmationEmail, buildLeadAddressLine, formatTerminDe, 
 const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-transport');
 const { resolveBetreuerContact } = require('./sales-contact');
 const { upsertProfile, ensureSqliteUserStub, getProfile } = require('./user-profile');
+const { mountOfferRoutes } = require('./offer/routes');
 const { getDashboardStats } = require('./stats');
 
 const app = express();
@@ -849,6 +850,8 @@ app.get(['/admin/users', '/admin/users/'], (req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin.html'));
 });
 
+mountOfferRoutes(app, { getProfile, getLeadByEmail });
+
 app.use(express.static(path.join(__dirname, '../public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) {
@@ -859,6 +862,9 @@ app.use(express.static(path.join(__dirname, '../public'), {
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
+  if (req.path === '/offer' || req.path.startsWith('/offer/')) {
     return res.status(404).type('text/plain').send('Not Found');
   }
   res.set('Cache-Control', 'no-store, max-age=0');
