@@ -4264,7 +4264,10 @@
   /**
    * @param {string} encodedKey
    */
-  function selectLead(encodedKey) {
+  function selectLead(encodedKey, opts) {
+    const _opts = opts || {};
+    const fromList = !!_opts.fromList;
+    const fromMarker = !!_opts.fromMarker;
     const raw = decodeURIComponent(encodedKey);
     const { base, isLegacy } = parseLeadKey(raw);
     const lead = allLeads.find((l) => {
@@ -4279,38 +4282,43 @@
     renderList();
     const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
     if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    if (listDblMaxZoom) {
-      try {
-        zoomMapToLeadMax(lead);
-      } catch (e) {
-        console.warn('[NOORTEC] selectLead listDblMaxZoom', e && e.message);
-      }
-      try {
-        highlightMarkerForLead(lead);
-      } catch (e) {
-        /* ignore */
-      }
-    } else if (!opts || !opts.skipMapFocus) {
-      if (fromList) {
-        focusMapOnLeadPreserveZoom(lead, () => { highlightMarkerForLead(lead); });
+    openSidebarDetail(lead);
+    try {
+      if (listDblMaxZoom) {
+        try {
+          zoomMapToLeadMax(lead);
+        } catch (e) {
+          console.warn('[NOORTEC] selectLead listDblMaxZoom', e && e.message);
+        }
+        try {
+          highlightMarkerForLead(lead);
+        } catch (e) {
+          /* ignore */
+        }
+      } else if (!_opts.skipMapFocus) {
+        if (fromList) {
+          focusMapOnLeadPreserveZoom(lead, () => { highlightMarkerForLead(lead); });
+        } else if (fromMarker) {
+          /* Einfachklick auf Pin: Detail + Sprechblase, kein Pan/Zoom (Max-Zoom nur per Doppelklick auf dem Pin). */
+          const m = markerMap[leadKey(lead)];
+          if (m) {
+            try { m.openPopup(); } catch (_) { /* ignore */ }
+          }
+        } else {
+          focusMapOnLead(lead, () => { highlightMarkerForLead(lead); });
+        }
       } else if (fromMarker) {
-        /* Einfachklick auf Pin: Detail + Sprechblase, kein Pan/Zoom (Max-Zoom nur per Doppelklick auf dem Pin). */
-        const m = markerMap[leadKey(lead)];
-        if (m) {
-          try { m.openPopup(); } catch (_) { /* ignore */ }
-        }
-      } else {
-        focusMapOnLead(lead, () => { highlightMarkerForLead(lead); });
+        requestAnimationFrame(() => {
+          const m = markerMap[leadKey(lead)];
+          if (m) {
+            try {
+              m.openPopup();
+            } catch (_) { /* ignore */ }
+          }
+        });
       }
-    } else if (fromMarker) {
-      requestAnimationFrame(() => {
-        const m = markerMap[leadKey(lead)];
-        if (m) {
-          try {
-            m.openPopup();
-          } catch (_) { /* ignore */ }
-        }
-      });
+    } catch (mapErr) {
+      console.warn('[NOORTEC] selectLead map-focus:', mapErr && mapErr.message);
     }
   }
 
