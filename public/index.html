@@ -1850,12 +1850,25 @@
   let syncLeadsInFlight = false;
   async function syncLeadsFromN8n() {
     if (syncLeadsInFlight) return;
-    const btns = Array.from(document.querySelectorAll('.pvl-n8n-sync-btn'));
+    const n8nBtns = Array.from(document.querySelectorAll('.pvl-n8n-sync-btn'));
+    const btn = document.getElementById('btn-sync-leads');
+    const btnHead = document.getElementById('btn-sync-leads-header');
+    const label = document.getElementById('btn-sync-leads-label');
     syncLeadsInFlight = true;
-    for (const btn of btns) {
+    for (const b of n8nBtns) {
+      b.disabled = true;
+      b.classList.add('spin');
+    }
+    if (btn) {
       btn.disabled = true;
       btn.classList.add('spin');
     }
+    if (btnHead) {
+      btnHead.disabled = true;
+      btnHead.dataset.labelBackup = btnHead.textContent;
+      btnHead.textContent = 'Synchronisiere…';
+    }
+    if (label) label.textContent = 'Synchronisiere…';
     try {
       const r = await apiFetch('/api/sync-leads', {
         method: 'POST',
@@ -1863,33 +1876,46 @@
         body: '{}',
       });
       const j = await r.json().catch(() => ({}));
-      if (r.status === 401 && j.error === 'login_required') {
-        window.location.href = '/login.html?next=' + encodeURIComponent(pvlSafeReturnPath());
-        return;
-      }
-      if (r.status === 401 && j.error === 'Unauthorized') {
-        showToast('Nur für Admins verfügbar.', 'err');
+      if (r.status === 401) {
+        if (j.error === 'Unauthorized') {
+          showToast('Nur für Admins verfügbar.', 'err');
+          return;
+        }
+        if (typeof pvlRedirectToLoginAfter401 === 'function') {
+          pvlRedirectToLoginAfter401();
+        } else {
+          window.location.href = '/login.html?next=' + encodeURIComponent(pvlSafeReturnPath());
+        }
         return;
       }
       if (!r.ok || j.success === false) {
-        showToast(j.error || 'NOORTEC: Import fehlgeschlagen.', 'err');
+        showToast(j.error || 'Synchronisation fehlgeschlagen.', 'err');
         return;
       }
-      const n = parseInt(String(j.count ?? j.imported ?? 0), 10) || 0;
-      if (n > 0) {
+      const n = parseInt(String(j.count ?? j.imported ?? ''), 10);
+      if (Number.isFinite(n) && n > 0) {
         showToast(`Import erfolgreich: ${n} neue Leads importiert.`, 'ok');
       } else {
-        showToast('Import ausgelöst (0 neue Leads laut n8n-Antwort).', 'info');
+        showToast(j.message || 'Sync abgeschlossen.', 'ok');
       }
       await loadLeads();
     } catch (e) {
       showToast(e.message || String(e), 'err');
     } finally {
       syncLeadsInFlight = false;
-      for (const btn of btns) {
+      for (const b of n8nBtns) {
+        b.disabled = false;
+        b.classList.remove('spin');
+      }
+      if (btn) {
         btn.disabled = false;
         btn.classList.remove('spin');
       }
+      if (btnHead) {
+        btnHead.disabled = false;
+        if (btnHead.dataset.labelBackup != null) btnHead.textContent = btnHead.dataset.labelBackup;
+      }
+      if (label) label.textContent = 'Leads synchronisieren';
     }
   }
 
@@ -2867,56 +2893,6 @@
     const H2 = Math.floor(snapped / 60) % 24;
     const M2 = ((snapped % 60) + 60) % 60;
     return `${datePart}T${String(H2).padStart(2, '0')}:${String(M2).padStart(2, '0')}`;
-  }
-
-  let syncLeadsInFlight = false;
-  async function syncLeadsFromN8n() {
-    if (syncLeadsInFlight) return;
-    const btn = document.getElementById('btn-sync-leads');
-    const btnHead = document.getElementById('btn-sync-leads-header');
-    const label = document.getElementById('btn-sync-leads-label');
-    syncLeadsInFlight = true;
-    if (btn) {
-      btn.disabled = true;
-      btn.classList.add('spin');
-    }
-    if (btnHead) {
-      btnHead.disabled = true;
-      btnHead.dataset.labelBackup = btnHead.textContent;
-      btnHead.textContent = 'Synchronisiere…';
-    }
-    if (label) label.textContent = 'Synchronisiere…';
-    try {
-      const r = await apiFetch('/api/sync-leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 401) {
-        pvlRedirectToLoginAfter401();
-        return;
-      }
-      if (!r.ok || j.success === false) {
-        showToast(j.error || 'Synchronisation fehlgeschlagen.', 'err');
-        return;
-      }
-      showToast(j.message || 'Sync abgeschlossen.', 'ok');
-      await loadLeads();
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    } finally {
-      syncLeadsInFlight = false;
-      if (btn) {
-        btn.disabled = false;
-        btn.classList.remove('spin');
-      }
-      if (btnHead) {
-        btnHead.disabled = false;
-        if (btnHead.dataset.labelBackup != null) btnHead.textContent = btnHead.dataset.labelBackup;
-      }
-      if (label) label.textContent = 'Leads synchronisieren';
-    }
   }
 
   async function loadVertrieblerNames() {

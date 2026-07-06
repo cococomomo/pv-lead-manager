@@ -58,7 +58,6 @@ const { mountOfferRoutes } = require('./offer/routes');
 const { getDashboardStats } = require('./stats');
 const { transferLeadToReonicById } = require('./reonic-sync');
 const { reonicV2OffersConfigured, testReonicRestV2Connection } = require('./integrations/reonic');
-const { mountOfferRoutes } = require('./offer/routes');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
@@ -736,9 +735,6 @@ app.use((req, res, next) => {
   if (req.path === '/login.html' || req.path === '/login') return next();
   return requireWebSession(req, res, next);
 });
-
-// ── Angebotsgenerator (KI-Eingabemaske, PDF, .eml) ─────────────────────────
-mountOfferRoutes(app, { getProfile, getLeadByEmail });
 
 app.get('/api/leads', async (req, res) => {
   try {
