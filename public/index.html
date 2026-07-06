@@ -4910,6 +4910,99 @@
     setStatsBarVisible(visible, false);
   }
 
+  // ── Lead-Listen-Delegation, Detail-Feld-Delegation und Date-Picker ────────
+  // Diese fünf Helfer wurden als Aufrufstellen eingebaut (Merge der Angebots-
+  // PDF-Feature), ihre Definitionen jedoch nie committed → ReferenceError beim
+  // Top-Level-Durchlauf, wodurch boot() und der Logout-Listener nie gebunden
+  // wurden (Symptom: „keine Leads, Angebot fehlt, Abmelden tot“).
+  let _pvlSidebarDetailDelegationBound = false;
+  let _pvlDatePickersInit = false;
+
+  /** Einmalige Event-Delegation auf den drei Lead-Listen (Klick → selectLead). */
+  function pvlBindLeadListDelegationOnce() {
+    if (_pvlLeadListDelegationBound) return;
+    _pvlLeadListDelegationBound = true;
+    const onClick = (ev) => {
+      const item = ev.target.closest && ev.target.closest('[data-lk]');
+      if (!item) return;
+      const enc = item.getAttribute('data-lk');
+      if (enc) selectLead(enc, { fromList: true });
+    };
+    const onKey = (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      const item = ev.target.closest && ev.target.closest('[data-lk]');
+      if (!item) return;
+      ev.preventDefault();
+      const enc = item.getAttribute('data-lk');
+      if (enc) selectLead(enc, { fromList: true });
+    };
+    ['lead-list', 'lead-list-nachfassen', 'lead-list-done'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', onClick);
+      el.addEventListener('keydown', onKey);
+    });
+  }
+
+  /** Einmalige Bindung des Speichern-Buttons + Ctrl/Cmd-Enter im Detail-Panel. */
+  function pvlBindSidebarDetailFieldDelegationOnce() {
+    if (_pvlSidebarDetailDelegationBound) return;
+    _pvlSidebarDetailDelegationBound = true;
+    const saveBtn = document.getElementById('btn-detail-save');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => { saveFields(); });
+    }
+    const sd = document.getElementById('sidebar-detail');
+    if (sd) {
+      sd.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+          ev.preventDefault();
+          saveFields();
+        }
+      });
+    }
+  }
+
+  /** Initialisiert Flatpickr-Picker, falls die Bibliothek geladen ist (sonst No-Op). */
+  function pvlInitLeadDatePickers() {
+    if (_pvlDatePickersInit) return;
+    _pvlDatePickersInit = true;
+    if (typeof window.flatpickr !== 'function') return;
+    try {
+      window.flatpickr('.pvl-fp-nachfass', { dateFormat: 'Y-m-d', allowInput: true });
+      window.flatpickr('.pvl-fp-termin', {
+        enableTime: true, dateFormat: 'Y-m-d H:i', time_24hr: true, minuteIncrement: 15, allowInput: true,
+      });
+    } catch (e) {
+      console.warn('[NOORTEC] Date-Picker-Init:', e && e.message);
+    }
+  }
+
+  /** Stellt sicher, dass die Picker nach Detail-Öffnung vorhanden sind (idempotent). */
+  function pvlEnsureLeadDatePickersAndSync() {
+    if (typeof window.flatpickr !== 'function') return;
+    try {
+      const nf = document.querySelector('.pvl-fp-nachfass');
+      if (nf && !nf._flatpickr) window.flatpickr(nf, { dateFormat: 'Y-m-d', allowInput: true });
+      const tm = document.querySelector('.pvl-fp-termin');
+      if (tm && !tm._flatpickr) window.flatpickr(tm, {
+        enableTime: true, dateFormat: 'Y-m-d H:i', time_24hr: true, minuteIncrement: 15, allowInput: true,
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Aktiviert/deaktiviert die Picker-Interaktion je nach ReadOnly-Status. */
+  function pvlSetLeadDatePickerInteraction(readOnly) {
+    try {
+      document.querySelectorAll('.pvl-fp-nachfass, .pvl-fp-termin').forEach((inp) => {
+        if (inp._flatpickr) {
+          try { readOnly ? inp._flatpickr.disable() : inp._flatpickr.enable(); } catch (_) { /* ignore */ }
+        }
+        inp.readOnly = !!readOnly;
+      });
+    } catch (e) { /* ignore */ }
+  }
+
   function initPvlLayoutEnhancements() {
     pvlTryRestoreStatsBarFromLs();
     pvlSyncSidebarFixedLayout();
