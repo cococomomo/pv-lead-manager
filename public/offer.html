@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Angebot erstellen · NOORTEC</title>
+<style>
+  :root {
+    --accent: #e7a13a;
+    --accent-dark: #c8861f;
+    --dark: #1e232e;
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --border: #e2e4e8;
+    --text: #1d1d1f;
+    --muted: #71757c;
+    --good: #1f9d55;
+    --danger: #c0392b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  header {
+    background: var(--dark); color: #fff; padding: 0.6rem 1rem;
+    display: flex; align-items: center; gap: 0.8rem; position: sticky; top: 0; z-index: 10;
+  }
+  header img { height: 26px; }
+  header h1 { font-size: 1rem; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+  header .spacer { flex: 1; }
+  header a.back { color: #fff; text-decoration: none; font-size: 0.82rem; opacity: 0.9; border: 1px solid rgba(255,255,255,0.35); padding: 0.3rem 0.6rem; border-radius: 6px; }
+  header a.back:hover { background: rgba(255,255,255,0.12); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; padding: 1rem; max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.7rem; display: flex; align-items: center; gap: 0.4rem; }
+  .panel h2 .num { background: var(--accent); color: #fff; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; }
+
+  label { display: block; font-size: 0.74rem; color: var(--muted); margin: 0.55rem 0 0.2rem; font-weight: 600; }
+  input, select, textarea {
+    width: 100%; padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: 7px;
+    font-size: 0.86rem; font-family: inherit; background: #fff; color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(231,161,58,0.18); }
+  textarea { resize: vertical; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.7rem; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem 0.7rem; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    border: none; border-radius: 8px; padding: 0.55rem 0.9rem; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; background: var(--accent); color: #fff; transition: background 0.15s;
+  }
+  .btn:hover { background: var(--accent-dark); }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .btn.secondary { background: #eef0f3; color: var(--text); }
+  .btn.secondary:hover { background: #e2e5ea; }
+  .btn.dark { background: var(--dark); }
+  .btn.dark:hover { background: #2b3242; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+
+  .optlist { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
+  .optrow { display: grid; grid-template-columns: 96px 1fr 104px 20px; gap: 0.4rem; align-items: center; }
+  .optrow .opt-mode { padding: 0.32rem 0.3rem; font-size: 0.76rem; }
+  .optrow .opt-name { font-size: 0.8rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .optrow input.opt-name { padding: 0.34rem 0.4rem; white-space: normal; }
+  .optrow .opt-price-wrap { display: flex; align-items: center; gap: 0.2rem; }
+  .optrow .opt-price { padding: 0.32rem 0.35rem; font-size: 0.8rem; text-align: right; }
+  .optrow .opt-price-wrap .eur { color: var(--muted); font-size: 0.78rem; }
+  .optrow .opt-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; }
+  .optrow .opt-mode[data-mode="off"] { color: var(--muted); }
+  .repeater { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.35rem; }
+  .dachrow { display: grid; grid-template-columns: 1fr 92px 20px; gap: 0.4rem; align-items: center; }
+  .serow { display: grid; grid-template-columns: 1fr 74px 88px 20px; gap: 0.4rem; align-items: center; }
+  .dachrow select, .dachrow input, .serow input { padding: 0.32rem 0.35rem; font-size: 0.8rem; }
+  .serow .se-kwh, .serow .se-price { text-align: right; }
+  .serow .price-wrap { display: flex; align-items: center; gap: 0.18rem; }
+  .serow .price-wrap .eur { color: var(--muted); font-size: 0.78rem; }
+  .rrow-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; }
+  .inline { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; }
+  .inline input { width: auto; }
+
+  .tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+  .tab { padding: 0.35rem 0.7rem; border: 1px solid var(--border); border-radius: 999px; background: #fff; font-size: 0.78rem; cursor: pointer; }
+  .tab.active { background: var(--dark); color: #fff; border-color: var(--dark); }
+  .tab .x { margin-left: 0.35rem; opacity: 0.7; }
+
+  .summary { display: grid; grid-template-columns: 1fr auto; gap: 0.15rem 0.5rem; font-size: 0.85rem; }
+  .summary .lbl { color: var(--muted); }
+  .summary .val { text-align: right; font-variant-numeric: tabular-nums; }
+  .summary .brutto { font-weight: 700; font-size: 1.05rem; border-top: 1px solid var(--border); padding-top: 0.35rem; margin-top: 0.2rem; }
+  .summary .brutto.val { color: var(--accent-dark); }
+
+  iframe.preview { width: 100%; height: 760px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .hint { font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem; }
+  .toast { position: fixed; bottom: 1rem; right: 1rem; background: var(--dark); color: #fff; padding: 0.6rem 0.9rem; border-radius: 8px; font-size: 0.82rem; opacity: 0; transform: translateY(8px); transition: all 0.2s; z-index: 50; max-width: 360px; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--danger); }
+  .toast.ok { background: var(--good); }
+  .mic { background: #eef0f3; color: var(--text); }
+  .mic.rec { background: var(--danger); color: #fff; }
+  .spin { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <img src="/offer-assets/noortec-logo.png" alt="NOORTEC" onerror="this.style.display='none'" />
+  <h1>Angebot erstellen</h1>
+  <div class="spacer"></div>
+  <a class="back" href="/">&larr; Zurück zum Dashboard</a>
+</header>
+
+<div class="layout">
+  <!-- LINKS: Eingabe -->
+  <div>
+    <div class="panel">
+      <h2><span class="num">1</span> KI-Sprachbefehl</h2>
+      <textarea id="command" rows="5" placeholder="z. B.: Angebot für Albert Jakaj, Baumschulgasse 11, 3443 Elsbach, jakajalbert@hotmail.com, +43 676 9055471. Möchte eine 10 kWp Anlage mit 9 kWh Speicher, Sigenergy, Ziegeldach, dazu eine Wallbox. Telefonisch besprochen."></textarea>
+      <div class="btn-row">
+        <button class="btn" id="btn-parse">Mit KI analysieren</button>
+        <button class="btn mic" id="btn-mic" title="Diktieren (Spracheingabe)">🎤 Diktieren</button>
+        <button class="btn secondary" id="btn-clear">Felder leeren</button>
+      </div>
+      <div class="hint">Die KI trennt automatisch Kundendaten von den Anlagen-Anforderungen. Alle Felder bleiben editierbar.</div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">2</span> Kundendaten</h2>
+      <div class="grid2">
+        <div style="grid-column: 1 / -1"><label>Name</label><input id="c-name" /></div>
+        <div style="grid-column: 1 / -1"><label>Straße + Hausnummer</label><input id="c-street" /></div>
+        <div><label>PLZ</label><input id="c-zip" /></div>
+        <div><label>Ort</label><input id="c-city" /></div>
+        <div><label>E-Mail</label><input id="c-email" type="email" /></div>
+        <div><label>Telefon</label><input id="c-phone" /></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">3</span> Konfiguration &amp; Varianten</h2>
+      <div class="tabs" id="variant-tabs"></div>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn secondary" id="btn-add-variant">+ Variante hinzufügen</button>
+      </div>
+      <div class="grid3" style="margin-top:0.6rem">
+        <div><label>Marke</label><select id="f-brand"></select></div>
+        <div><label>Leistung (kWp)</label><select id="f-kwp"></select></div>
+        <div><label>Speicher (kWh)</label><select id="f-speicher"></select></div>
+        <div><label>Module (Anzahl)</label><input id="f-modules" type="number" min="0" placeholder="auto aus Paket" /></div>
+        <div><label>Modultyp</label><select id="f-module"></select></div>
+        <div><label>Brutto-Override (€)</label><input id="f-brutto" type="number" placeholder="auto" title="Manueller Gesamtpreis brutto – überschreibt die Kalkulation" /></div>
+        <div style="grid-column: 1 / -1"><label>Wechselrichter (Override)</label><input id="f-inverter" placeholder="automatisch aus kWp" /></div>
+      </div>
+
+      <label>Dachflächen <span style="font-weight:400;color:var(--muted)">(mehrere für gemischte Dächer – Aufschlag anteilig nach Modulen)</span></label>
+      <div class="repeater" id="dach-list"></div>
+      <div class="btn-row" style="margin-top:0.4rem">
+        <button class="btn secondary" id="btn-add-dach" type="button">+ Dachfläche</button>
+      </div>
+
+      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(zusätzliche Blöcke über die Standardgröße)</span></label>
+      <div class="repeater" id="speicher-list"></div>
+      <div class="btn-row" style="margin-top:0.4rem; align-items:center">
+        <select id="se-size" style="max-width:300px; flex:1"></select>
+        <button class="btn secondary" id="btn-add-speicher" type="button">+ Speicherblock</button>
+      </div>
+      <label>Optionen &amp; Zusatzleistungen</label>
+      <div class="optlist" id="opts"></div>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn secondary" id="btn-add-option" type="button">+ Manuelle Position</button>
+      </div>
+      <div class="hint">Pro Position wählst du <b>Optional</b> oder <b>Fix</b>. Zusätzliche Module über die Paketgröße: +200 €/Modul inkl. Unterkonstruktion. Sigenergy-Speicher stapelbar (9+6=15, 9+9=18, 9+6+6=21 kWh). Brutto-Override setzt den Gesamtpreis manuell.</div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">4</span> Angebot &amp; E-Mail</h2>
+      <div class="grid2">
+        <div><label>Angebotsnummer</label><input id="f-nummer" /></div>
+        <div><label>Datum</label><input id="f-datum" /></div>
+      </div>
+      <label>Vertrieb (erscheint im Angebot &amp; als Absender) – automatisch aus deinem Login</label>
+      <div class="grid3">
+        <div><input id="v-name" placeholder="Name" /></div>
+        <div><input id="v-email" placeholder="E-Mail" /></div>
+        <div><input id="v-phone" placeholder="Telefon" /></div>
+      </div>
+      <label>Erstkontakt</label>
+      <div class="inline" style="gap:1.2rem">
+        <span class="inline"><input type="radio" name="contact" value="telefonisch" id="ct-tel" /> <label for="ct-tel" style="margin:0;color:var(--text);font-weight:600">Telefonisch</label></span>
+        <span class="inline"><input type="radio" name="contact" value="schriftlich" id="ct-schrift" checked /> <label for="ct-schrift" style="margin:0;color:var(--text);font-weight:600">Schriftlich</label></span>
+      </div>
+      <label>Zusatztext (optional, erscheint in der E-Mail)</label>
+      <textarea id="f-extra" rows="2" placeholder="Persönliche Notiz an den Kunden …"></textarea>
+      <div class="inline" style="margin-top:0.5rem">
+        <input type="checkbox" id="f-useai" />
+        <label for="f-useai" style="margin:0;color:var(--text);font-weight:600">E-Mail-Text per KI formulieren</label>
+      </div>
+      <div class="inline" style="margin-top:0.4rem">
+        <input type="checkbox" id="f-vollmacht" checked />
+        <label for="f-vollmacht" style="margin:0;color:var(--text);font-weight:600">Vollmacht an PDF anhängen</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECHTS: Vorschau -->
+  <div>
+    <div class="panel">
+      <h2>Überblick</h2>
+      <div class="summary" id="summary">
+        <div class="lbl">Konfiguration</div><div class="val" id="s-config">—</div>
+        <div class="lbl">Gesamt (Netto)</div><div class="val" id="s-netto">—</div>
+        <div class="lbl" id="s-mwst-lbl">MwSt. (20,0 %)</div><div class="val" id="s-mwst">—</div>
+        <div class="lbl brutto">Gesamt (Brutto)</div><div class="val brutto" id="s-brutto">—</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="btn-preview">PDF-Vorschau aktualisieren</button>
+        <button class="btn dark" id="btn-download">PDF herunterladen</button>
+        <button class="btn secondary" id="btn-emailtext">E-Mail-Text erzeugen</button>
+        <button class="btn dark" id="btn-eml">Outlook-Entwurf (.eml)</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>E-Mail</h2>
+      <label>Betreff</label>
+      <input id="m-subject" />
+      <label>Nachricht</label>
+      <textarea id="m-body" rows="8"></textarea>
+      <div class="hint">Der „Outlook-Entwurf (.eml)“ öffnet beim Doppelklick eine neue Nachricht mit Betreff, Text und angehängtem PDF.</div>
+    </div>
+
+    <div class="panel">
+      <h2>PDF-Vorschau</h2>
+      <iframe class="preview" id="pdf-frame" title="Angebotsvorschau"></iframe>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let CATALOG = null;
+let variants = [];      // Array von Konfig-Objekten
+let activeVariant = 0;
+
+function toast(msg, type) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(() => { t.className = 'toast ' + (type || ''); }, 3200);
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts || {}));
+  if (!res.ok) {
+    let msg = 'HTTP ' + res.status;
+    try { const j = await res.json(); msg = j.error || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  return res;
+}
+
+// ── Katalog & Selects ──────────────────────────────────────────────────────
+async function loadCatalog() {
+  const res = await api('/api/offer/catalog');
+  CATALOG = await res.json();
+  const brand = $('f-brand');
+  brand.innerHTML = CATALOG.brands.map((b) => `<option value="${b.id}">${b.label}</option>`).join('');
+  $('f-module').innerHTML = CATALOG.moduleTypes.map((m) => `<option value="${m.id}">${m.label}</option>`).join('');
+  renderOptionRows();
+  applyDachSegments(null);
+  refreshStorageExtSelect();
+  refreshKwpSelect();
+}
+
+// ── Dachflächen (gemischte Dächer) ──────────────────────────────────────────
+function createDachRow(type, modules) {
+  const row = document.createElement('div');
+  row.className = 'dachrow';
+  const sel = document.createElement('select');
+  sel.className = 'dach-type';
+  (CATALOG.dachLabels || []).forEach((d) => { const o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o); });
+  sel.value = type || 'Ziegel';
+  sel.addEventListener('change', compute);
+  const mod = document.createElement('input');
+  mod.className = 'dach-mod'; mod.type = 'number'; mod.min = '0'; mod.placeholder = 'Module';
+  mod.value = (modules === 0 || modules) ? modules : '';
+  mod.addEventListener('input', compute);
+  const del = document.createElement('span');
+  del.className = 'rrow-del'; del.textContent = '✕'; del.title = 'Dachfläche entfernen';
+  del.addEventListener('click', () => {
+    if (document.querySelectorAll('#dach-list .dachrow').length > 1) { row.remove(); compute(); }
+  });
+  row.append(sel, mod, del);
+  return row;
+}
+
+function readDachSegments() {
+  const segs = [];
+  document.querySelectorAll('#dach-list .dachrow').forEach((r) => {
+    segs.push({ dach: r.querySelector('.dach-type').value, modules: Number(r.querySelector('.dach-mod').value) || 0 });
+  });
+  return segs.length ? segs : [{ dach: 'Ziegel', modules: 0 }];
+}
+
+function applyDachSegments(segments) {
+  const box = $('dach-list');
+  box.innerHTML = '';
+  const list = (segments && segments.length) ? segments : [{ dach: 'Ziegel', modules: '' }];
+  list.forEach((s) => box.appendChild(createDachRow(mapDachLabel(s.dach), s.modules)));
+}
+
+// ── Speicher erweitern (Zusatzblöcke) ───────────────────────────────────────
+function refreshStorageExtSelect() {
+  const brand = $('f-brand').value;
+  const exts = (CATALOG.storageExtensions || {})[brand] || [];
+  $('se-size').innerHTML = exts.map((e, i) => `<option value="${i}">${e.label} – € ${e.price}</option>`).join('');
+}
+
+function createSpeicherRow({ label = '', kwh = 0, price = 0 }) {
+  const row = document.createElement('div');
+  row.className = 'serow';
+  const lab = document.createElement('input');
+  lab.className = 'se-label'; lab.value = label; lab.placeholder = 'Bezeichnung';
+  lab.addEventListener('input', compute);
+  const k = document.createElement('input');
+  k.className = 'se-kwh'; k.type = 'number'; k.step = '0.1'; k.min = '0'; k.title = 'kWh'; k.value = kwh;
+  k.addEventListener('input', compute);
+  const pw = document.createElement('div'); pw.className = 'price-wrap';
+  const p = document.createElement('input');
+  p.className = 'se-price'; p.type = 'number'; p.step = '10'; p.min = '0'; p.title = 'Preis (€)'; p.value = price;
+  p.addEventListener('input', compute);
+  const eur = document.createElement('span'); eur.className = 'eur'; eur.textContent = '€';
+  pw.append(p, eur);
+  const del = document.createElement('span');
+  del.className = 'rrow-del'; del.textContent = '✕'; del.title = 'Speicherblock entfernen';
+  del.addEventListener('click', () => { row.remove(); compute(); });
+  row.append(lab, k, pw, del);
+  return row;
+}
+
+function readSpeicherZusatz() {
+  const list = [];
+  document.querySelectorAll('#speicher-list .serow').forEach((r) => {
+    list.push({
+      label: r.querySelector('.se-label').value.trim(),
+      kwh: Number(r.querySelector('.se-kwh').value) || 0,
+      price: Number(r.querySelector('.se-price').value) || 0,
+    });
+  });
+  return list;
+}
+
+function applySpeicherZusatz(blocks) {
+  const box = $('speicher-list');
+  box.innerHTML = '';
+  (blocks || []).forEach((b) => box.appendChild(createSpeicherRow(b)));
+}
+
+// ── Optionen-Zeilen (Optional/Fix + editierbarer Preis + manuelle Posten) ───
+function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false }) {
+  const row = document.createElement('div');
+  row.className = 'optrow' + (manual ? ' manual' : '');
+  if (key) row.dataset.key = key;
+
+  const sel = document.createElement('select');
+  sel.className = 'opt-mode';
+  [['off', '—'], ['optional', 'Optional'], ['fix', 'Fix']].forEach(([v, t]) => {
+    const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+  });
+  sel.value = mode;
+  sel.setAttribute('data-mode', mode);
+  sel.addEventListener('change', () => { sel.setAttribute('data-mode', sel.value); compute(); });
+
+  let nameEl;
+  if (manual) {
+    nameEl = document.createElement('input');
+    nameEl.className = 'opt-name'; nameEl.placeholder = 'Bezeichnung'; nameEl.value = label;
+  } else {
+    nameEl = document.createElement('span');
+    nameEl.className = 'opt-name'; nameEl.textContent = label; nameEl.title = label;
+  }
+
+  const pw = document.createElement('div'); pw.className = 'opt-price-wrap';
+  const priceEl = document.createElement('input');
+  priceEl.className = 'opt-price'; priceEl.type = 'number'; priceEl.min = '0'; priceEl.step = '10';
+  priceEl.value = price;
+  const eur = document.createElement('span'); eur.className = 'eur'; eur.textContent = '€';
+  pw.appendChild(priceEl); pw.appendChild(eur);
+
+  const del = document.createElement('span');
+  if (manual) {
+    del.className = 'opt-del'; del.title = 'Position entfernen'; del.textContent = '✕';
+    del.addEventListener('click', () => { row.remove(); compute(); });
+  }
+
+  row.appendChild(sel); row.appendChild(nameEl); row.appendChild(pw); row.appendChild(del);
+  return row;
+}
+
+function renderOptionRows() {
+  const box = $('opts');
+  box.innerHTML = '';
+  (CATALOG.options || []).filter((o) => !o.alwaysIncluded).forEach((o) => {
+    box.appendChild(createOptionRow({ key: o.key, label: o.label, price: o.price, mode: 'off' }));
+  });
+}
+
+/** Liest alle aktiven (Optional/Fix) Optionen + manuelle Posten als Array. */
+function readOptionRows() {
+  const list = [];
+  document.querySelectorAll('#opts .optrow').forEach((row) => {
+    const mode = row.querySelector('.opt-mode').value;
+    if (mode === 'off') return;
+    const key = row.dataset.key || null;
+    const nameEl = row.querySelector('.opt-name');
+    const label = (nameEl.value !== undefined ? nameEl.value : nameEl.textContent).trim();
+    const price = Number(row.querySelector('.opt-price').value) || 0;
+    if (!label && !price) return;
+    list.push({ key, label, price, mode });
+  });
+  return list;
+}
+
+/** Setzt die Optionen-Zeilen aus einem optionen-Array (für Varianten/KI). */
+function applyOptionsToRows(optionen) {
+  document.querySelectorAll('#opts .optrow').forEach((row) => {
+    if (row.classList.contains('manual')) { row.remove(); return; }
+    const sel = row.querySelector('.opt-mode');
+    sel.value = 'off'; sel.setAttribute('data-mode', 'off');
+    const cat = (CATALOG.options || []).find((o) => o.key === row.dataset.key);
+    if (cat) row.querySelector('.opt-price').value = cat.price;
+  });
+  (optionen || []).forEach((o) => {
+    if (o.key) {
+      const row = document.querySelector(`#opts .optrow[data-key="${o.key}"]`);
+      if (row) {
+        const sel = row.querySelector('.opt-mode');
+        sel.value = o.mode || 'optional'; sel.setAttribute('data-mode', sel.value);
+        if (o.price != null) row.querySelector('.opt-price').value = o.price;
+        return;
+      }
+    }
+    $('opts').appendChild(createOptionRow({ label: o.label, price: o.price, mode: o.mode || 'optional', manual: true }));
+  });
+}
+
+/** Speichererweiterung-Default je Marke (nur wenn Zeile nicht aktiv). */
+function updateBrandDependentOptionDefaults() {
+  const brand = $('f-brand').value;
+  const row = document.querySelector('#opts .optrow[data-key="speichererweiterung"]');
+  if (row && row.querySelector('.opt-mode').value === 'off') {
+    row.querySelector('.opt-price').value = brand === 'fronius' ? 1320 : 3300;
+  }
+}
+
+function refreshKwpSelect() {
+  const brand = $('f-brand').value;
+  const tiers = Object.keys(CATALOG.pricelist[brand] || {}).map(Number).sort((a, b) => a - b);
+  const cur = Number($('f-kwp').value);
+  $('f-kwp').innerHTML = tiers.map((t) => `<option value="${t}">${String(t).replace('.', ',')} kWp (${CATALOG.modulesPerKwp[t] || '?'} Module)</option>`).join('');
+  if (tiers.includes(cur)) $('f-kwp').value = String(cur);
+  refreshSpeicherSelect();
+}
+
+function refreshSpeicherSelect() {
+  const brand = $('f-brand').value;
+  const kwp = Number($('f-kwp').value);
+  const st = (CATALOG.pricelist[brand] || {})[kwp] || {};
+  const tiers = Object.keys(st).map(Number).sort((a, b) => a - b);
+  const cur = Number($('f-speicher').value);
+  $('f-speicher').innerHTML = tiers.map((t) => `<option value="${t}">${String(t).replace('.', ',')} kWh</option>`).join('');
+  if (tiers.includes(cur)) $('f-speicher').value = String(cur);
+}
+
+/** Wählt im Select die Option mit dem numerisch nächstgelegenen Wert. */
+function snapSelectToValue(selectEl, target) {
+  const t = Number(target);
+  if (!isFinite(t)) return;
+  const opts = Array.from(selectEl.options).map((o) => Number(o.value)).filter((v) => !isNaN(v));
+  if (!opts.length) return;
+  let best = opts[0]; let bd = Infinity;
+  for (const v of opts) { const d = Math.abs(v - t); if (d < bd) { bd = d; best = v; } }
+  selectEl.value = String(best);
+}
+
+/** Modulanzahl → nächstgelegene kWp-Stufe der Marke. */
+function kwpFromModules(brand, modules) {
+  const m = Number(modules);
+  if (!isFinite(m)) return null;
+  const tiers = Object.keys(CATALOG.pricelist[brand] || {}).map(Number);
+  let best = null; let bd = Infinity;
+  for (const t of tiers) {
+    const mc = CATALOG.modulesPerKwp[t];
+    if (mc == null) continue;
+    const d = Math.abs(mc - m);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+
+/** KI-Dachtext auf eine gültige Listen-Option abbilden (z. B. "Eternit" → "Schindel-Eternit"). */
+function mapDachLabel(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (!s) return 'Ziegel';
+  if (s.includes('welleternit')) return 'Welleternit';
+  if (s.includes('eternit')) return 'Schindel-Eternit';
+  if (s.includes('rhombus')) return 'Rhombus';
+  if (s.includes('biber')) return 'Biberschwanz';
+  if (s.includes('wiener') || s.includes('tasche')) return 'Wiener Tasche';
+  if (s.includes('prefa')) return 'Prefa';
+  if (s.includes('flach')) return 'Flachdach';
+  if (s.includes('trapez')) return 'Trapezblech';
+  if (s.includes('ziegel')) return 'Ziegel';
+  const exact = (CATALOG.dachLabels || []).find((l) => l.toLowerCase() === s);
+  return exact || 'Ziegel';
+}
+
+// ── Formular <-> Variant ────────────────────────────────────────────────────
+function readForm() {
+  const modulesRaw = $('f-modules').value.trim();
+  return {
+    brand: $('f-brand').value,
+    kwp: Number($('f-kwp').value),
+    speicher: Number($('f-speicher').value),
+    speicherGesamt: Number($('f-speicher').value) + readSpeicherZusatz().reduce((s, b) => s + (Number(b.kwh) || 0), 0),
+    speicherZusatz: readSpeicherZusatz(),
+    dachSegmente: readDachSegments(),
+    moduleType: $('f-module').value,
+    moduleCount: modulesRaw === '' ? null : Number(modulesRaw),
+    inverterModel: $('f-inverter').value.trim(),
+    bruttoOverride: $('f-brutto').value.trim() === '' ? null : Number($('f-brutto').value),
+    optionen: readOptionRows(),
+  };
+}
+
+function writeForm(cfg) {
+  if (!cfg) return;
+  $('f-brand').value = cfg.brand || 'sigenergy';
+  refreshStorageExtSelect();
+  refreshKwpSelect();
+  // kWp aus expliziter Angabe oder aus Modulanzahl ableiten, dann auf nächste Stufe snappen
+  let kwpTarget = cfg.kwp;
+  if (!kwpTarget && cfg.moduleCount) kwpTarget = kwpFromModules($('f-brand').value, cfg.moduleCount);
+  if (kwpTarget) snapSelectToValue($('f-kwp'), kwpTarget);
+  refreshSpeicherSelect();
+  if (cfg.moduleCount) $('f-modules').value = cfg.moduleCount;
+  else $('f-modules').value = '';
+  const segs = (cfg.dachSegmente && cfg.dachSegmente.length)
+    ? cfg.dachSegmente
+    : (cfg.dach ? [{ dach: cfg.dach, modules: cfg.moduleCount || '' }] : null);
+  applyDachSegments(segs);
+  applySpeicherZusatz(cfg.speicherZusatz || []);
+  $('f-module').value = cfg.moduleType || 'das';
+  $('f-inverter').value = cfg.inverterModel || '';
+  $('f-brutto').value = cfg.bruttoOverride == null ? '' : cfg.bruttoOverride;
+  applyOptionsToRows(cfg.optionen || []);
+}
+
+/** Gewünschte Gesamt-Speichergröße → Basis-Stufe + stapelbare Blöcke (Sigenergy 9/6). */
+async function applySpeicherTarget(totalKwh, skipIfManualBlocks) {
+  const t = Number(totalKwh);
+  if (!isFinite(t) || t <= 0) return;
+  if (skipIfManualBlocks) {
+    snapSelectToValue($('f-speicher'), t);
+    return;
+  }
+  try {
+    const res = await api('/api/offer/plan-storage', {
+      method: 'POST',
+      body: JSON.stringify({
+        brand: $('f-brand').value,
+        kwp: Number($('f-kwp').value),
+        speicherGesamt: t,
+      }),
+    });
+    const plan = await res.json();
+    if (plan.baseKwh != null) snapSelectToValue($('f-speicher'), plan.baseKwh);
+    applySpeicherZusatz(plan.blocks || []);
+  } catch (_) {
+    snapSelectToValue($('f-speicher'), t);
+  }
+}
+
+function saveActiveVariant() { variants[activeVariant] = readForm(); }
+
+function renderTabs() {
+  $('variant-tabs').innerHTML = variants.map((v, i) =>
+    `<div class="tab ${i === activeVariant ? 'active' : ''}" data-i="${i}">Variante ${i + 1}${variants.length > 1 ? `<span class="x" data-del="${i}">✕</span>` : ''}</div>`
+  ).join('');
+  document.querySelectorAll('#variant-tabs .tab').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if (e.target.dataset.del != null) { e.stopPropagation(); deleteVariant(Number(e.target.dataset.del)); return; }
+      switchVariant(Number(el.dataset.i));
+    });
+  });
+}
+
+function switchVariant(i) {
+  saveActiveVariant();
+  activeVariant = i;
+  writeForm(variants[i]);
+  renderTabs();
+  compute();
+}
+
+function addVariant() {
+  saveActiveVariant();
+  variants.push(Object.assign({}, readForm()));
+  activeVariant = variants.length - 1;
+  renderTabs();
+  compute();
+  toast('Variante hinzugefügt – passe jetzt z. B. Marke oder Modultyp an.', 'ok');
+}
+
+function deleteVariant(i) {
+  if (variants.length <= 1) return;
+  variants.splice(i, 1);
+  activeVariant = Math.max(0, activeVariant - (i <= activeVariant ? 1 : 0));
+  writeForm(variants[activeVariant]);
+  renderTabs();
+  compute();
+}
+
+// ── Payload ────────────────────────────────────────────────────────────────
+function customerPayload() {
+  return {
+    name: $('c-name').value.trim(), street: $('c-street').value.trim(),
+    zip: $('c-zip').value.trim(), city: $('c-city').value.trim(),
+    email: $('c-email').value.trim(), phone: $('c-phone').value.trim(),
+  };
+}
+
+function basePayload() {
+  saveActiveVariant();
+  return {
+    config: variants[activeVariant],
+    customer: customerPayload(),
+    vertrieb: {
+      name: $('v-name').value.trim(),
+      email: $('v-email').value.trim(),
+      phone: $('v-phone').value.trim(),
+    },
+    angebotsnummer: $('f-nummer').value.trim(),
+    datum: $('f-datum').value.trim(),
+    contactType: document.querySelector('input[name="contact"]:checked').value,
+    extraText: $('f-extra').value.trim(),
+    useAI: $('f-useai').checked,
+    appendVollmacht: $('f-vollmacht').checked,
+  };
+}
+
+// ── Aktionen ────────────────────────────────────────────────────────────────
+let computeTimer = null;
+function compute() {
+  clearTimeout(computeTimer);
+  computeTimer = setTimeout(async () => {
+    try {
+      const res = await api('/api/offer/compute', { method: 'POST', body: JSON.stringify(basePayload()) });
+      const j = await res.json();
+      const o = j.offer;
+      $('s-config').textContent = `${o.config.brandLabel} · ${o.config.kwpLabel} (${o.config.moduleCount} Mod.) · ${o.config.speicherLabel} · ${o.config.dach}`;
+      $('s-netto').textContent = o.preis.nettoFmt;
+      $('s-mwst').textContent = o.preis.mwstFmt;
+      $('s-mwst-lbl').textContent = `MwSt. (${(o.preis.mwstRate * 100).toFixed(1).replace('.', ',')} %)`;
+      $('s-brutto').textContent = o.preis.bruttoFmt;
+      if (j.angebotsnummer && !$('f-nummer').value.trim()) $('f-nummer').value = j.angebotsnummer;
+    } catch (e) { /* still tippen */ }
+  }, 300);
+}
+
+async function refreshPreview() {
+  const btn = $('btn-preview');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Erzeuge…';
+  try {
+    const res = await api('/api/offer/pdf', { method: 'POST', body: JSON.stringify(basePayload()) });
+    const blob = await res.blob();
+    $('pdf-frame').src = URL.createObjectURL(blob);
+  } catch (e) { toast('PDF-Fehler: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'PDF-Vorschau aktualisieren'; }
+}
+
+async function downloadBlob(path, payload, filenameFallback) {
+  const res = await api(path, { method: 'POST', body: JSON.stringify(payload) });
+  const cd = res.headers.get('Content-Disposition') || '';
+  const m = cd.match(/filename="([^"]+)"/);
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = m ? m[1] : filenameFallback;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function parseCommand() {
+  const cmd = $('command').value.trim();
+  if (!cmd) { toast('Bitte zuerst einen Text/Sprachbefehl eingeben.', 'error'); return; }
+  const btn = $('btn-parse');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Analysiere…';
+  try {
+    const res = await api('/api/offer/parse', { method: 'POST', body: JSON.stringify({ command: cmd }) });
+    const j = await res.json();
+    const c = j.customer || {};
+    if (c.name) $('c-name').value = c.name;
+    if (c.street) $('c-street').value = c.street;
+    if (c.zip) $('c-zip').value = c.zip;
+    if (c.city) $('c-city').value = c.city;
+    if (c.email) $('c-email').value = c.email;
+    if (c.phone) $('c-phone').value = c.phone;
+    const r = j.requirements || {};
+    const aiOpt = r.optionen || {};
+    const optionen = Object.keys(aiOpt).filter((k) => aiOpt[k]).map((k) => {
+      const cat = (CATALOG.options || []).find((o) => o.key === k);
+      return { key: k, label: cat ? cat.label : k, price: cat ? cat.price : 0, mode: 'optional' };
+    });
+    const cfg = {
+      brand: r.brand || 'sigenergy',
+      kwp: r.kwp || null,
+      moduleCount: r.module_count || null,
+      speicher: r.speicher || null,
+      speicherZusatz: [],
+      dachSegmente: [{ dach: r.dach || 'Ziegel', modules: r.module_count || '' }],
+      moduleType: r.moduleType || 'das',
+      inverterModel: '',
+      bruttoOverride: r.brutto_preis || null,
+      optionen,
+    };
+    writeForm(cfg);
+    if (cfg.speicher) await applySpeicherTarget(cfg.speicher);
+    saveActiveVariant();
+    if (j.contactType === 'telefonisch') $('ct-tel').checked = true;
+    else if (j.contactType === 'schriftlich') $('ct-schrift').checked = true;
+    compute();
+    toast('KI-Analyse übernommen. Bitte Werte prüfen.', 'ok');
+    // E-Mail-Text gleich miterzeugen, damit Betreff/Nachricht gefüllt sind
+    genEmailText().catch(() => {});
+  } catch (e) { toast('KI-Fehler: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Mit KI analysieren'; }
+}
+
+async function genEmailText() {
+  const btn = $('btn-emailtext');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
+  try {
+    const res = await api('/api/offer/email-text', { method: 'POST', body: JSON.stringify(basePayload()) });
+    const j = await res.json();
+    $('m-subject').value = j.subject || '';
+    $('m-body').value = j.body || '';
+    toast('E-Mail-Text erzeugt (' + (j.source === 'ai' ? 'KI' : 'Vorlage') + ').', 'ok');
+  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'E-Mail-Text erzeugen'; }
+}
+
+async function downloadEml() {
+  if (!$('c-email').value.trim()) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
+  const btn = $('btn-eml');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
+  try {
+    const payload = basePayload();
+    payload.subject = $('m-subject').value.trim();
+    payload.body = $('m-body').value.trim();
+    await downloadBlob('/api/offer/eml', payload, 'angebot.eml');
+    toast('Outlook-Entwurf (.eml) heruntergeladen. Doppelklick öffnet die Nachricht.', 'ok');
+  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Outlook-Entwurf (.eml)'; }
+}
+
+async function downloadPdf() {
+  const btn = $('btn-download');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
+  try {
+    const payload = basePayload(); payload.finalize = true;
+    await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
+    toast('PDF heruntergeladen.', 'ok');
+  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'PDF herunterladen'; }
+}
+
+// ── Spracheingabe (Diktieren) ───────────────────────────────────────────────
+let recog = null, recording = false;
+function setupMic() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { $('btn-mic').style.display = 'none'; return; }
+  recog = new SR();
+  recog.lang = 'de-DE'; recog.continuous = true; recog.interimResults = false;
+  recog.onresult = (e) => {
+    let txt = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    $('command').value = ($('command').value + ' ' + txt).trim();
+  };
+  recog.onend = () => { recording = false; $('btn-mic').classList.remove('rec'); $('btn-mic').textContent = '🎤 Diktieren'; };
+  recog.onerror = () => { toast('Spracheingabe nicht möglich.', 'error'); };
+  $('btn-mic').addEventListener('click', () => {
+    if (recording) { recog.stop(); return; }
+    try { recog.start(); recording = true; $('btn-mic').classList.add('rec'); $('btn-mic').textContent = '⏹ Stop'; }
+    catch (_) {}
+  });
+}
+
+// ── Prefill aus Lead (?email=) ──────────────────────────────────────────────
+async function prefillFromLead() {
+  const p = new URLSearchParams(location.search);
+  const email = p.get('email');
+  if (!email) return;
+  try {
+    const res = await api('/api/offer/lead?email=' + encodeURIComponent(email));
+    const j = await res.json();
+    const c = j.customer || {};
+    $('c-name').value = c.name || ''; $('c-street').value = c.street || '';
+    $('c-zip').value = c.zip || ''; $('c-city').value = c.city || '';
+    $('c-email').value = c.email || ''; $('c-phone').value = c.phone || '';
+    if (j.info) $('command').value = j.info;
+    toast('Kundendaten aus Lead übernommen.', 'ok');
+  } catch (e) { /* still ohne Prefill */ }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadCatalog();
+  variants = [readForm()];
+  renderTabs();
+  try { const r = await api('/api/offer/next-number'); $('f-nummer').value = (await r.json()).angebotsnummer; } catch (_) {}
+  try {
+    const rv = await api('/api/offer/vertrieb'); const vv = (await rv.json()).vertrieb || {};
+    $('v-name').value = vv.name || ''; $('v-email').value = vv.email || ''; $('v-phone').value = vv.phone || '';
+  } catch (_) {}
+  $('f-datum').value = new Date().toLocaleDateString('de-DE');
+  await prefillFromLead();
+
+  $('f-brand').addEventListener('change', () => { refreshKwpSelect(); refreshStorageExtSelect(); updateBrandDependentOptionDefaults(); compute(); });
+  $('f-kwp').addEventListener('change', () => { refreshSpeicherSelect(); compute(); });
+  ['f-speicher', 'f-module', 'f-inverter', 'f-brutto', 'f-modules'].forEach((id) => {
+    $(id).addEventListener('change', compute);
+    $(id).addEventListener('input', compute);
+  });
+  // Preisänderungen in Optionen-Zeilen live übernehmen
+  $('opts').addEventListener('input', (e) => { if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name')) compute(); });
+  $('btn-add-option').addEventListener('click', () => {
+    $('opts').appendChild(createOptionRow({ label: '', price: 0, mode: 'fix', manual: true }));
+  });
+  $('btn-add-dach').addEventListener('click', () => {
+    $('dach-list').appendChild(createDachRow('Flachdach', ''));
+    compute();
+  });
+  $('btn-add-speicher').addEventListener('click', () => {
+    const brand = $('f-brand').value;
+    const exts = (CATALOG.storageExtensions || {})[brand] || [];
+    const e = exts[Number($('se-size').value) || 0] || exts[0];
+    if (!e) { toast('Für diese Marke ist keine Speichererweiterung hinterlegt.', 'error'); return; }
+    $('speicher-list').appendChild(createSpeicherRow({ label: e.label, kwh: e.kwh, price: e.price }));
+    compute();
+  });
+
+  $('btn-parse').addEventListener('click', parseCommand);
+  $('btn-clear').addEventListener('click', () => {
+    ['c-name','c-street','c-zip','c-city','c-email','c-phone','command','f-extra'].forEach((id) => $(id).value = '');
+  });
+  $('btn-add-variant').addEventListener('click', addVariant);
+  $('btn-preview').addEventListener('click', refreshPreview);
+  $('btn-download').addEventListener('click', downloadPdf);
+  $('btn-emailtext').addEventListener('click', genEmailText);
+  $('btn-eml').addEventListener('click', downloadEml);
+  setupMic();
+  compute();
+}
+init();
+</script>
+</body>
+</html>
