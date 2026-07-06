@@ -2323,6 +2323,113 @@
   }
   const tempFocusLayer = L.layerGroup().addTo(map);
 
+  /** Zuletzt geöffnete Lead-Sprechblase (für Wiederherstellung nach renderMarkers). */
+  var pvlOpenMapPopupLeadKey = null;
+  map.on('popupopen', (e) => {
+    try {
+      const src = e.popup && e.popup._source;
+      if (src && src._pvlLeadKey) pvlOpenMapPopupLeadKey = src._pvlLeadKey;
+    } catch (_) { /* ignore */ }
+    try {
+      const c = e.popup && e.popup._container;
+      if (c) {
+        ['click', 'mousedown', 'dblclick'].forEach((type) => {
+          L.DomEvent.on(c, type, L.DomEvent.stopPropagation);
+        });
+      }
+    } catch (_) { /* ignore */ }
+  });
+  map.on('popupclose', () => { pvlOpenMapPopupLeadKey = null; });
+
+  /** Kartenansicht vor programmatischem Max-Zoomen auf den Pin. */
+  var previousViewState = null;
+
+  function captureMapBeforeLeadZoom() {
+    const c = map.getCenter();
+    const v = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+    previousViewState = v;
+  }
+
+  function getLeadFocusLatLng(lead) {
+    const m = markerMap[leadKey(lead)];
+    if (m) return m.getLatLng();
+    const c = coordsFromDb(lead);
+    if (c) return L.latLng(c[0], c[1]);
+    return null;
+  }
+
+  const PVL_LEAD_FOCUS_ZOOM = 15;
+
+  function focusMapOnLead(lead, onDone) {
+    const done = typeof onDone === 'function' ? onDone : () => {};
+    try {
+      const target = getLeadFocusLatLng(lead);
+      if (!target) { done(); return; }
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        try { done(); } catch (e) { console.warn('[NOORTEC] focusMapOnLead onDone', e && e.message); }
+      };
+      map.once('moveend', finish);
+      map.flyTo([target.lat, target.lng], PVL_LEAD_FOCUS_ZOOM, { duration: 0.55, animate: true });
+      setTimeout(finish, 700);
+    } catch (e) {
+      console.warn('[NOORTEC] focusMapOnLead', e && e.message);
+      try { done(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  function focusMapOnLeadPreserveZoom(lead, onDone) {
+    const done = typeof onDone === 'function' ? onDone : () => {};
+    try {
+      const target = getLeadFocusLatLng(lead);
+      if (!target) { done(); return; }
+      const z = map.getZoom();
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        try { done(); } catch (e) { console.warn('[NOORTEC] focusMapOnLeadPreserveZoom onDone', e && e.message); }
+      };
+      map.once('moveend', finish);
+      map.flyTo([target.lat, target.lng], z, { duration: 0.55, animate: true });
+      setTimeout(finish, 700);
+    } catch (e) {
+      console.warn('[NOORTEC] focusMapOnLeadPreserveZoom', e && e.message);
+      try { done(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  function highlightMarkerForLead(lead) {
+    const marker = markerMap[leadKey(lead)];
+    if (!marker) return;
+    try { marker.openTooltip(); } catch (_) { /* ignore */ }
+    const el = marker.getElement();
+    if (!el) return;
+    el.classList.remove('pvl-marker-pulse');
+    void el.offsetWidth;
+    el.classList.add('pvl-marker-pulse');
+    if (marker._pvlPulseTimer) clearTimeout(marker._pvlPulseTimer);
+    marker._pvlPulseTimer = setTimeout(() => {
+      try {
+        el.classList.remove('pvl-marker-pulse');
+        marker.closeTooltip();
+      } catch (_) { /* ignore */ }
+    }, 2600);
+  }
+
+  function zoomMapToLeadMax(lead) {
+    captureMapBeforeLeadZoom();
+    const marker = markerMap[leadKey(lead)];
+    const target = getLeadFocusLatLng(lead);
+    const rawZ = typeof map.getMaxZoom === 'function' ? map.getMaxZoom() : 19;
+    const zMax = Number.isFinite(rawZ) && rawZ > 0 && rawZ < 99 ? rawZ : 19;
+    if (!target) return;
+    if (marker) marker.closePopup();
+    map.flyTo([target.lat, target.lng], zMax, { duration: 1.0, animate: true });
+  }
+
   function isMapClickOnLeadUi(ev) {
     const t = ev && ev.originalEvent && ev.originalEvent.target;
     if (!t || !t.closest) return false;
@@ -2395,6 +2502,12 @@
     return days >= 0 && days < PVL_MAP_NEW_LEAD_MAX_DAYS;
   }
 
+  function leadAgeDaysFromCreation(lead) {
+    const ms = leadCreatedAtMs(lead);
+    if (!ms || Number.isNaN(ms)) return null;
+    return (Date.now() - ms) / 86400000;
+  }
+
   /**
    * „Frische“-Skala: neueste Leads am dunkelsten/intensivsten, mit zunehmendem Alter heller (invertiert zur reinen Altersstufe).
    * Nur Rot-Töne; kein Wechsel der Kartenbasis nach UI-Theme.
@@ -2427,7 +2540,7 @@
 
   function getMarkerColorForLead(lead) {
     if (isLeadCreatedWithinLastMonth(lead)) return PVL_MAP_NEW_LEAD_COLOR;
-    return getMarkerColor(lead);
+    return getPinVisualForLead(lead).color;
   }
 
   function cssEscAttr(val) {
@@ -4206,7 +4319,8 @@
     /* Nach bindPopup: Leaflet öffnet die Sprechblase zuerst, danach Detail-Seitenleiste (kein doppelter openPopup davor, sonst kollidiert es mit dem Popup-Toggle) */
     marker.on('click', (ev) => {
       if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
-      selectLead(encodeURIComponent(leadKey(lead)));
+      try { marker.closeTooltip(); } catch (_) { /* ignore */ }
+      selectLead(encodeURIComponent(leadKey(lead)), { fromMarker: true });
     });
     marker._pvlLeadKey = leadKey(lead);
     marker.addTo(markerLayer);
@@ -4284,6 +4398,7 @@
     if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     openSidebarDetail(lead);
     try {
+      const listDblMaxZoom = !!_opts.listDblMaxZoom;
       if (listDblMaxZoom) {
         try {
           zoomMapToLeadMax(lead);
