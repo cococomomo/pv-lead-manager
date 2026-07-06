@@ -74,11 +74,18 @@ function getDashboardStats() {
 
   const nonArchived = `(archived_at IS NULL OR trim(archived_at) = '')`;
 
+  const nachfassBisPrefix = datePrefixExpr('nachfass_bis');
+
   const toCallCount = db.prepare(`
     SELECT COUNT(*) AS c FROM leads
     WHERE ${nonArchived}
       AND lower(trim(coalesce(status, ''))) NOT IN (
         'termin vereinbart', 'lead verloren', 'termin', 'verloren'
+      )
+      AND NOT (
+        lower(trim(coalesce(status, ''))) = 'nachfassen'
+        AND length(trim(coalesce(nachfass_bis, ''))) >= 10
+        AND date(${nachfassBisPrefix}) > date('now')
       )
   `).get().c;
 

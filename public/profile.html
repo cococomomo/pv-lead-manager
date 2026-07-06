@@ -70,8 +70,8 @@
     async function load() {
       document.getElementById('err').textContent = '';
       const r = await fetch('/api/auth/me', cred);
-      const j = await r.json();
-      if (!j.user) {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.user) {
         location.replace('/login.html?next=' + encodeURIComponent('/profile'));
         return;
       }
@@ -95,6 +95,11 @@
       });
     }
 
+    async function extractApiError(res, fallback) {
+      const j = await res.json().catch(() => ({}));
+      return (j && j.error) ? String(j.error) : (fallback || res.statusText || 'Unbekannter Fehler');
+    }
+
     document.getElementById('btn-test-inline').onclick = async () => {
       document.getElementById('err').textContent = '';
       document.getElementById('ok').textContent = '';
@@ -105,9 +110,8 @@
           email_kontakt: document.getElementById('email_kontakt').value.trim(),
           smtp_pass: document.getElementById('smtp_pass').value,
         });
-        const j = await r.json().catch(() => ({}));
         if (!r.ok) {
-          document.getElementById('err').textContent = j.error || r.statusText;
+          document.getElementById('err').textContent = await extractApiError(r, 'SMTP-Test fehlgeschlagen.');
           return;
         }
         document.getElementById('ok').textContent = 'SMTP-Verbindung OK (Formularwerte).';
@@ -149,9 +153,8 @@
       btn.disabled = true;
       try {
         const r = await postJson('/api/auth/smtp-test', { useSaved: true });
-        const j = await r.json().catch(() => ({}));
         if (!r.ok) {
-          document.getElementById('err').textContent = j.error || r.statusText;
+          document.getElementById('err').textContent = await extractApiError(r, 'SMTP-Test fehlgeschlagen.');
           return;
         }
         document.getElementById('ok').textContent = 'SMTP-Verbindung OK (gespeicherte Zugangsdaten).';

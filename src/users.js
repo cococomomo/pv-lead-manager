@@ -64,6 +64,62 @@ async function verifyLogin(username, password) {
   };
 }
 
+/** Diagnose bei abgelehntem Login (kein Klartext-Passwort). */
+async function auditFailedLogin(username, password) {
+  const attempted = String(username || '').trim();
+  const u = attempted ? await findUser(attempted) : null;
+  let bcryptMatch = null;
+  if (u && u.passwordHash) {
+    try {
+      bcryptMatch = bcrypt.compareSync(String(password || ''), u.passwordHash);
+    } catch {
+      bcryptMatch = false;
+    }
+  }
+  return {
+    attemptedUser: attempted,
+    userFound: !!u,
+    storedUsername: u ? u.username : null,
+    hasPasswordHash: !!(u && u.passwordHash),
+    bcryptMatch,
+    usersJsonPath: USERS_PATH,
+  };
+}
+
+/**
+ * Notfall / Deployment: Setzt in .env z. B. ADMIN_ENSURE_USERNAME und ADMIN_ENSURE_PASSWORD (≥6 Zeichen).
+ * Legt den Benutzer an oder überschreibt Passwort + Rolle beim Serverstart (Klartext nur in .env, nie im Code).
+ */
+async function ensureCredentialsFromEnv() {
+  const name = String(process.env.ADMIN_ENSURE_USERNAME || '').trim();
+  const pass = String(process.env.ADMIN_ENSURE_PASSWORD || '');
+  if (!name || pass.length < 6) return null;
+  const role = normalizeUserRole(process.env.ADMIN_ENSURE_ROLE || 'admin');
+  const email = String(process.env.ADMIN_ENSURE_EMAIL || '').trim();
+  const users = await readUsers();
+  const idx = users.findIndex((x) => String(x.username).toLowerCase() === name.toLowerCase());
+  if (idx < 0) {
+    users.push({
+      username: name,
+      passwordHash: bcrypt.hashSync(pass, 12),
+      email,
+      role,
+      calendarPreference: normalizeCalendarPreference(process.env.ADMIN_ENSURE_CALENDAR || 'google'),
+    });
+    await writeUsers(users);
+    ensureSqliteUserStub(name);
+    console.log(`[NOORTEC] ADMIN_ENSURE: Benutzer "${name}" angelegt (Rolle ${role}).`);
+    return { created: true };
+  }
+  users[idx].passwordHash = bcrypt.hashSync(pass, 12);
+  users[idx].role = role;
+  if (email) users[idx].email = email;
+  await writeUsers(users);
+  ensureSqliteUserStub(users[idx].username);
+  console.log(`[NOORTEC] ADMIN_ENSURE: Zugang für "${users[idx].username}" aktualisiert (Rolle ${role}).`);
+  return { updated: true };
+}
+
 /** Für Admin-Konsole: Login, Rolle, Kontakt aus SQLite-Profil + numerische User-Id. */
 async function listUsersAdminDetail() {
   const jsonUsers = await readUsers();
@@ -259,6 +315,8 @@ async function promoteToAdminAndResetPassword(emailOrUsername, newPassword) {
 module.exports = {
   readUsers,
   verifyLogin,
+  auditFailedLogin,
+  ensureCredentialsFromEnv,
   listUsersAdminDetail,
   getUserRole,
   createUser,

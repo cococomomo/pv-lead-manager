@@ -113,6 +113,10 @@ CREATE TABLE IF NOT EXISTS leads (
   termin_typ TEXT NOT NULL DEFAULT 'vor_ort',
   meet_link TEXT NOT NULL DEFAULT '',
   reonic_synced INTEGER NOT NULL DEFAULT 0,
+  reonic_transferred INTEGER NOT NULL DEFAULT 0,
+  reonic_exported INTEGER NOT NULL DEFAULT 0,
+  reonic_status TEXT NOT NULL DEFAULT '',
+  reonic_id TEXT NOT NULL DEFAULT '',
   assigned_to_user_id INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_anfrage ON leads(anfrage)
@@ -149,6 +153,21 @@ function migrateLeadsTable(db) {
   }
   if (!names.has('reonic_synced')) {
     db.exec(`ALTER TABLE leads ADD COLUMN reonic_synced INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!names.has('reonic_transferred')) {
+    db.exec(`ALTER TABLE leads ADD COLUMN reonic_transferred INTEGER NOT NULL DEFAULT 0`);
+    db.exec(`UPDATE leads SET reonic_transferred = 1 WHERE reonic_synced = 1`);
+  }
+  if (!names.has('reonic_exported')) {
+    db.exec(`ALTER TABLE leads ADD COLUMN reonic_exported INTEGER NOT NULL DEFAULT 0`);
+    db.exec(`UPDATE leads SET reonic_exported = 1 WHERE reonic_transferred = 1 OR reonic_synced = 1`);
+  }
+  if (!names.has('reonic_status')) {
+    db.exec(`ALTER TABLE leads ADD COLUMN reonic_status TEXT NOT NULL DEFAULT ''`);
+    db.exec(`UPDATE leads SET reonic_status = 'success' WHERE reonic_exported = 1 OR reonic_transferred = 1`);
+  }
+  if (!names.has('reonic_id')) {
+    db.exec(`ALTER TABLE leads ADD COLUMN reonic_id TEXT NOT NULL DEFAULT ''`);
   }
   if (!names.has('assigned_to_user_id')) {
     db.exec('ALTER TABLE leads ADD COLUMN assigned_to_user_id INTEGER');

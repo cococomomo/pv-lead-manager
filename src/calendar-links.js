@@ -1,12 +1,44 @@
 'use strict';
 
 /**
+ * Wandelt die interne „Nachname + Vorname“-Konvention in die Anzeige „Vorname Nachname“.
+ * Komma: „Nachname, Vorname“; ohne Komma: erstes Wort = Nachname, Rest = Vorname (wie `splitNachnameVorname` in reonic).
+ * @param {string} raw
+ * @returns {string}
+ */
+function formatKundennameVornameZuerst(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (s.includes(',')) {
+    const [a, b] = s.split(',').map((x) => String(x).trim());
+    return [b, a].filter(Boolean).join(' ').trim();
+  }
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || '';
+  return `${parts.slice(1).join(' ')} ${parts[0]}`.trim();
+}
+
+/**
+ * Notizen-Text für Kalenderexport: automatische [System]-Anrufprotokollzeilen weglassen,
+ * alle übrigen Zeilen (manuelle Notizen) behalten.
+ * @param {string} [raw]
+ * @returns {string}
+ */
+function notizenTextForCalendarExport(raw) {
+  const s = String(raw ?? '');
+  const lines = s.split(/\r?\n/);
+  const kept = lines.filter((line) => !/^\[System\]:\s*Anrufversuch\b/.test(String(line).trim()));
+  return kept.join('\n');
+}
+
+/**
  * Kalender-Beschreibung (Google details / Outlook body / ICS DESCRIPTION).
  * @param {object} lead — API-Lead (deutsche + interne Feldnamen)
  * @param {string} partnerName
  */
 function buildLeadCalendarDescription(lead, partnerName, extraLines = [], assignedContact = null) {
-  const kunde = String(lead['Nachname + Vorname'] ?? lead.namen ?? '').trim();
+  const kundeRaw = String(lead['Nachname + Vorname'] ?? lead.namen ?? '').trim();
+  const kunde = formatKundennameVornameZuerst(kundeRaw) || kundeRaw || '—';
   const tel = String(lead.Telefon ?? lead.telefon ?? '').trim();
   const email = String(lead['E-Mail'] ?? lead.email ?? '').trim();
   const st = String(lead['Straße'] ?? lead.strasse ?? '').trim();
@@ -16,26 +48,28 @@ function buildLeadCalendarDescription(lead, partnerName, extraLines = [], assign
   const addrMid = [plz, ort].filter(Boolean).join(' ').trim();
   const core = st ? `${st}, ${addrMid}`.trim() : addrMid;
   const addressStr = [core, land].filter(Boolean).join(', ') || '';
-  const notizen = String(lead.Notizen ?? lead.notizen ?? '').trim();
+  const notizen = notizenTextForCalendarExport(String(lead.Notizen ?? lead.notizen ?? '')).trim();
   const info = String(lead.Info ?? lead.info ?? '').trim();
   const detailsBlock = [info || null, notizen || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
   const partner = String(partnerName || '').trim() || '—';
   const extras = Array.isArray(extraLines) ? extraLines.filter(Boolean) : [];
   const betreuer = String(lead['Betreut Durch'] ?? lead.betreuer ?? '').trim();
-  const salesLines = [];
-  if (assignedContact && (assignedContact.tel || assignedContact.email)) {
-    salesLines.push(
-      '---',
-      'NOORTEC Vertrieb (Betreuung):',
-      `Name: ${assignedContact.name || '—'}`,
-      `Tel: ${assignedContact.tel || '—'}`,
-      `E-Mail: ${assignedContact.email || '—'}`,
-    );
-  } else if (betreuer) {
-    salesLines.push('---', `Betreut durch: ${betreuer}`);
-  }
+  const salesName = String(
+    (assignedContact && assignedContact.name) || betreuer || partner || '—'
+  ).trim() || '—';
+  const salesTel = String((assignedContact && assignedContact.tel) || '').trim() || '—';
+  const salesEmail = String((assignedContact && assignedContact.email) || '').trim() || '—';
+  const salesLines = [
+    '---',
+    `Ihr Ansprechpartner ist ${salesName}`,
+    `Telefon: ${salesTel}`,
+    `E-Mail: ${salesEmail}`,
+    '---',
+    `Kundenadresse: ${addressStr || '—'}`,
+    '---',
+  ];
   return [
-    `👤 Kunde: ${kunde || '—'}`,
+    `👤 Kunde: ${kunde}`,
     `📞 Tel: ${tel || '—'}`,
     `✉️ E-Mail: ${email || '—'}`,
     `📍 Adresse: ${addressStr || '—'}`,
@@ -45,8 +79,7 @@ function buildLeadCalendarDescription(lead, partnerName, extraLines = [], assign
     '',
     ...extras,
     ...salesLines,
-    '---',
-    `NOORTEC Kalender / Ansprechpartner: ${partner}`,
+    'NOORTEC Kalender',
   ].join('\n');
 }
 
@@ -63,7 +96,12 @@ function buildLeadCalendarDescription(lead, partnerName, extraLines = [], assign
 function buildEventTexts({
   customerName, customerAddress, partnerName, lead, terminTyp = 'vor_ort', assignedContact = null,
 }) {
-  const title = `NOORTEC — ${customerName || 'Kunde'}`;
+  const rawCust = String(customerName || '').trim();
+  const cust = formatKundennameVornameZuerst(rawCust) || rawCust || 'Kunde';
+  const vert = String(
+    (assignedContact && assignedContact.name) || partnerName || '',
+  ).trim() || 'Vertrieb';
+  const title = `PV-Termin ${cust} + ${vert}`;
   const online = String(terminTyp || '').toLowerCase() === 'online';
   const location = online
     ? 'Google Meet (Online-Termin)'
@@ -156,11 +194,12 @@ function buildAppleIcsContent({ title, location, description, start, end, uid })
 function generateCalendarLink(lead, partnerName, start, end, opts = {}) {
   const terminTypRaw = opts.terminTyp != null ? opts.terminTyp : (lead.Termintyp ?? lead.termin_typ ?? 'vor_ort');
   const terminTyp = String(terminTypRaw || '').toLowerCase() === 'online' ? 'online' : 'vor_ort';
-  const customerName = lead['Nachname + Vorname'] || lead.namen || lead['E-Mail'] || '';
+  const customerNameRaw = lead['Nachname + Vorname'] || lead.namen || lead['E-Mail'] || '';
+  const customerName = formatKundennameVornameZuerst(String(customerNameRaw).trim()) || String(customerNameRaw).trim();
   const customerAddress = [lead['Straße'] || lead.strasse, lead['PLZ'] || lead.plz, lead['Ort'] || lead.ort].filter(Boolean).join(', ');
   const assignedContact = opts.assignedContact !== undefined ? opts.assignedContact : null;
   const { title, location, description } = buildEventTexts({
-    customerName,
+    customerName: customerNameRaw,
     customerAddress,
     partnerName,
     lead,
@@ -191,6 +230,7 @@ function generateCalendarLink(lead, partnerName, start, end, opts = {}) {
 module.exports = {
   generateCalendarLink,
   buildLeadCalendarDescription,
+  notizenTextForCalendarExport,
   buildGoogleCalendarUrl,
   buildOutlookCalendarUrl,
   buildAppleIcsContent,

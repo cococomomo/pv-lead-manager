@@ -8,21 +8,48 @@ function looksLikeEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
 }
 
+function resolveSmtpHost() {
+  return String(process.env.SMTP_HOST || process.env.DEFAULT_SMTP_HOST || '').trim();
+}
+
+function resolveSmtpPort() {
+  return parseInt(String(process.env.SMTP_PORT || process.env.DEFAULT_SMTP_PORT || '587'), 10) || 587;
+}
+
+/**
+ * SMTP-Modi:
+ * - ssl/true/1/on => direkte TLS-Verbindung (üblich Port 465)
+ * - tls/starttls  => STARTTLS erzwingen (typisch Port 587)
+ * - leer/auto     => Port-basiert (465 => secure, sonst opportunistisch)
+ */
+function resolveSmtpSecurity(modeRaw, port) {
+  const mode = String(modeRaw || '').trim().toLowerCase();
+  if (mode === 'ssl' || mode === 'true' || mode === '1' || mode === 'on') {
+    return { secure: true, requireTLS: false };
+  }
+  if (mode === 'tls' || mode === 'starttls') {
+    return { secure: false, requireTLS: true };
+  }
+  return { secure: port === 465, requireTLS: false };
+}
+
 /** Zentraler SMTP aus .env (Fallback, z. B. vertrieb@noortec.at). */
 function smtpConfigured() {
-  const h = (process.env.SMTP_HOST || '').trim();
+  const h = resolveSmtpHost();
   const u = (process.env.SMTP_USER || '').trim();
   const p = String(process.env.SMTP_PASS || '');
   return !!(h && u && p.length);
 }
 
 function createCentralSmtpTransport() {
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const secure = process.env.SMTP_SECURE === '1' || port === 465;
+  const host = resolveSmtpHost();
+  const port = resolveSmtpPort();
+  const sec = resolveSmtpSecurity(process.env.SMTP_SECURE, port);
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST.trim(),
+    host,
     port,
-    secure,
+    secure: sec.secure,
+    requireTLS: sec.requireTLS,
     auth: {
       user: process.env.SMTP_USER.trim(),
       pass: process.env.SMTP_PASS,
@@ -32,11 +59,12 @@ function createCentralSmtpTransport() {
 
 function createTransportFromUserSmtp(s) {
   const port = s.port;
-  const secure = port === 465 || process.env.SMTP_SECURE === '1';
+  const sec = resolveSmtpSecurity(process.env.SMTP_SECURE, port);
   return nodemailer.createTransport({
     host: s.host,
     port,
-    secure,
+    secure: sec.secure,
+    requireTLS: sec.requireTLS,
     auth: { user: s.user, pass: s.pass },
   });
 }
@@ -83,13 +111,20 @@ function canSendMail(username) {
 
 async function verifySmtpInline({ host, port, user, pass }) {
   const p = parseInt(String(port || '587'), 10) || 587;
+  const sec = resolveSmtpSecurity(process.env.SMTP_SECURE, p);
   const t = nodemailer.createTransport({
     host: String(host).trim(),
     port: p,
-    secure: p === 465 || process.env.SMTP_SECURE === '1',
+    secure: sec.secure,
+    requireTLS: sec.requireTLS,
     auth: { user: String(user).trim(), pass: String(pass) },
   });
-  await t.verify();
+  try {
+    await t.verify();
+  } catch (err) {
+    const msg = err && err.message ? String(err.message) : String(err);
+    throw new Error(`SMTP-Verbindung fehlgeschlagen (${host}:${p}): ${msg}`);
+  }
 }
 
 async function verifySavedUserSmtp(username) {

@@ -2,9 +2,8 @@
 
 /**
  * CSV → SQLite leads.db
- * Nutzung: node scripts/import-csv.js "pfad/zur/datei.csv" [--dry-run] [--skip-geocode]
- * Standard: Nominatim-Geocoding mit Fallback-Kaskade (1,5 s Pause pro API-Aufruf).
- * --skip-geocode — keine Netzwerkaufrufe (nur CSV-Koordinaten, falls vorhanden).
+ * Nutzung: node scripts/import-csv.js "pfad/zur/datei.csv" [--dry-run]
+ * Standard: Nominatim-Geocoding mit Fallback-Kaskade (1,5 s Pause pro API-Aufruf), wenn in der CSV keine gültigen Koordinaten stehen.
  */
 
 require('../src/load-env');
@@ -175,11 +174,10 @@ async function geocodeLeadWithCascade(rec) {
 async function main() {
   const argv = process.argv.slice(2);
   const dry = argv.includes('--dry-run');
-  const skipGeocode = argv.includes('--skip-geocode');
   const files = argv.filter((a) => !a.startsWith('--'));
   const csvPath = files[0] || process.env.LEADS_CSV_PATH;
   if (!csvPath) {
-    console.error('Usage: node scripts/import-csv.js <path-to.csv> [--dry-run] [--skip-geocode]');
+    console.error('Usage: node scripts/import-csv.js <path-to.csv> [--dry-run]');
     console.error('   or: LEADS_CSV_PATH=... node scripts/import-csv.js');
     process.exit(1);
   }
@@ -226,23 +224,10 @@ async function main() {
       lat = fromCsv.lat;
       lng = fromCsv.lng;
       logLine = `Lead ${n}/${total}: Koordinaten aus CSV`;
-    } else if (dry || skipGeocode) {
+    } else if (dry) {
       lat = null;
       lng = null;
-      logLine = `Lead ${n}/${total}: Geocoding übersprungen — keine Koordinaten in CSV`;
-      if (!dry && skipGeocode) {
-        appendImportErrorLog({
-          kind: 'SKIP_GEOCODE_NO_COORDS',
-          rowN: n,
-          total,
-          anfrage: merged.anfrage,
-          email: merged.email,
-          strasse: strVal(merged, 'strasse', 'straße', 'street', 'adresse'),
-          plz: strVal(merged, 'plz', 'postleitzahl'),
-          ort: strVal(merged, 'ort', 'stadt', 'wohnort'),
-          detail: logLine,
-        });
-      }
+      logLine = `Lead ${n}/${total}: dry-run — Geocoding nicht ausgeführt`;
     } else {
       const g = await geocodeLeadWithCascade(merged);
       lat = g.lat != null && Number.isFinite(g.lat) ? g.lat : null;
@@ -272,15 +257,6 @@ async function main() {
     const az = strVal(merged, 'anfragezeitpunkt', 'datum', 'anfrage datum');
     const createdAtIso = createdAtIsoFromCell(az || merged.anfragezeitpunkt);
     batch.push(toInsertRow(merged, { createdAtIso, lat, lng }));
-  }
-
-  if (skipGeocode && !dry) {
-    const missing = batch.filter((row) => row.latitude == null || row.longitude == null).length;
-    if (missing > 0) {
-      console.warn(
-        `[import] Hinweis: ${missing} Zeile(n) ohne latitude/longitude (--skip-geocode). Für die Karte ohne Nachziehen erneut importieren.`
-      );
-    }
   }
 
   if (dry) {
@@ -338,9 +314,7 @@ async function main() {
   console.log(
     `SQLite: aktive Leads=${activeInDb}, alle Zeilen (inkl. Archiv)=${totalInDb} | Hinweis: CSV-Zeilen − Batch = ${dataRows.length - batch.length} (leer/ignoriert); Batch − inserted = ${batch.length - inserted} (=Duplikate, wenn keine anderen Abbrüche)`
   );
-  if (!skipGeocode) {
-    console.log(`Geocoding ohne Nominatim-Treffer (lat/lng leer): siehe ${path.relative(process.cwd(), IMPORT_ERROR_LOG)}`);
-  }
+  console.log(`Geocoding ohne Nominatim-Treffer (lat/lng leer): siehe ${path.relative(process.cwd(), IMPORT_ERROR_LOG)}`);
 }
 
 main().catch((e) => {

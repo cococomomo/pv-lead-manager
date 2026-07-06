@@ -8,6 +8,7 @@ const path = require('path');
 const { URL } = require('url');
 const session = require('express-session');
 const FileStore = require('session-file-store')(session);
+const cors = require('cors');
 const { parse: parseCsvSync } = require('csv-parse/sync');
 
 const { generateCalendarLink } = require('./calendar-links');
@@ -30,9 +31,12 @@ const {
   regeocodeLeadByEmail,
   appendLead,
   leadEmailExistsInDatabase,
+  geocodeLeadsMissingCoordinates,
 } = require('./sheets');
 const {
   verifyLogin,
+  auditFailedLogin,
+  ensureCredentialsFromEnv,
   readUsers,
   createUser,
   updateUserAdminFields,
@@ -45,18 +49,51 @@ const {
   updateCalendarPreference,
 } = require('./users');
 const { sendLoginCredentialsEmail, sendNoortecWelcomeOnboardingEmail } = require('./mail-welcome');
-const { getDb } = require('./database');
+const { getDb, getDbPath } = require('./database');
 const { sendAppointmentConfirmationEmail, buildLeadAddressLine, formatTerminDe, looksLikeEmail } = require('./mail-appointment-confirm');
 const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-transport');
 const { resolveBetreuerContact } = require('./sales-contact');
 const { upsertProfile, ensureSqliteUserStub, getProfile } = require('./user-profile');
 const { mountOfferRoutes } = require('./offer/routes');
 const { getDashboardStats } = require('./stats');
+const { transferLeadToReonicById } = require('./reonic-sync');
+const { reonicV2OffersConfigured, testReonicRestV2Connection } = require('./integrations/reonic');
+const { mountOfferRoutes } = require('./offer/routes');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
 const DATA_DIR = path.join(__dirname, '../data');
 app.set('trust proxy', 1);
+
+/** CORS: nötig für Preflight (OPTIONS) und ggf. Cross-Origin; `credentials` für Session-Cookie. */
+function collectAllowedCorsOrigins() {
+  const out = new Set();
+  const add = (raw) => {
+    const s = String(raw || '').trim();
+    if (!s) return;
+    try {
+      out.add(new URL(s).origin);
+    } catch (_) { /* ignore */ }
+  };
+  add(process.env.APP_BASE_URL);
+  for (const p of String(process.env.CORS_ORIGINS || '').split(',')) add(p.trim());
+  return out;
+}
+
+const _corsAllowedOrigins = collectAllowedCorsOrigins();
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (!_corsAllowedOrigins.size) return callback(null, true);
+    if (_corsAllowedOrigins.has(origin)) return callback(null, true);
+    console.warn('[NOORTEC] CORS abgelehnt:', origin);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-n8n-api-key'],
+  maxAge: 86400,
+}));
 
 let SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
 if (!SESSION_SECRET || SESSION_SECRET.length < 16) {
@@ -81,12 +118,21 @@ app.use(session({
   saveUninitialized: false,
   rolling: true,
   cookie: {
+    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     httpOnly: true,
     secure: process.env.SESSION_COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production',
     sameSite: 'lax',
   },
 }));
+
+/** Session nach Login/Bootstrap explizit persistieren (vermeidet verlorene Cookies bei schneller Antwort). */
+function jsonAfterSessionSave(req, res, payload) {
+  req.session.save((saveErr) => {
+    if (saveErr) console.error('[NOORTEC] session save:', saveErr.message);
+    res.json(payload);
+  });
+}
 
 function formatLeadsApiError(err) {
   return (err && err.message) ? String(err.message) : String(err);
@@ -143,6 +189,19 @@ function isAllowedN8nImportWebhookUrl(urlStr) {
   return allow.has(host);
 }
 
+/**
+ * n8n/IMAP-Leadimport (POST /api/sync-leads, /api/webhook/n8n-lead).
+ * Deaktivieren: EMAIL_LEAD_IMPORT_ENABLED=0 in der .env — dann nur noch manueller CSV-Import.
+ * Ohne gesetzte Variable bleibt die Pipeline aktiv (Abwärtskompatibilität).
+ */
+function isAutomatedEmailLeadImportEnabled() {
+  const raw = process.env.EMAIL_LEAD_IMPORT_ENABLED;
+  if (raw == null || String(raw).trim() === '') return true;
+  const v = String(raw).trim().toLowerCase();
+  if (v === '0' || v === 'false' || v === 'off' || v === 'no') return false;
+  return true;
+}
+
 /** Setter oder Admin: Lead einem Vertriebler (sales) zuweisen. */
 function allowSalesAssign(req) {
   if (!req.session?.user) return false;
@@ -166,6 +225,15 @@ async function resolveActingSalesUsername(lead, sessionUsername) {
 function requireApiSession(req, res, next) {
   if (req.session && req.session.user) return next();
   return res.status(401).json({ error: 'login_required' });
+}
+
+/** Anzeigename für Protokoll-Notizen (z. B. Anrufversuch): Profil „voller Name“, sonst Login-Name. */
+function vertrieblerLabelFromSession(req) {
+  const u = req.session?.user?.username;
+  if (!u) return '';
+  const p = getProfile(String(u).trim());
+  const name = String(p?.voller_name || '').trim();
+  return name || String(u).trim();
 }
 
 /**
@@ -198,6 +266,11 @@ app.use(express.json({ limit: '512kb' }));
 
 /** n8n → SQLite (API-Key, kein Session-Login). */
 app.post('/api/webhook/n8n-lead', async (req, res) => {
+  if (!isAutomatedEmailLeadImportEnabled()) {
+    return res.status(503).json({
+      error: 'Automatischer Leadimport ist deaktiviert (EMAIL_LEAD_IMPORT_ENABLED=0). Neue Leads bitte manuell per „Leads hochladen“ (CSV) einspielen.',
+    });
+  }
   const expected = String(process.env.N8N_API_KEY || '').trim();
   if (!expected) {
     return res.status(503).json({ error: 'N8N_API_KEY ist nicht konfiguriert' });
@@ -318,7 +391,6 @@ app.post('/api/admin/import-leads-csv', async (req, res) => {
   if (!csvText.trim()) return res.status(400).json({ error: 'csvText fehlt' });
   if (csvText.length > 1024 * 256) return res.status(413).json({ error: 'CSV zu groß (max 256 KB)' });
   const hasHeader = !!b.hasHeader;
-  const skipGeocode = !!b.skipGeocode;
 
   let rows;
   try {
@@ -367,7 +439,7 @@ app.post('/api/admin/import-leads-csv', async (req, res) => {
         source: lead.source,
         info: lead.info,
         date: createdAtIsoFromCell(lead.date),
-      }, { skipGeocode });
+      });
       inserted += 1;
       imported.push({ row: rowNumber, id: out && out.id != null ? Number(out.id) : null, email: lead.email });
     } catch (err) {
@@ -382,9 +454,7 @@ app.post('/api/admin/import-leads-csv', async (req, res) => {
     errorCount: errors.length,
     errors: errors.slice(0, 200),
     imported: imported.slice(0, 200),
-    note: skipGeocode
-      ? 'Import ohne Geocoding: Leads können ohne Kartenpunkt sein (später /api/leads/:email/regeocode oder Adresse-Geocode im UI).'
-      : 'Import mit Geocoding (falls Koordinaten fehlen).',
+    note: 'Import mit automatischem Geocoding, sofern Koordinaten fehlen oder 0 sind.',
   });
 });
 
@@ -402,13 +472,25 @@ app.get('/profile.html', (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body || {};
   const user = await verifyLogin(username, password);
-  if (!user) return res.status(401).json({ error: 'invalid_credentials' });
+  if (!user) {
+    const audit = await auditFailedLogin(username, password);
+    console.warn('[NOORTEC] Login abgelehnt:', JSON.stringify(audit));
+    return res.status(401).json({ error: 'invalid_credentials' });
+  }
   req.session.user = { username: user.username, role: user.role };
   try {
     const full = await getUserPublic(user.username);
-    res.json({ ok: true, user: full || { username: user.username, role: user.role, calendarPreference: user.calendarPreference || 'google', profileComplete: false } });
+    jsonAfterSessionSave(req, res, {
+      ok: true,
+      user: full || {
+        username: user.username,
+        role: user.role,
+        calendarPreference: user.calendarPreference || 'google',
+        profileComplete: false,
+      },
+    });
   } catch (e) {
-    res.json({
+    jsonAfterSessionSave(req, res, {
       ok: true,
       user: {
         username: user.username,
@@ -433,12 +515,30 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   if (!req.session || !req.session.user) return res.json({ user: null });
+  const su = req.session.user;
+  const reonicConfigured = reonicV2OffersConfigured();
   try {
-    const user = await getUserPublic(req.session.user.username);
-    res.json({ user: user || { username: req.session.user.username, role: req.session.user.role, calendarPreference: 'google' } });
+    const user = await getUserPublic(su.username);
+    const base = user || { username: su.username, role: su.role, calendarPreference: 'google' };
+    res.json({
+      user: {
+        ...base,
+        reonicConfigured,
+        emailLeadImportEnabled: isAutomatedEmailLeadImportEnabled(),
+      },
+    });
   } catch (err) {
     console.error('GET /api/auth/me error:', err.message);
-    res.status(500).json({ user: null, error: err.message });
+    res.json({
+      user: {
+        username: su.username,
+        role: su.role,
+        calendarPreference: 'google',
+        profileComplete: true,
+        reonicConfigured,
+        emailLeadImportEnabled: isAutomatedEmailLeadImportEnabled(),
+      },
+    });
   }
 });
 
@@ -491,6 +591,9 @@ app.post('/api/auth/smtp-test', async (req, res) => {
       if (!looksLikeEmail(userMail)) {
         throw new Error('Gültige Kontakt-E-Mail erforderlich (gleiches Postfach wie SMTP-Login)');
       }
+      if (!String(body.smtp_pass || '').length) {
+        throw new Error('Bitte SMTP-Passwort eingeben (Formular-Test) oder „gespeichert“ testen.');
+      }
       await verifySmtpInline({
         host,
         port,
@@ -500,7 +603,8 @@ app.post('/api/auth/smtp-test', async (req, res) => {
     }
     res.json({ ok: true });
   } catch (err) {
-    res.status(400).json({ error: err.message || String(err) });
+    const msg = err && err.message ? String(err.message) : String(err);
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -511,6 +615,12 @@ app.post('/api/auth/smtp-test', async (req, res) => {
 app.post('/api/sync-leads', async (req, res) => {
   if (!allowAdminSessionOnly(req)) {
     return res.status(401).json({ error: 'Unauthorized', success: false });
+  }
+  if (!isAutomatedEmailLeadImportEnabled()) {
+    return res.status(503).json({
+      success: false,
+      error: 'E-Mail-/n8n-Leadimport ist deaktiviert (EMAIL_LEAD_IMPORT_ENABLED=0). Neue Leads bitte manuell per „Leads hochladen“ (CSV) importieren.',
+    });
   }
   const webhookUrl = String(process.env.N8N_IMPORT_LEADS_WEBHOOK_URL || '').trim();
   if (!webhookUrl) {
@@ -575,9 +685,46 @@ app.post('/api/sync-leads', async (req, res) => {
   }
 });
 
+async function sendLeadsStorageDebug(req, res) {
+  try {
+    const dbg = await getLeadsSheetDebug();
+    const leads = await getAllLeads({ includeArchived: true });
+    res.json({ ...dbg, leadRowCount: leads.length });
+  } catch (err) {
+    console.error('GET leads storage debug error:', err.message);
+    let dbg = {};
+    try {
+      dbg = await getLeadsSheetDebug();
+    } catch (_) { /* ignore */ }
+    res.status(500).json({ ...dbg, error: formatLeadsApiError(err) });
+  }
+}
+
+/**
+ * Diagnose **vor** der allgemeinen Session-Pflicht: Admin (Rolle) oder `Authorization: Bearer ADMIN_TOKEN`.
+ * So kann auf dem Server z. B. `curl -H "Authorization: Bearer …" https://…/api/debug/leads-db` geprüft werden.
+ */
+function mountLeadsStorageDebugRoutes() {
+  const h = async (req, res) => {
+    if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+    return sendLeadsStorageDebug(req, res);
+  };
+  app.get('/api/debug/leads-db', h);
+  /** @deprecated Name — identisch zu `/api/debug/leads-db`. */
+  app.get('/api/debug/leads-sheet', h);
+}
+
+mountLeadsStorageDebugRoutes();
+
 // Geschützte API + HTML (nur Session-Login; öffentliche Auth-Routen ausgenommen)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
+    if (req.method === 'OPTIONS') return next();
+    /** Nur Diagnose: `PVL_DEBUG_PUBLIC_LEADS_GET=1` in .env — GET /api/leads ohne Login (sofort wieder entfernen!). */
+    if (req.path === '/api/leads' && req.method === 'GET' && process.env.PVL_DEBUG_PUBLIC_LEADS_GET === '1') {
+      console.warn('[NOORTEC] SICHERHEIT: GET /api/leads ohne Session (PVL_DEBUG_PUBLIC_LEADS_GET=1)');
+      return next();
+    }
     if (req.path === '/api/webhook/n8n-lead' && req.method === 'POST') return next();
     if (req.path === '/api/auth/login' && req.method === 'POST') return next();
     if (req.path === '/api/auth/logout' && req.method === 'POST') return next();
@@ -590,12 +737,35 @@ app.use((req, res, next) => {
   return requireWebSession(req, res, next);
 });
 
+// ── Angebotsgenerator (KI-Eingabemaske, PDF, .eml) ─────────────────────────
+mountOfferRoutes(app, { getProfile, getLeadByEmail });
+
 app.get('/api/leads', async (req, res) => {
   try {
+    const publicLeadsDebug = process.env.PVL_DEBUG_PUBLIC_LEADS_GET === '1';
+    if (!publicLeadsDebug && (!req.session || !req.session.user)) {
+      return res.status(401).json({ error: 'login_required', message: 'Unauthorized' });
+    }
+    if (!publicLeadsDebug) {
+      const u = req.session.user;
+      console.log('[NOORTEC] API: Leads angefragt von User:', {
+        username: u.username,
+        role: u.role,
+        id: u.id,
+      });
+    } else {
+      console.warn('[NOORTEC] API: Leads ohne User-Session (Diagnose-Modus)');
+    }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     const includeArchived = parseIncludeArchivedFlag(req);
-    const leads = await getAllLeads({ includeArchived });
+    let leads;
+    try {
+      leads = await getAllLeads({ includeArchived });
+    } catch (dbErr) {
+      console.error('[NOORTEC] GET /api/leads DB-Fehler:', dbErr && dbErr.message ? dbErr.message : dbErr);
+      return res.status(500).json({ error: formatLeadsApiError(dbErr) });
+    }
     if (leads.length === 0) {
       try {
         const dbg = await getLeadsSheetDebug();
@@ -669,6 +839,18 @@ app.get('/api/leads/missing-coords', (req, res) => {
   }
 });
 
+/** Admin: Alt-Leads ohne Kartenpunkt nacheinander geocodieren (Pause zwischen Aufrufen). */
+app.post('/api/leads/geocode-missing', async (req, res) => {
+  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const out = await geocodeLeadsMissingCoordinates({ delayBetweenMs: 1000 });
+    res.json({ ok: true, ...out });
+  } catch (err) {
+    console.error('POST /api/leads/geocode-missing:', err.message);
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
 /** Adresse korrigieren + sofort Geocoding (Nominatim-Kaskade AT). */
 app.post('/api/lead-rows/:id/address-geocode', async (req, res) => {
   const { strasse, plz, ort } = req.body || {};
@@ -687,7 +869,7 @@ app.post('/api/lead-rows/:id/status', async (req, res) => {
   const { status } = req.body || {};
   if (!status) return res.status(400).json({ error: 'status erforderlich' });
   try {
-    const result = await setLeadStatusByDbId(req.params.id, status);
+    const result = await setLeadStatusByDbId(req.params.id, status, vertrieblerLabelFromSession(req));
     res.json(result);
   } catch (err) {
     console.error('POST lead-rows status:', err.message);
@@ -716,31 +898,16 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
-async function sendLeadsStorageDebug(req, res) {
-  try {
-    const dbg = await getLeadsSheetDebug();
-    const leads = await getAllLeads({ includeArchived: true });
-    res.json({ ...dbg, leadRowCount: leads.length });
-  } catch (err) {
-    console.error('GET leads storage debug error:', err.message);
-    let dbg = {};
-    try {
-      dbg = await getLeadsSheetDebug();
-    } catch (_) { /* ignore */ }
-    res.status(500).json({ ...dbg, error: formatLeadsApiError(err) });
-  }
-}
-
-/** Diagnose: SQLite `leads` (Pfad, Zeilen). */
-app.get('/api/debug/leads-db', sendLeadsStorageDebug);
-/** @deprecated Name — identisch zu `/api/debug/leads-db`. */
-app.get('/api/debug/leads-sheet', sendLeadsStorageDebug);
-
 app.patch('/api/leads/:email/field', async (req, res) => {
   const { column, value } = req.body;
   if (!column) return res.status(400).json({ error: 'column is required' });
   try {
-    const extra = await updateLeadField(decodeURIComponent(req.params.email), column, value ?? '');
+    const extra = await updateLeadField(
+      decodeURIComponent(req.params.email),
+      column,
+      value ?? '',
+      vertrieblerLabelFromSession(req),
+    );
     res.json({ ok: true, ...(extra && typeof extra === 'object' ? extra : {}) });
   } catch (err) {
     console.error('PATCH field error:', err.message);
@@ -755,7 +922,7 @@ app.post('/api/leads/update', async (req, res) => {
     return res.status(400).json({ error: 'email und updates (Objekt) erforderlich' });
   }
   try {
-    const extra = await updateLeadFieldsBulk(String(email).trim(), updates);
+    const extra = await updateLeadFieldsBulk(String(email).trim(), updates, vertrieblerLabelFromSession(req));
     res.json({ ok: true, ...(extra && typeof extra === 'object' ? extra : {}) });
   } catch (err) {
     console.error('POST /api/leads/update error:', err.message);
@@ -767,11 +934,45 @@ app.post('/api/leads/:email/status', async (req, res) => {
   const { status } = req.body || {};
   if (!status) return res.status(400).json({ error: 'status is required' });
   try {
-    const result = await setLeadStatus(decodeURIComponent(req.params.email), status);
+    const result = await setLeadStatus(
+      decodeURIComponent(req.params.email),
+      status,
+      vertrieblerLabelFromSession(req),
+    );
     res.json(result);
   } catch (err) {
     console.error('POST status error:', err.message);
     res.status(400).json({ error: err.message });
+  }
+});
+
+/** Reonic REST v2: Angebots-/Lead-Anlage nach Nutzer-Bestätigung im UI. */
+app.post('/api/leads/reonic-offer', requireApiSession, async (req, res) => {
+  const b = req.body || {};
+  const rawId = b.dbId != null ? b.dbId : b.pvlDbId;
+  try {
+    const result = await transferLeadToReonicById(rawId);
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error || 'Reonic-Übertragung fehlgeschlagen' });
+    }
+    res.json({ ok: true, reonicId: result.reonicId || '' });
+  } catch (err) {
+    console.error('POST reonic-offer:', err.message);
+    res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+/** Reonic: Verbindungstest (Key/Endpoint), ohne Lead zu erzeugen. */
+app.post('/api/reonic/test', requireApiSession, async (req, res) => {
+  try {
+    const out = await testReonicRestV2Connection();
+    if (!out.ok) {
+      return res.status(400).json({ error: out.error || 'Reonic-Test fehlgeschlagen' });
+    }
+    res.json({ ok: true, message: out.message || 'Verbindung OK' });
+  } catch (err) {
+    console.error('POST /api/reonic/test:', err.message);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -797,16 +998,27 @@ app.post('/api/calendar/build', async (req, res) => {
       return res.status(400).json({ error: 'Ungültiges Datum' });
     }
     let partnerName = process.env.MY_NAME || 'Vertrieb';
+    let actingContact = null;
     const actingCal = await resolveActingSalesUsername(lead, req.session?.user?.username || '');
     try {
       const pubA = actingCal ? await getUserPublic(actingCal) : null;
       if (pubA) {
         partnerName = String(pubA.voller_name || '').trim() || pubA.username || partnerName;
+        actingContact = {
+          name: String(pubA.voller_name || pubA.username || '').trim() || partnerName,
+          tel: String(pubA.telefon || '').trim() || String(process.env.MY_PHONE || '').trim(),
+          email: String(pubA.email_kontakt || '').trim() || String(process.env.MY_EMAIL || '').trim(),
+        };
       }
     } catch (_) { /* ignore */ }
     const leadForCal = { ...lead };
     if (meetLink != null) leadForCal['Meet-Link'] = String(meetLink || '').trim();
-    const assignedContact = await resolveBetreuerContact(lead['Betreut Durch'] || lead.betreuer || '');
+    const leadAssignedContact = await resolveBetreuerContact(lead['Betreut Durch'] || lead.betreuer || '');
+    const assignedContact = actingContact || leadAssignedContact || {
+      name: String(process.env.MY_NAME || 'NOORTEC Vertrieb').trim() || 'NOORTEC Vertrieb',
+      tel: String(process.env.MY_PHONE || '').trim(),
+      email: String(process.env.MY_EMAIL || '').trim(),
+    };
     const payload = generateCalendarLink(leadForCal, partnerName, startD, endD, {
       terminTyp,
       assignedContact,
@@ -1062,7 +1274,7 @@ app.post('/api/auth/bootstrap-admin', async (req, res) => {
     const name = String(username).trim();
     req.session.user = { username: name, role: 'admin' };
     const full = await getUserPublic(name);
-    res.json({ ok: true, user: full });
+    jsonAfterSessionSave(req, res, { ok: true, user: full });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -1117,15 +1329,30 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.listen(PORT, () => {
-  const parts = ['Session-Login'];
-  const pub = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
-  const local = `http://127.0.0.1:${PORT}`;
-  if (pub) {
-    console.log(`NOORTEC Vertriebs-Dashboard listening ${local}${parts.length ? ` (${parts.join(', ')})` : ''} · live ${pub}`);
-  } else {
-    console.log(`NOORTEC Vertriebs-Dashboard ${local}${parts.length ? ` (${parts.join(', ')})` : ''} — set APP_BASE_URL=https://pvl.lifeco.at for production links`);
+(async () => {
+  try {
+    await ensureCredentialsFromEnv();
+  } catch (e) {
+    console.error('[NOORTEC] ADMIN_ENSURE fehlgeschlagen:', e && e.message ? e.message : e);
   }
-});
+  app.listen(PORT, () => {
+    try {
+      const db = getDb();
+      const dbFile = getDbPath();
+      const n = db.prepare('SELECT COUNT(*) AS c FROM leads').get().c;
+      console.log(`[NOORTEC] SQLite: ${dbFile} · leads=${n}`);
+    } catch (e) {
+      console.error('[NOORTEC] SQLite-Check fehlgeschlagen:', e && e.message ? e.message : e);
+    }
+    const parts = ['Session-Login'];
+    const pub = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    const local = `http://127.0.0.1:${PORT}`;
+    if (pub) {
+      console.log(`NOORTEC Vertriebs-Dashboard listening ${local}${parts.length ? ` (${parts.join(', ')})` : ''} · live ${pub}`);
+    } else {
+      console.log(`NOORTEC Vertriebs-Dashboard ${local}${parts.length ? ` (${parts.join(', ')})` : ''} — set APP_BASE_URL=https://pvl.lifeco.at for production links`);
+    }
+  });
+})();
 
 module.exports = app;

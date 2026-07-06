@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
   <title>NOORTEC Vertriebs-Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -41,10 +42,22 @@
       --pvl-surface: #0f172a;
       --pvl-surface-2: #1e293b;
       --pvl-text: #f8fafc;
-      --pvl-muted: #cbd5e1;
+      --pvl-muted: #e2e8f0;
       --pvl-border: #475569;
       --pvl-accent: #60a5fa;
       --pvl-stat-bg: #1e3a5f;
+    }
+    html[data-theme="dark"] .field-group label,
+    html[data-theme="dark"] .detail-info b,
+    html[data-theme="dark"] .sd-info-info-label,
+    html[data-theme="dark"] .pvl-filter-lbl,
+    html[data-theme="dark"] .save-hint,
+    html[data-theme="dark"] .sd-hint-muted,
+    html[data-theme="dark"] .lead-contact-row {
+      color: #cbd5e1;
+    }
+    html[data-theme="dark"] .sd-contact-details .sd-hint-muted {
+      color: #94a3b8;
     }
     html[data-theme="dark"] .filter-archive-btn {
       background: var(--pvl-surface-2);
@@ -58,7 +71,7 @@
       color: #eff6ff;
     }
     html[data-theme="dark"] .lead-item.lead-archived,
-    html[data-theme="dark"] .lead-item.lead-archived .lead-name { color: var(--pvl-muted); }
+    html[data-theme="dark"] .lead-item.lead-archived .lead-row1 { color: var(--pvl-muted); }
     html[data-theme="dark"] .pvl-map-legend {
       background: rgba(15, 23, 42, 0.94);
       border-color: rgba(148, 163, 184, 0.35);
@@ -83,7 +96,39 @@
     .header-brand { display: flex; align-items: flex-start; gap: 0.45rem; min-width: 0; flex: 1 1 auto; }
     .header-brand .header-sun { display: flex; align-items: center; opacity: 0.92; flex-shrink: 0; color: #fde68a; }
     .header-brand .header-sun svg { width: 1.15rem; height: 1.15rem; display: block; }
-    .header-title-block { min-width: 0; }
+    .header-title-block {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.65rem;
+    }
+    .header-stats-toggle {
+      flex-shrink: 0;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.24rem 0.6rem;
+      border-radius: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1.2;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .header-stats-toggle:hover {
+      background: rgba(255, 255, 255, 0.22);
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .header-stats-toggle:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.85);
+      outline-offset: 2px;
+    }
+    .header-stats-toggle[aria-pressed="true"] {
+      background: rgba(255, 255, 255, 0.28);
+      border-color: rgba(255, 255, 255, 0.7);
+    }
     header h1 {
       font-size: 1.05rem;
       font-weight: 600;
@@ -180,25 +225,60 @@
 
     @media (max-width: 767px) {
       .layout.pvl-is-mobile {
-        grid-template-columns: minmax(0, 1fr) !important;
-        grid-template-rows: auto minmax(0, 1fr);
         height: calc(100vh - 2.35rem - 52px);
       }
-      .layout.pvl-is-mobile .sidebar-resizer { display: none !important; }
+      .layout.pvl-is-mobile .pvl-map-area {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        position: relative;
+      }
+      .layout.pvl-is-mobile .map-wrap {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        width: 100%;
+      }
+      .layout.pvl-is-mobile .pvl-sidebar-dock {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        transform: none !important;
+        box-shadow: none;
+        z-index: auto;
+        max-width: none;
+        pointer-events: auto;
+      }
+      .layout.pvl-is-mobile .pvl-sidebar-dock-slide {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
       .layout.pvl-is-mobile .map-wrap,
+      .layout.pvl-is-mobile .pvl-sidebar-dock {
+        flex-shrink: 0;
+      }
+      .layout.pvl-is-mobile .sidebar-resizer { display: none !important; }
       .layout.pvl-is-mobile .sidebar {
-        grid-column: 1;
-        grid-row: 2;
+        width: 100% !important;
+        max-width: none !important;
+        border-left: none;
+        flex: 1;
         min-height: 0;
       }
-      .layout.pvl-is-mobile.pvl-mobile-view-map .sidebar { display: none !important; }
-      .layout.pvl-is-mobile.pvl-mobile-view-map .map-wrap { display: block !important; }
+      .layout.pvl-is-mobile.pvl-mobile-view-map .pvl-sidebar-dock { display: none !important; }
+      .layout.pvl-is-mobile.pvl-mobile-view-map .map-wrap { display: block !important; flex: 1; }
       .layout.pvl-is-mobile.pvl-mobile-view-list .map-wrap { display: none !important; }
-      .layout.pvl-is-mobile.pvl-mobile-view-list .sidebar { display: flex !important; }
+      .layout.pvl-is-mobile.pvl-mobile-view-list .pvl-sidebar-dock { display: flex !important; flex: 1; }
       .pvl-mobile-tabbar { display: flex; }
-      .lead-item { padding: 0.85rem 1rem; min-height: 52px; box-sizing: border-box; }
-      .lead-name { font-size: 0.95rem; }
-      .lead-meta { font-size: 0.8rem; margin-top: 4px; }
+      .lead-item { padding: 0.42rem 0.85rem; min-height: 0; box-sizing: border-box; }
+      .lead-row1 { font-size: 0.84rem; }
+      .lead-address { font-size: 0.74rem; }
+      .lead-contact-row { font-size: 0.72rem; }
       .sidebar-tab { padding: 0.65rem 0.5rem; font-size: 0.85rem; min-height: 48px; }
       .filter-bar input, .filter-bar select { padding: 0.55rem 0.65rem; font-size: 0.88rem; min-height: 44px; }
       .pvl-filter-panel > summary { min-height: 44px; padding: 0.5rem 0.85rem; font-size: 0.82rem; }
@@ -207,6 +287,20 @@
       .sync-leads-btn { padding: 0.55rem 0.75rem; min-height: 46px; font-size: 0.88rem; }
       .filter-archive-btn { padding: 0.5rem 0.75rem; min-height: 44px; font-size: 0.85rem; }
       .refresh-btn { padding: 0.45rem 0.75rem; min-height: 40px; font-size: 0.85rem; }
+      .sidebar-header { padding: 0.4rem 0.55rem; }
+      .sidebar-header .sync-leads-btn,
+      .sidebar-header .pvl-n8n-sync-btn,
+      .sidebar-header .pvl-geocode-missing-btn {
+        padding: 0.26rem 0.48rem;
+        font-size: 0.72rem;
+        min-height: 36px;
+      }
+      .sidebar-header .refresh-btn {
+        padding: 0.26rem 0.5rem;
+        min-height: 36px;
+        font-size: 0.72rem;
+      }
+      .sidebar-header .refresh-btn svg { width: 15px; height: 15px; }
       #pvl-toast { bottom: 4.25rem; max-width: min(420px, 94vw); }
     }
 
@@ -253,39 +347,103 @@
     .btn-mini-warn { background: #64748b; color: #fff; }
 
     .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 22px var(--pvl-resizer-w) var(--pvl-sidebar-w);
-      grid-template-rows: auto minmax(0, 1fr);
+      display: flex;
+      flex-direction: column;
       height: calc(100vh - 2.35rem);
       transition: opacity 0.25s ease;
     }
     .layout.app-loading { opacity: 0.72; pointer-events: none; }
 
-    /* Desktop: schmale Liste ohne Detail; mit Detail volle Breite; komplett eingeklappt nur Karte + Tab. */
+    /* Kartenfläche: volle Breite; Sidebar als Overlay RECHTS (Karte bleibt vollflächig). */
+    .pvl-map-area {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      max-width: 100vw;
+      isolation: isolate;
+    }
     @media (min-width: 768px) {
-      .layout:not(.pvl-is-mobile):not(.pvl-detail-open):not(.pvl-sidebar-collapsed) {
-        grid-template-columns: minmax(0, 1fr) 22px var(--pvl-resizer-w) minmax(260px, min(var(--pvl-sidebar-w), 360px));
+      .layout:not(.pvl-is-mobile) .map-wrap {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        min-width: 100%;
+        height: 100%;
+        z-index: 0;
       }
-      .layout:not(.pvl-is-mobile).pvl-detail-open:not(.pvl-sidebar-collapsed) {
-        grid-template-columns: minmax(0, 1fr) 22px var(--pvl-resizer-w) minmax(280px, var(--pvl-sidebar-w));
+      /* fixed: Deckung mit #pvl-layout per --pvl-sidebar-fixed-* (JS), nicht über globalen Header */
+      .layout:not(.pvl-is-mobile) .pvl-sidebar-dock {
+        position: fixed;
+        right: 0;
+        top: var(--pvl-sidebar-fixed-top, 0px);
+        height: var(--pvl-sidebar-fixed-height, 100vh);
+        left: auto;
+        bottom: auto;
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        /* Über Leaflet-Popup/Tooltip (1100/1110), damit Sidebar & Detail zuverlässig klickbar bleiben */
+        z-index: 1200;
+        max-width: 100%;
+        box-shadow: none;
+        pointer-events: none;
       }
-      .layout:not(.pvl-is-mobile).pvl-sidebar-collapsed {
-        grid-template-columns: minmax(0, 1fr) 22px 0 0 !important;
+      .layout:not(.pvl-is-mobile) .pvl-sidebar-dock-slide {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        flex: 1;
+        min-width: 0;
+        box-shadow: -6px 0 28px rgba(15, 23, 42, 0.14);
+        transition: transform 0.3s cubic-bezier(0.33, 0.72, 0.28, 1);
+        will-change: transform;
+        pointer-events: auto;
+      }
+      .layout:not(.pvl-is-mobile) .pvl-sidebar-dock > * {
+        pointer-events: auto;
+      }
+      .layout:not(.pvl-is-mobile).pvl-sidebar-collapsed .pvl-sidebar-dock {
+        pointer-events: none;
+      }
+      .layout:not(.pvl-is-mobile).pvl-sidebar-collapsed .pvl-sidebar-dock-slide {
+        transform: translateX(100%);
+        box-shadow: none;
+        pointer-events: none;
+      }
+      /* Toggle am linken Rand des Sidebar-Stacks; bei eingeklapptem Panel: Griff am rechten Viewport-Rand (nicht im transformierten Slide, sonst bricht `position:fixed`). */
+      .layout:not(.pvl-is-mobile) .pvl-sidebar-collapse-toggle {
+        pointer-events: auto;
+        position: absolute;
+        left: -30px;
+        right: auto;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 8px 0 0 8px;
+        box-shadow: -2px 2px 10px rgba(15, 23, 42, 0.08);
+        transition: background 0.15s ease, color 0.15s ease, right 0.3s cubic-bezier(0.33, 0.72, 0.28, 1), left 0.3s cubic-bezier(0.33, 0.72, 0.28, 1);
+      }
+      .layout:not(.pvl-is-mobile).pvl-sidebar-collapsed .pvl-sidebar-collapse-toggle {
+        position: fixed;
+        right: 0;
+        left: auto;
+        top: calc(var(--pvl-sidebar-fixed-top, 0px) + var(--pvl-sidebar-fixed-height, 100vh) * 0.5);
+        transform: translateY(-50%);
+        pointer-events: auto;
+      }
+      .layout:not(.pvl-is-mobile) .sidebar {
+        border-right: none;
+        border-left: 1px solid var(--pvl-border);
       }
     }
 
     .pvl-sidebar-collapse-toggle {
-      grid-column: 2;
-      grid-row: 2;
-      align-self: center;
-      justify-self: center;
-      z-index: 12;
+      z-index: 1202;
       width: 20px;
       height: 72px;
       margin: 0;
       padding: 0;
       border: 1px solid var(--pvl-border);
-      border-radius: 8px 0 0 8px;
       background: var(--pvl-surface);
       color: var(--pvl-accent);
       font-size: 1rem;
@@ -293,7 +451,6 @@
       line-height: 1;
       cursor: pointer;
       font-family: inherit;
-      box-shadow: -2px 2px 10px rgba(15, 23, 42, 0.08);
       transition: background 0.15s ease, color 0.15s ease;
     }
     .pvl-sidebar-collapse-toggle:hover {
@@ -307,23 +464,9 @@
     @media (max-width: 767px) {
       .pvl-sidebar-collapse-toggle { display: none !important; }
     }
-    .layout.pvl-sidebar-collapsed:not(.pvl-is-mobile) .sidebar,
-    .layout.pvl-sidebar-collapsed:not(.pvl-is-mobile) .sidebar-resizer {
-      visibility: hidden !important;
-      pointer-events: none !important;
-      width: 0 !important;
-      min-width: 0 !important;
-      max-width: 0 !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      border: none !important;
-      overflow: hidden !important;
-      opacity: 0;
-    }
+    /* Eingeklappt: nur der innere Slide (Resizer + Sidebar) wird weggeschoben; Toggle bleibt klickbar (s. transform auf .pvl-sidebar-dock-slide). */
 
     .map-wrap {
-      grid-column: 1;
-      grid-row: 2;
       min-height: 0;
       min-width: 0;
       position: relative;
@@ -338,10 +481,21 @@
       color-scheme: light;
       filter: none !important;
     }
+    /* Popups über anderen Map-Layern; Auto-Pan hält Sprechblase links der Sidebar (s. bindPopup-Padding) */
+    #map-wrap .leaflet-pane.leaflet-popup-pane {
+      z-index: 1100 !important;
+    }
+    #map-wrap .leaflet-pane.leaflet-tooltip-pane {
+      z-index: 1110 !important;
+    }
+    /* Lead-Detail: Interaktion sicher aktiv (über Map-Hintergrund) */
+    #sidebar-main {
+      pointer-events: auto;
+      position: relative;
+      z-index: 2;
+    }
 
     .sidebar-resizer {
-      grid-column: 3;
-      grid-row: 2;
       width: var(--pvl-resizer-w);
       min-width: var(--pvl-resizer-w);
       margin: 0;
@@ -352,21 +506,24 @@
       flex-shrink: 0;
       z-index: 5;
       touch-action: none;
+      align-self: stretch;
     }
     .sidebar-resizer:hover,
     .sidebar-resizer:focus-visible { background: linear-gradient(90deg, transparent, var(--pvl-accent) 40%, var(--pvl-accent) 60%, transparent); outline: none; }
     .sidebar-resizer.is-dragging { background: var(--pvl-accent); }
 
-    /* Stats (KPI-Leiste) */
+    /* Stats (KPI-Leiste) — standardmäßig ausgeblendet; siehe #pvl-stats-toggle */
     .stats {
-      grid-column: 1 / -1;
-      grid-row: 1;
-      display: flex;
+      flex-shrink: 0;
+      display: none;
       flex-direction: column;
       gap: 0.4rem;
       padding: 0.48rem 1rem 0.52rem;
       background: var(--pvl-surface);
       border-bottom: 1px solid var(--pvl-border);
+    }
+    #pvl-layout.pvl-stats-visible .stats {
+      display: flex;
     }
     .stats-row-primary {
       display: flex;
@@ -419,7 +576,7 @@
     .pvl-map-legend .pvl-ml-sub { font-size: 0.58rem; color: #64748b; margin-bottom: 0.22rem; }
     .pvl-map-legend .pvl-ml-row { display: flex; align-items: center; gap: 0.38rem; margin: 0.1rem 0; }
     .pvl-map-legend .pvl-ml-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(15,23,42,0.15); }
-    .pvl-map-legend .pvl-ml-pin { width: 14px; height: 14px; flex-shrink: 0; }
+    .pvl-map-legend .pvl-ml-pin { width: 15px; height: 20px; flex-shrink: 0; }
 
     .pvl-map-legend details.pvl-ml-details { margin: 0; padding: 0; }
     .pvl-map-legend details.pvl-ml-details > summary {
@@ -506,17 +663,56 @@
 
     /* Sidebar */
     .sidebar {
-      grid-column: 4;
-      grid-row: 2;
       background: var(--pvl-surface);
       border-left: 1px solid var(--pvl-border);
       display: flex;
       flex-direction: column;
       overflow: hidden;
       min-width: 0;
+      width: var(--pvl-sidebar-w);
+      max-width: min(var(--pvl-sidebar-w), 100%);
+      flex: 1 1 auto;
     }
-    .sidebar-header { padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--pvl-border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-    .sidebar-header h2 { font-size: 0.9rem; font-weight: 600; }
+    @media (min-width: 768px) {
+      .layout:not(.pvl-is-mobile):not(.pvl-detail-open):not(.pvl-sidebar-collapsed) .sidebar {
+        max-width: min(var(--pvl-sidebar-w), 360px);
+      }
+      .layout:not(.pvl-is-mobile).pvl-detail-open:not(.pvl-sidebar-collapsed) .sidebar {
+        max-width: min(var(--pvl-sidebar-w), min(520px, 100vw));
+      }
+    }
+    .sidebar-header {
+      padding: 0.42rem 0.65rem;
+      border-bottom: 1px solid var(--pvl-border);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+    .sidebar-header-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.28rem;
+      width: 100%;
+    }
+    .sidebar-header .sync-leads-btn,
+    .sidebar-header .pvl-n8n-sync-btn,
+    .sidebar-header .pvl-geocode-missing-btn {
+      padding: 0.2rem 0.46rem;
+      font-size: 0.68rem;
+      font-weight: 600;
+      border-radius: 5px;
+      line-height: 1.25;
+    }
+    .sidebar-header .refresh-btn {
+      padding: 0.2rem 0.46rem;
+      font-size: 0.68rem;
+      border-radius: 5px;
+      line-height: 1;
+    }
+    .sidebar-header .refresh-btn svg { width: 14px; height: 14px; }
     .sidebar-tabs {
       display: flex; gap: 0; border-bottom: 1px solid var(--pvl-border); flex-shrink: 0;
       background: var(--pvl-surface-2);
@@ -544,6 +740,27 @@
       border-bottom-color: var(--pvl-accent);
       background: var(--pvl-surface);
     }
+    .pvl-done-count-wrap { font-weight: 700; color: var(--pvl-muted); }
+    .pvl-lead-tabs { margin-top: 0; }
+    .pvl-lead-tabs .pvl-tab-count { font-variant-numeric: tabular-nums; opacity: 0.88; font-weight: 700; }
+    .pvl-lead-list-stack {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      border-top: 1px solid var(--pvl-border);
+    }
+    .pvl-lead-list-stack [role="tabpanel"] {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+      background: var(--pvl-surface);
+    }
+    .pvl-lead-list-stack [role="tabpanel"][hidden] {
+      display: none !important;
+    }
     .filter-bar { padding: 0.45rem 0.9rem; border-bottom: 1px solid var(--pvl-border); flex-shrink: 0; }
     .filter-bar input, .filter-bar select {
       width: 100%;
@@ -556,7 +773,7 @@
       color: var(--pvl-text);
     }
 
-    /* Liste + Detail: Detail ist ein Panel oberhalb der Liste (nicht daneben / nicht als Overlay). */
+    /* Liste + Suche oben, Lead-Detail unten in der Sidebar. */
     .sidebar-pane {
       position: relative;
       display: flex;
@@ -565,6 +782,13 @@
       min-height: 0;
       min-width: 0;
     }
+    .pvl-sidebar-top {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
     .sidebar-split {
       position: relative;
       display: flex;
@@ -572,38 +796,101 @@
       flex: 1;
       min-height: 0;
       min-width: 0;
+      overflow: hidden;
+      -webkit-overflow-scrolling: touch;
     }
     #sidebar-detail {
       position: relative;
       inset: auto;
-      z-index: 5;
+      z-index: 40;
       display: none;
       flex-direction: column;
-      overflow: hidden;
+      flex: 0 1 auto;
+      align-self: stretch;
+      min-height: 0;
+      max-height: min(92vh, 960px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
       background: var(--pvl-surface);
-      border-bottom: 1px solid var(--pvl-border);
-      max-height: min(92vh, 900px);
+      border-top: 1px solid var(--pvl-border);
+      flex-shrink: 0;
+      pointer-events: auto !important;
     }
-    #sidebar-detail.open { display: flex; animation: pvl-fade-in 0.22s ease-out; }
+    #sidebar-detail.open {
+      display: flex;
+      animation: pvl-fade-in 0.22s ease-out;
+      pointer-events: auto !important;
+    }
+    #sidebar-detail.open .detail-body {
+      flex: 0 0 auto;
+      min-height: 0;
+      overflow: visible;
+    }
     /* (historisch) `.sidebar-detail-open` wurde für Overlay genutzt; bleibt ohne Effekt für Kompatibilität. */
 
-    /* Lead list */
-    #lead-list { overflow-y: auto; flex: 1; scroll-behavior: smooth; min-height: 0; }
+    /* Lead list (Panels in .pvl-lead-list-stack) */
     .lead-item {
-      padding: 0.6rem 0.9rem;
-      border-bottom: 1px solid var(--pvl-border);
+      padding: 0.36rem 0.75rem;
+      border-bottom: 1px solid color-mix(in srgb, var(--pvl-border) 55%, #64748b 45%);
       cursor: pointer;
-      transition: background 0.18s ease, border-left-color 0.2s ease, transform 0.15s ease;
+      transition: background 0.15s ease, border-left-color 0.18s ease;
       border-left: 4px solid transparent;
     }
-    .lead-item:hover { background: var(--pvl-surface-2); transform: translateX(2px); }
-    .lead-item.active { background: var(--pvl-stat-bg); }
-    .lead-name {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 0.28rem;
-      font-weight: 600; font-size: 0.87rem;
+    .pvl-lead-list-stack [role="tabpanel"] .lead-item:nth-child(even):not(.active) {
+      background: rgba(241, 245, 249, 0.72);
     }
-    .lead-meta { font-size: 0.72rem; color: var(--pvl-muted); margin-top: 2px; }
-    .lead-betreut { font-size: 0.7rem; color: #059669; font-weight: 500; margin-top: 1px; }
+    html[data-theme="dark"] .pvl-lead-list-stack [role="tabpanel"] .lead-item:nth-child(even):not(.active) {
+      background: rgba(30, 41, 59, 0.55);
+    }
+    .lead-item:hover { background: var(--pvl-surface-2); }
+    .lead-item.active { background: var(--pvl-stat-bg); }
+    .lead-row1 {
+      display: flex;
+      align-items: center;
+      gap: 0.28rem;
+      min-width: 0;
+      font-size: 0.78rem;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--pvl-text);
+    }
+    .lead-row1-txt {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .lead-row1 .lead-row1-txt { font-weight: 600; }
+    .lead-address {
+      margin-top: 0.22rem;
+      font-size: 0.7rem;
+      line-height: 1.3;
+      min-width: 0;
+    }
+    .lead-address a {
+      color: var(--pvl-accent);
+      font-weight: 500;
+      text-decoration: none;
+      word-break: break-word;
+    }
+    .lead-address a:hover { text-decoration: underline; }
+    .lead-contact-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.35rem 0.75rem;
+      margin-top: 0.22rem;
+      font-size: 0.68rem;
+      line-height: 1.35;
+      color: var(--pvl-muted);
+    }
+    .lead-contact-row a { color: var(--pvl-accent); font-weight: 500; text-decoration: none; }
+    .lead-contact-row a:hover { text-decoration: underline; }
+    .lead-contact-phone { flex: 1 1 42%; min-width: 0; }
+    .lead-contact-email { flex: 1 1 42%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .lead-betreut { font-size: 0.65rem; color: #059669; font-weight: 500; margin-top: 0.2rem; line-height: 1.25; }
     .lead-map-warn-icon {
       flex-shrink: 0;
       display: inline-flex;
@@ -680,44 +967,125 @@
       color: var(--pvl-text);
     }
 
-    /* Lead-Detail Overlay (liegt über Tabs/Filter/Suche/Liste; Position: siehe `.sidebar-split`) */
+    /* Lead-Detail-Panel (unter der Liste) */
     .detail-back { padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--pvl-border); font-size: 0.82rem; color: var(--pvl-accent); cursor: pointer; flex-shrink: 0; }
     .detail-back:hover { background: var(--pvl-stat-bg); }
-    .detail-body { overflow-y: auto; flex: 1; padding: 0.55rem 0.72rem 0.65rem; }
+    .detail-body { overflow: visible; flex: 0 0 auto; padding: 0.55rem 0.72rem 0.65rem; }
     .detail-title { font-size: 0.98rem; font-weight: 700; margin-bottom: 0.4rem; padding-left: 0.45rem; }
+    .detail-title-input {
+      width: 100%; font-size: 0.98rem; font-weight: 700; margin-bottom: 0.4rem; padding: 0.35rem 0.45rem;
+      border: 1px solid var(--pvl-border); border-radius: 8px; background: var(--pvl-surface); color: var(--pvl-text);
+      font-family: inherit; box-sizing: border-box;
+    }
     .detail-info { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 0.78rem; margin-bottom: 0.55rem; }
     .detail-info b { color: var(--pvl-muted); white-space: nowrap; font-weight: 600; }
     .detail-info span { color: var(--pvl-text); word-break: break-word; }
+    .sd-info-compact {
+      font-size: 0.76rem;
+      margin-bottom: 0.45rem;
+      line-height: 1.35;
+    }
+    .sd-info-row-contact {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.35rem 0.45rem;
+      margin-bottom: 0.3rem;
+    }
+    .sd-info-row-contact .sd-info-cell { flex: 1 1 42%; min-width: 0; }
+    .sd-info-sep { color: var(--pvl-muted); font-weight: 700; flex: 0 0 auto; user-select: none; }
+    .sd-info-row-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.28rem 0.35rem;
+      margin-bottom: 0.32rem;
+      font-size: 0.74rem;
+      color: var(--pvl-text);
+    }
+    .sd-info-sep-inline { color: var(--pvl-muted); font-weight: 600; user-select: none; }
+    .sd-info-row-info { margin-top: 0.05rem; }
+    .sd-info-info-label {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--pvl-muted);
+      margin-bottom: 0.12rem;
+    }
+    .sd-info-info-body {
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--pvl-text);
+      font-size: 0.74rem;
+      line-height: 1.38;
+    }
     .field-group { margin-bottom: 0.45rem; }
     .field-group label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--pvl-muted); margin-bottom: 0.2rem; }
     .field-group input, .field-group textarea { width: 100%; padding: 0.32rem 0.5rem; border: 1px solid var(--pvl-border); border-radius: 6px; font-size: 0.8rem; font-family: inherit; background: var(--pvl-surface); color: var(--pvl-text); }
     .field-group textarea { resize: vertical; min-height: 52px; }
 
-    details.sd-contact-details {
-      margin-bottom: 0.45rem;
+    .field-group.sd-contact-details {
+      margin-bottom: 0.35rem;
       border: 1px solid var(--pvl-border);
       border-radius: 8px;
       background: var(--pvl-surface-2);
+      padding: 0.4rem 0.5rem 0.5rem;
     }
-    details.sd-contact-details > summary {
-      list-style: none;
-      cursor: pointer;
-      padding: 0.38rem 0.55rem;
-      font-size: 0.76rem;
-      font-weight: 700;
-      color: var(--pvl-accent);
-      user-select: none;
+    .sd-contact-details-body { padding: 0; }
+    .sd-contact-row-pair {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
+      flex-direction: row;
+      align-items: stretch;
+      gap: 0.35rem;
+      margin-bottom: 0.3rem;
     }
-    details.sd-contact-details > summary::-webkit-details-marker { display: none; }
-    details.sd-contact-details[open] > summary {
-      border-bottom: 1px solid var(--pvl-border);
+    .field-group.sd-contact-details .sd-contact-row-pair input {
+      width: auto;
+      flex: 1 1 0;
+      min-width: 0;
     }
-    .sd-contact-details-body { padding: 0.35rem 0.5rem 0.5rem; }
+    .field-group.sd-contact-details .sd-c-street {
+      width: 100%;
+      margin-top: 0;
+    }
+    .sd-contact-zipcity-row {
+      display: flex;
+      gap: 0.3rem;
+      margin-top: 0.3rem;
+    }
+    .field-group.sd-contact-details .sd-contact-zipcity-row input:first-of-type {
+      flex: 0 0 38%;
+      width: auto;
+      min-width: 0;
+    }
+    .field-group.sd-contact-details .sd-contact-zipcity-row input:last-of-type {
+      flex: 1 1 0;
+      width: auto;
+      min-width: 0;
+    }
+    @media (max-width: 380px) {
+      .sd-contact-row-pair {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .field-group.sd-contact-details .sd-contact-row-pair input {
+        width: 100%;
+      }
+    }
 
+    .sd-termin-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .sd-termin-datetime-row .sd-termin-input { width: 100%; max-width: 100%; }
+    .sd-termin-typ-wrap {
+      display: none;
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.28rem;
+    }
     .sd-termin-inline {
       display: flex;
       flex-wrap: wrap;
@@ -757,7 +1125,63 @@
       border-color: var(--pvl-accent);
       color: #fff;
     }
+    .sd-nachfass-kurz-lbl {
+      display: block;
+      margin-top: 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--pvl-text);
+    }
+    .sd-nachfass-kurz {
+      width: 100%;
+      margin-top: 0.22rem;
+      min-height: 2.4rem;
+      padding: 0.28rem 0.42rem;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      border-radius: 6px;
+      border: 1px solid var(--pvl-border);
+      background: var(--pvl-surface);
+      color: var(--pvl-text);
+      resize: vertical;
+    }
     .sd-hint-muted { font-size: 0.72rem; color: var(--pvl-muted); margin: 0 0 0.35rem 0; line-height: 1.35; }
+    .sd-reonic-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem 0.55rem;
+      margin-top: 0.25rem;
+    }
+    .btn-reonic {
+      background: #0f766e;
+      color: #fff;
+    }
+    .btn-reonic:hover:not(:disabled) { background: #0d9488; }
+    .btn-reonic-test {
+      background: transparent;
+      color: var(--pvl-accent);
+      border: 1px solid var(--pvl-border);
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 0.28rem 0.55rem;
+    }
+    .btn-reonic-test:hover:not(:disabled) {
+      background: var(--pvl-surface);
+      border-color: var(--pvl-accent);
+    }
+    .lead-reonic-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 1em;
+      height: 1em;
+      margin-right: 0.22rem;
+      color: #059669;
+      vertical-align: -0.12em;
+    }
+    .lead-reonic-icon svg { width: 100%; height: 100%; display: block; }
     .detail-actions { display: flex; gap: 0.45rem; margin-top: 0.45rem; flex-wrap: wrap; align-items: center; }
     .btn { padding: 0.4rem 0.9rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
     .btn-save { background: var(--pvl-accent); color: #fff; transition: background 0.18s ease, opacity 0.18s ease; }
@@ -818,6 +1242,22 @@
     .pvl-n8n-sync-btn.spin { animation: pvl-spin 0.75s linear infinite; }
     .sync-leads-btn svg { flex-shrink: 0; }
 
+    .pvl-geocode-missing-btn {
+      background: #6d28d9;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.28rem 0.55rem;
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.18s ease, opacity 0.18s ease;
+      display: none;
+      white-space: nowrap;
+    }
+    .pvl-geocode-missing-btn:hover:not(:disabled) { background: #5b21b6; }
+    .pvl-geocode-missing-btn:disabled { opacity: 0.72; cursor: wait; }
+
     #geo-status { display: none !important; }
 
     #sd-legacy-banner { display: none; padding: 0.45rem 0.9rem; background: #fef3c7; color: #92400e; font-size: 0.78rem; border-bottom: 1px solid #fcd34d; flex-shrink: 0; line-height: 1.35; }
@@ -828,15 +1268,18 @@
     }
     .sd-map-warn {
       display: none;
-      margin: 0 0 0.65rem 0;
-      padding: 0.55rem 0.7rem;
+      margin: 0 0 0.45rem 0;
+      padding: 0.32rem 0.55rem;
       background: #fef3c7;
       border: 1px solid #f59e0b;
-      border-radius: 8px;
+      border-radius: 6px;
       color: #92400e;
-      font-size: 0.8rem;
+      font-size: 0.74rem;
       font-weight: 600;
-      line-height: 1.4;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     html[data-theme="dark"] .sd-map-warn {
       background: #422006;
@@ -889,11 +1332,26 @@
       opacity: 0.72;
       color: #64748b;
     }
-    .lead-item.lead-archived .lead-name { color: #64748b; }
+    .lead-item.lead-archived .lead-row1 { color: #64748b; }
     .lead-item.lead-item-abgearbeitet:not(.active) {
       opacity: 0.88;
     }
     .leaflet-div-icon.pvl-pin-done { opacity: 0.62; filter: grayscale(0.55); }
+    .leaflet-tooltip.pvl-lead-marker-tooltip {
+      padding: 0.28rem 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      border-radius: 6px;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.2);
+    }
+    @keyframes pvl-marker-pulse {
+      0%, 100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+      45% { filter: brightness(1.2) drop-shadow(0 0 10px rgba(26, 86, 219, 0.85)); }
+    }
+    .leaflet-marker-icon.pvl-marker-pulse {
+      animation: pvl-marker-pulse 0.75s ease-out 0s 2;
+      z-index: 2500 !important;
+    }
     .status-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
     .status-btn {
       padding: 0.3rem 0.5rem; border-radius: 8px; border: 1px solid var(--pvl-border); background: var(--pvl-surface-2);
@@ -912,6 +1370,24 @@
     .field-group input:focus, .field-group textarea:focus, .field-group select:focus {
       outline: 2px solid #93c5fd; outline-offset: 1px; border-color: #2563eb;
     }
+    .field-group .flatpickr-input[readonly] { cursor: pointer; }
+    html[data-theme="dark"] .flatpickr-calendar {
+      background: #1e293b;
+      color: #f1f5f9;
+      border: 1px solid #334155;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+    }
+    html[data-theme="dark"] .flatpickr-months .flatpickr-month { background: #1e293b; color: #f1f5f9; }
+    html[data-theme="dark"] .flatpickr-weekdays { background: #1e293b; }
+    html[data-theme="dark"] .flatpickr-day { color: #e2e8f0; border-color: #334155; }
+    html[data-theme="dark"] .flatpickr-day:hover { background: #334155; }
+    html[data-theme="dark"] .flatpickr-day.selected,
+    html[data-theme="dark"] .flatpickr-day.startRange,
+    html[data-theme="dark"] .flatpickr-day.endRange {
+      background: #2563eb; border-color: #2563eb; color: #fff;
+    }
+    html[data-theme="dark"] .flatpickr-time { border-top: 1px solid #334155; }
+    html[data-theme="dark"] .flatpickr-time .flatpickr-am-pm { color: #e2e8f0; }
     .stats-kpi-val { transition: color 0.2s ease; }
 
     .pvl-map-legend-wrap.leaflet-bar {
@@ -924,6 +1400,33 @@
       pointer-events: auto !important;
     }
 
+    /* Maßstabsleiste (metrisch), aktualisiert sich bei Zoom/Pan automatisch */
+    .leaflet-container .leaflet-control-scale {
+      margin: 0 0 10px 10px !important;
+      border: 1px solid var(--pvl-border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 2px 12px rgba(15, 23, 42, 0.12);
+      padding: 4px 8px 6px;
+      line-height: 1.2;
+    }
+    html[data-theme="dark"] .leaflet-container .leaflet-control-scale {
+      background: rgba(30, 41, 59, 0.94);
+      border-color: rgba(148, 163, 184, 0.45);
+      box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35);
+    }
+    .leaflet-container .leaflet-control-scale-line {
+      border-color: var(--pvl-text) !important;
+      color: var(--pvl-text);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    @media (max-width: 767px) {
+      .layout.pvl-is-mobile.pvl-mobile-view-map .leaflet-bottom.leaflet-left {
+        margin-bottom: 56px;
+      }
+    }
+
     .leaflet-popup-content .popup-row a {
       color: #1a56db;
       text-decoration: underline;
@@ -933,12 +1436,14 @@
       color: #60a5fa;
     }
 
-    .detail-info a {
+    .detail-info a,
+    .sd-info-compact a {
       color: var(--pvl-accent);
       text-decoration: underline;
       word-break: break-word;
     }
-    .detail-info a:hover {
+    .detail-info a:hover,
+    .sd-info-compact a:hover {
       opacity: 0.88;
     }
 
@@ -968,6 +1473,8 @@
       #lead-list { scroll-behavior: auto; }
       #pvl-toast { transition: none; }
       .stats-kpi-val { transition: none; }
+      .layout:not(.pvl-is-mobile) .pvl-sidebar-dock-slide { transition: none !important; }
+      .layout:not(.pvl-is-mobile) .pvl-sidebar-collapse-toggle { transition: background 0.15s ease, color 0.15s ease !important; }
     }
   </style>
 </head>
@@ -978,6 +1485,7 @@
     <span class="header-sun" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></span>
     <div class="header-title-block">
       <h1>NOORTEC Vertriebs-Dashboard</h1>
+      <button type="button" class="header-stats-toggle" id="pvl-stats-toggle" aria-pressed="false" aria-expanded="false" title="Statistiken einblenden" aria-label="Statistiken ein- oder ausblenden">Statistiken</button>
     </div>
   </div>
   <div class="header-actions">
@@ -991,7 +1499,7 @@
     <button type="button" class="header-sync-leads" id="btn-sync-leads-header" onclick="syncLeadsFromN8n()" title="n8n-Workflow ausführen und Leads aktualisieren">Leads synchronisieren</button>
     <a href="/api/export/leads.csv" class="header-export" id="link-export-csv" download="leads_export.csv">CSV Export</a>
     <!-- Import bewusst nur neben der Leadliste (nicht in der Kopfzeile). -->
-    <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <button type="button" class="header-theme-toggle" id="pvl-theme-toggle" title="Dunkles Design aktivieren" aria-label="Zu dunklem NOORTEC-Design wechseln"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9a9 9 0 1 1-9-9"/></svg></button>
     <span style="font-size:0.74rem"><a href="/profile" style="color:#fff;text-decoration:underline">Profil</a></span>
     <span style="font-size:0.74rem"><a href="/admin/users" style="color:#fff;text-decoration:underline">Admin</a></span>
     <span style="font-size:0.74rem"><a href="#" id="logout-link" style="color:#fff;text-decoration:underline">Abmelden</a></span>
@@ -1030,105 +1538,33 @@
     </div>
   </div>
 
-  <!-- Map -->
+  <!-- Map (volle Fläche) + Sidebar als Overlay rechts -->
+  <div class="pvl-map-area">
   <div class="map-wrap" id="map-wrap">
     <div id="map"></div>
   </div>
+  <div class="pvl-sidebar-dock" id="pvl-sidebar-dock">
   <button type="button" class="pvl-sidebar-collapse-toggle" id="pvl-sidebar-collapse-toggle" aria-controls="sidebar-main" aria-expanded="true" title="Sidebar ausblenden (mehr Karte)">‹</button>
+  <div class="pvl-sidebar-dock-slide">
   <button type="button" class="sidebar-resizer" id="sidebar-resizer" aria-label="Sidebar-Breite anpassen"></button>
-
   <!-- Sidebar (NOORTEC) -->
   <div class="sidebar" id="sidebar-main" aria-label="NOORTEC Lead-Bereich">
     <div class="sidebar-header">
-      <h2>Leads (<span id="lead-count">0</span>)</h2>
-      <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;justify-content:flex-end">
+      <div class="sidebar-header-actions" role="toolbar" aria-label="Aktionen für die Lead-Liste">
         <button type="button" class="sync-leads-btn pvl-csv-upload-btn pvl-admin-only" onclick="openCsvImportModal()" title="Leads manuell per CSV (Copy/Paste) importieren" aria-label="Leads hochladen (CSV)">Leads hochladen</button>
+        <button type="button" class="pvl-geocode-missing-btn pvl-admin-only" id="btn-geocode-missing" onclick="runGeocodeMissingLeads()" title="Alle aktiven Leads ohne gültigen Kartenstandort nacheinander geocodieren (kann einige Minuten dauern)" aria-label="Koordinaten für alle Leads ohne Standort aktualisieren">Koordinaten für alle Leads ohne Standort aktualisieren</button>
         <button type="button" class="pvl-n8n-sync-btn pvl-admin-only" onclick="syncLeadsFromN8n()" title="Neue Leads per n8n-Webhook synchronisieren" aria-label="Leads per Webhook synchronisieren">Leads synchronisieren</button>
         <button type="button" class="refresh-btn" onclick="loadLeads()" title="Liste neu laden" aria-label="Lead-Liste neu laden"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg></button>
       </div>
     </div>
     <div class="sidebar-split" id="sidebar-split">
     <div class="sidebar-pane" id="sidebar-pane">
-    <div id="sidebar-detail">
-      <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste · NOORTEC</div>
-      <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem zweiten Lead-Blatt (Legacy) — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
-      <div class="detail-body">
-        <div class="detail-title" id="sd-name"></div>
-        <p style="margin:0 0 0.5rem 0">
-          <button type="button" class="btn" id="btn-copy-lead-plain" style="background:#475569;color:#fff;font-size:0.78rem;padding:0.32rem 0.65rem" onclick="copyLeadPlainNoLabels()">Lead-Daten kopieren (NOORTEC)</button>
-        </p>
-        <div id="sd-map-warn" class="sd-map-warn" role="alert"></div>
-        <div class="detail-info" id="sd-info"></div>
-        <details class="sd-contact-details" id="sd-contact-details">
-          <summary>Kontaktdaten bearbeiten</summary>
-          <div class="sd-contact-details-body">
-            <div class="field-group" id="sd-contact-wrap" style="margin-bottom:0.35rem">
-              <input type="email" id="sd-c-email" placeholder="E-Mail" autocomplete="email" />
-              <input type="tel" id="sd-c-phone" placeholder="Telefon" autocomplete="tel" style="margin-top:0.3rem" />
-              <input type="text" id="sd-c-street" placeholder="Straße" autocomplete="street-address" style="margin-top:0.3rem" />
-              <div style="display:flex;gap:0.3rem;margin-top:0.3rem">
-                <input type="text" id="sd-c-zip" placeholder="PLZ" autocomplete="postal-code" style="flex:0 0 38%" />
-                <input type="text" id="sd-c-city" placeholder="Ort" autocomplete="address-level2" style="flex:1" />
-              </div>
-            </div>
-          </div>
-        </details>
-        <div class="field-group" id="sd-setter-assign-wrap" style="display:none">
-          <label>Betreut durch</label>
-          <p class="sd-hint-muted">Vertriebler zuweisen (NOORTEC) — ein Klick setzt den zuständigen Vertrieb für Terminbestätigung und Kunden-E-Mail.</p>
-          <div class="chip-row" id="sd-setter-sales-chips" aria-label="Vertriebler per Login zuweisen"></div>
-        </div>
-        <div class="field-group" id="sd-betreut-field-wrap">
-          <label>Betreut Durch</label>
-          <input type="text" id="sd-betreut" placeholder="Name des Vertrieblers" />
-        </div>
-        <div class="field-group">
-          <label>Notizen</label>
-          <textarea id="sd-notizen" placeholder="Notizen zum Lead…"></textarea>
-        </div>
-        <div class="field-group">
-          <label>Status</label>
-          <div id="sd-status-bar" class="status-bar" aria-label="Status wählen"></div>
-        </div>
-        <div class="field-group" id="sd-nachfass-wrap" style="display:none">
-          <label>Nachfass bis</label>
-          <input type="date" id="sd-nachfass" />
-        </div>
-        <div class="field-group" id="sd-termin-wrap" style="display:none">
-          <label>Termin</label>
-          <div class="sd-termin-inline">
-            <input type="datetime-local" id="sd-termin" class="sd-termin-input" step="900" title="Zeit in 15-Minuten-Schritten" />
-            <div class="sd-termin-typ-pills" role="group" aria-label="Termintyp">
-              <label class="sd-termin-pill"><input type="radio" name="sd-termin-typ" value="vor_ort" /> Vor-Ort</label>
-              <label class="sd-termin-pill"><input type="radio" name="sd-termin-typ" value="online" /> Online</label>
-            </div>
-          </div>
-        </div>
-        <div class="field-group" id="sd-meet-wrap" style="display:none">
-          <label>Google Meet-Link (optional)</label>
-          <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
-        </div>
-        <div class="field-group" id="sd-betreut-chips-wrap">
-          <label>Betreut durch (Benutzer)</label>
-          <div class="chip-row" id="sd-betreut-chips"></div>
-        </div>
-        <div class="detail-actions" style="flex-wrap:wrap">
-          <button type="button" class="btn btn-cal" id="btn-cal-appointment" onclick="openCalendarAppointment()">Termin und Kalender</button>
-          <button type="button" class="btn btn-save" id="btn-restore-archive" style="display:none;background:#15803d" onclick="restoreLeadFromArchive()">Wiederherstellen</button>
-          <button type="button" class="btn btn-save" id="btn-save" onclick="saveFields()">Speichern</button>
-          <span class="save-hint" id="save-hint">Gespeichert!</span>
-        </div>
-
-      </div>
-    </div>
-    <div class="sidebar-tabs" role="tablist" aria-label="NOORTEC Lead-Listen">
-      <button type="button" class="sidebar-tab is-active" id="tab-leads-active" role="tab" aria-selected="true" aria-controls="lead-list" onclick="setSidebarListTab('active')">Aktive Leads</button>
-      <button type="button" class="sidebar-tab" id="tab-leads-done" role="tab" aria-selected="false" aria-controls="lead-list" onclick="setSidebarListTab('done')">Abgearbeitet</button>
-    </div>
+    <div class="pvl-sidebar-top">
     <details class="pvl-filter-panel" id="pvl-filter-panel">
-      <summary>Filter &amp; Sortierung</summary>
+      <summary>Sortierung &amp; Filter</summary>
       <div class="pvl-filter-body">
         <label class="pvl-filter-check"><input type="checkbox" id="filter-geo-only-missing" /> Nur ohne Kartenpunkt anzeigen</label>
+        <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()" style="margin-bottom:0.45rem"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
         <input type="hidden" id="filter-betreuer" value="" />
         <span class="pvl-filter-lbl">Vertriebler</span>
         <div class="pvl-betreuer-pills" role="group" aria-label="Leads nach Zuweisung filtern">
@@ -1138,7 +1574,7 @@
         </div>
         <span class="pvl-filter-lbl">Status</span>
         <select id="filter-status" aria-label="Nach Status filtern">
-          <option value="">Alle (nach Tab)</option>
+          <option value="">Alle (im aktuellen Tab)</option>
           <option value="aktiv">Aktiv</option>
           <option value="terminiert">Terminiert</option>
           <option value="verloren">Verloren</option>
@@ -1158,10 +1594,112 @@
       <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
     </div>
+    <div class="sidebar-tabs pvl-lead-tabs" role="tablist" aria-label="Lead-Liste">
+      <button type="button" class="sidebar-tab is-active" role="tab" id="pvl-tab-sidebar-active" aria-selected="true" aria-controls="lead-list" data-pvl-side-tab="active">
+        Aktive Leads <span class="pvl-tab-count" id="lead-count">0</span>
+      </button>
+      <button type="button" class="sidebar-tab" role="tab" id="pvl-tab-sidebar-nachfassen" aria-selected="false" aria-controls="lead-list-nachfassen" data-pvl-side-tab="nachfassen">
+        Nachfassen <span class="pvl-tab-count" id="pvl-nachfass-count">0</span>
+      </button>
+      <button type="button" class="sidebar-tab" role="tab" id="pvl-tab-sidebar-done" aria-selected="false" aria-controls="lead-list-done" data-pvl-side-tab="done">
+        Abgearbeitete Leads <span class="pvl-tab-count" id="pvl-done-count">0</span>
+      </button>
+    </div>
     <div id="geo-status"></div>
-      <div id="lead-list" role="tabpanel" aria-label="NOORTEC Lead-Liste"></div>
+    <div class="pvl-lead-list-stack" id="pvl-lead-list-stack">
+      <div id="lead-list" role="tabpanel" aria-labelledby="pvl-tab-sidebar-active" aria-label="Aktive NOORTEC-Leads"></div>
+      <div id="lead-list-nachfassen" role="tabpanel" aria-labelledby="pvl-tab-sidebar-nachfassen" aria-label="Zurückgestellte Nachfassen-Leads" hidden></div>
+      <div id="lead-list-done" role="tabpanel" aria-labelledby="pvl-tab-sidebar-done" aria-label="Abgearbeitete Leads" hidden></div>
+    </div>
+    </div>
+    <div id="sidebar-detail">
+      <div class="detail-back" onclick="closeSidebarDetail()">← Zurück zur Liste · NOORTEC</div>
+      <div id="sd-legacy-banner">Nur Lesen: Eintrag aus dem zweiten Lead-Blatt (Legacy) — Speichern und „Abgearbeitet“ gelten nur für Leads im Hauptblatt.</div>
+      <div class="detail-body">
+        <label class="field-group" style="margin-bottom:0.35rem"><span class="sd-hint-muted" style="display:block;font-size:0.68rem;margin-bottom:0.15rem">Name (Nachname + Vorname)</span>
+        <input type="text" id="sd-c-name" class="detail-title-input" placeholder="Name des Leads" autocomplete="name" /></label>
+        <div id="sd-map-warn" class="sd-map-warn" role="alert"></div>
+        <div class="sd-info-compact" id="sd-info"></div>
+        <div class="field-group" id="sd-setter-assign-wrap" style="display:none">
+          <label>Betreut durch</label>
+          <p class="sd-hint-muted">Vertriebler zuweisen (NOORTEC) — ein Klick setzt den zuständigen Vertrieb für Terminbestätigung und Kunden-E-Mail.</p>
+          <div class="chip-row" id="sd-setter-sales-chips" aria-label="Vertriebler per Login zuweisen"></div>
+        </div>
+        <div class="field-group" id="sd-betreut-chips-wrap">
+          <label>Betreut durch</label>
+          <div class="chip-row" id="sd-betreut-chips" aria-label="Betreuer wählen"></div>
+        </div>
+        <div class="field-group">
+          <label>Notizen</label>
+          <textarea id="sd-notizen" placeholder="Notizen zum Lead…"></textarea>
+        </div>
+        <div class="field-group">
+          <label>Status</label>
+          <div id="sd-status-bar" class="status-bar" aria-label="Status wählen"></div>
+        </div>
+        <div class="field-group" id="sd-nachfass-wrap" style="display:none">
+          <label>Nachfass bis</label>
+          <input type="text" id="sd-nachfass" class="pvl-fp-nachfass" placeholder="Datum wählen…" inputmode="none" autocomplete="off" title="Kalender" />
+          <label class="sd-nachfass-kurz-lbl" for="sd-nachfass-kurz">Kurznotiz</label>
+          <textarea id="sd-nachfass-kurz" class="sd-nachfass-kurz" rows="2" placeholder="Kurze Notiz zum Nachfassen…" autocomplete="off"></textarea>
+        </div>
+        <div class="field-group" id="sd-termin-wrap" style="display:none">
+          <label>Termin</label>
+          <div class="sd-termin-block">
+            <div class="sd-termin-datetime-row">
+              <input type="text" id="sd-termin" class="sd-termin-input pvl-fp-termin" inputmode="none" autocomplete="off" placeholder="Datum &amp; Uhrzeit (Kalender)…" title="Kalender &amp; Uhrzeit, 15-Minuten-Schritte" />
+            </div>
+            <div id="sd-termin-typ-wrap" class="sd-termin-typ-wrap" aria-hidden="true">
+              <div class="sd-termin-typ-pills" role="group" aria-label="Termintyp">
+                <label class="sd-termin-pill"><input type="radio" name="sd-termin-typ" value="vor_ort" /> Vor-Ort</label>
+                <label class="sd-termin-pill"><input type="radio" name="sd-termin-typ" value="online" /> Online</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field-group" id="sd-meet-wrap" style="display:none">
+          <label>Google Meet-Link (optional)</label>
+          <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
+        </div>
+        <div class="field-group" id="sd-reonic-wrap" style="display:none">
+          <label>Reonic</label>
+          <p class="sd-hint-muted" id="sd-reonic-disabled-hint" style="display:none">Reonic ist auf dem Server nicht konfiguriert (REONIC_API_KEY in der .env).</p>
+          <div class="sd-reonic-row" id="sd-reonic-actions">
+            <button type="button" class="btn btn-reonic" id="btn-reonic-send">An Reonic senden</button>
+            <button type="button" class="btn btn-reonic-test" id="btn-reonic-test">Verbindung testen</button>
+          </div>
+          <p class="sd-hint-muted" id="sd-reonic-sent-hint" style="display:none;margin-top:0.35rem"></p>
+        </div>
+        <div class="field-group sd-contact-details" id="sd-contact-details" style="margin-top:0.5rem">
+          <span class="sd-hint-muted" style="display:block;font-size:0.68rem;margin-bottom:0.2rem">Kontakt &amp; Adresse (direkt bearbeitbar)</span>
+          <div class="sd-contact-details-body" id="sd-contact-wrap">
+            <div class="sd-contact-row-pair">
+              <input type="email" id="sd-c-email" placeholder="E-Mail" autocomplete="email" />
+              <input type="tel" id="sd-c-phone" placeholder="Telefon" autocomplete="tel" />
+            </div>
+            <input type="text" id="sd-c-street" class="sd-c-street" placeholder="Straße" autocomplete="street-address" />
+            <div class="sd-contact-zipcity-row">
+              <input type="text" id="sd-c-zip" placeholder="PLZ" autocomplete="postal-code" />
+              <input type="text" id="sd-c-city" placeholder="Ort" autocomplete="address-level2" />
+            </div>
+          </div>
+        </div>
+        <div class="detail-actions" style="flex-wrap:wrap;align-items:center;gap:0.5rem">
+          <button type="button" class="btn btn-mini btn-mini-save" id="btn-detail-save" title="Notizen, Kontakt und Terminfelder speichern">Speichern</button>
+          <button type="button" class="btn btn-cal" id="btn-cal-appointment" style="display:none">Termin in Kalender eintragen</button>
+          <button type="button" class="btn" id="btn-create-offer" style="background:#e7a13a;color:#fff" title="PV-Angebot für diesen Kunden erstellen" onclick="openOfferForActiveLead()">Angebot senden</button>
+          <button type="button" class="btn btn-save" id="btn-restore-archive" style="display:none;background:#15803d" onclick="restoreLeadFromArchive()">Wiederherstellen</button>
+          <span class="save-hint" id="save-hint">Gespeichert!</span>
+        </div>
+
+      </div>
+    </div>
+    </div>
     </div>
     <button type="button" class="sidebar-foot-warn is-hidden" id="sidebar-foot-warn" aria-label="Hinweis Leads ohne Kartenpunkt"></button>
+  </div>
+  </div>
+  </div>
   </div>
 </div>
 
@@ -1194,11 +1732,8 @@
       <div style="color:var(--pvl-muted);font-size:0.85rem;line-height:1.45;margin-bottom:0.55rem">
         Pro Zeile: <code style="font-size:0.82rem">Name, Telefon, E-Mail, Straße, PLZ, Ort, Land, Quelle, Datum, Info</code>
       </div>
-      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--pvl-text);margin:0.15rem 0">
-        <input type="checkbox" id="csv-import-has-header" /> Erste Zeile ist Header (überspringen)
-      </label>
       <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:var(--pvl-text);margin:0.15rem 0 0.55rem">
-        <input type="checkbox" id="csv-import-skip-geocode" /> Import ohne Geocoding (schneller, Karte ggf. ohne Punkt)
+        <input type="checkbox" id="csv-import-has-header" /> Erste Zeile ist Header (überspringen)
       </label>
       <textarea id="csv-import-text" rows="10" style="width:100%;padding:0.6rem;border:1px solid var(--pvl-border);border-radius:10px;font-size:0.86rem;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;resize:vertical" placeholder="Reitinger Thomas, 0043 664 ..., thomas@example.com, Eglseegasse 7, 1120, Wien, Österreich, pv-ersparnis.at, 2026-03-20, Mehrfamilienhaus ..."></textarea>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.65rem">
@@ -1213,9 +1748,17 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=pvl1.2"></script>
 <script>
-  /** Session-Cookie: `credentials: 'include'` sendet das Cookie zuverlässig mit. */
+  // ── Karten-Konfig (vor L.map) ──
+  const PVL_MAP_DEFAULT_VIEW = { center: [48.21, 16.37], zoom: 9 };
+  const PVL_MAP_MAX_ZOOM = 21;
+
+  /** Session-Cookie: `credentials: 'include'` sendet das Cookie zuverlässig mit. Immer relative URLs (`/api/…`), nie `http://localhost:3080`. */
   function apiFetch(url, opts = {}) {
-    return fetch(url, { ...opts, credentials: 'include' });
+    const u = String(url || '');
+    if (/^https?:\/\//i.test(u)) {
+      console.warn('[NOORTEC] apiFetch: absolute URL vermeiden (Mixed-Content / falsche Hosts):', u);
+    }
+    return fetch(u, { cache: 'no-store', ...opts, credentials: 'include' });
   }
 
   /** Relativer Rückweg nach Login — verhindert `/https://…` und Redirect-Loops im `next`. */
@@ -1244,6 +1787,64 @@
     el.textContent = msg;
     requestAnimationFrame(() => el.classList.add('show'));
     _toastTimer = setTimeout(() => el.classList.remove('show'), kind === 'ok' ? 3200 : kind === 'info' ? 4000 : 5200);
+  }
+
+  const PVL_LS_NACHFASS_TOAST = 'pvl_nachfass_reactivated_toast_v1';
+
+  function pvlNachfassToastStorageKey() {
+    const u = window.__pvlSessionUser && window.__pvlSessionUser.username;
+    return PVL_LS_NACHFASS_TOAST + (u ? ':' + String(u) : '');
+  }
+
+  function pvlNachfassToastStateRead() {
+    try {
+      const raw = localStorage.getItem(pvlNachfassToastStorageKey());
+      const o = raw ? JSON.parse(raw) : {};
+      return o && typeof o === 'object' ? o : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function pvlNachfassToastStateWrite(obj) {
+    try {
+      localStorage.setItem(pvlNachfassToastStorageKey(), JSON.stringify(obj));
+    } catch (_) { /* ignore */ }
+  }
+
+  /**
+   * Einmal-Hinweis nach Login/Laden: Lead mit „Nachfassen“ ist wieder fällig (Datum erreicht/überschritten).
+   * Kein Toast vor dem eingestellten Datum; erneuter Toast nach neuer „Nachfass bis“-Periode.
+   */
+  function pvlMaybeToastNachfassReactivated() {
+    if (!Array.isArray(allLeads) || !allLeads.length) return;
+    const today = pvlTodayLocalYmd();
+    const state = pvlNachfassToastStateRead();
+    const pending = [];
+    for (let i = 0; i < allLeads.length; i += 1) {
+      const lead = allLeads[i];
+      if (isCrmArchived(lead)) continue;
+      if (normalizeStatusDisplay(lead[COL.status] || '') !== 'Nachfassen') continue;
+      const bis = pvlNachfassBisYmd(lead);
+      if (!bis) continue;
+      if (bis > today) continue;
+      const lk = leadKey(lead);
+      if (state[lk] === bis) continue;
+      pending.push({ lead, lk, bis });
+    }
+    if (!pending.length) return;
+    const next = { ...state };
+    let msg;
+    if (pending.length === 1) {
+      const name = String(pending[0].lead[COL.name] || '').trim() || 'Ein Lead';
+      msg = name + ' ist wieder in der aktiven Liste (Nachfassen fällig).';
+      next[pending[0].lk] = pending[0].bis;
+    } else {
+      msg = String(pending.length) + ' Leads sind wieder in der aktiven Liste (Nachfassen fällig).';
+      for (let j = 0; j < pending.length; j += 1) next[pending[j].lk] = pending[j].bis;
+    }
+    pvlNachfassToastStateWrite(next);
+    showToast(msg, 'ok');
   }
 
   let syncLeadsInFlight = false;
@@ -1305,11 +1906,6 @@
     const err = document.getElementById('csv-import-errors');
     if (res) res.textContent = '';
     if (err) err.textContent = '';
-    const skip = document.getElementById('csv-import-skip-geocode');
-    if (skip && skip.checked === false && skip.dataset && !skip.dataset.pvlTouched) {
-      // Default: schneller Import ohne Geocoding, User kann aktiv abwählen.
-      skip.checked = true;
-    }
     const ta = document.getElementById('csv-import-text');
     setTimeout(() => { try { ta && ta.focus(); } catch (_) { /* ignore */ } }, 0);
   }
@@ -1330,12 +1926,10 @@
     if (errEl) errEl.textContent = '';
     try {
       const hasHeader = !!document.getElementById('csv-import-has-header')?.checked;
-      const skipGeocodeEl = document.getElementById('csv-import-skip-geocode');
-      const skipGeocode = !!skipGeocodeEl?.checked;
       const r = await apiFetch('/api/admin/import-leads-csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvText, hasHeader, skipGeocode }),
+        body: JSON.stringify({ csvText, hasHeader }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.status === 401 && j.error === 'login_required') {
@@ -1382,20 +1976,204 @@
     }
   }
 
-  /** Nach POST /status: REONIC-Erfolg kombiniert, Fehler diskret zweizeilig. */
+  let _pvlGeocodeMissingBusy = false;
+  async function runGeocodeMissingLeads() {
+    if (_pvlGeocodeMissingBusy) return;
+    const btn = document.getElementById('btn-geocode-missing');
+    _pvlGeocodeMissingBusy = true;
+    if (btn) btn.disabled = true;
+    try {
+      let n = 0;
+      try {
+        const rc = await apiFetch('/api/leads/missing-coords/count');
+        const jc = await rc.json().catch(() => ({}));
+        if (rc.ok && jc.count != null) n = Number(jc.count) || 0;
+      } catch (_) { /* ignore */ }
+      showToast(n > 0 ? `Geocoding läuft… ${n} Lead(s) werden verarbeitet.` : 'Geocoding läuft…', 'info');
+      const r = await apiFetch('/api/leads/geocode-missing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401 && j.error === 'login_required') {
+        window.location.href = '/login.html?next=' + encodeURIComponent(pvlSafeReturnPath());
+        return;
+      }
+      if (r.status === 401 && j.error === 'Unauthorized') {
+        showToast('Nur für Admins verfügbar.', 'err');
+        return;
+      }
+      if (!r.ok) {
+        showToast(j.error || r.statusText || 'Geocoding fehlgeschlagen.', 'err');
+        return;
+      }
+      const okC = Number(j.withCoords) || 0;
+      const miss = Number(j.stillMissing) || 0;
+      const errN = Array.isArray(j.errors) ? j.errors.length : 0;
+      const kind = errN > 0 ? 'info' : 'ok';
+      showToast(`Geocoding fertig: ${okC} mit Koordinaten, ${miss} weiterhin ohne Punkt${errN ? `, ${errN} Fehler` : ''}.`, kind);
+      await loadLeads();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    } finally {
+      _pvlGeocodeMissingBusy = false;
+      if (btn) btn.disabled = false;
+    }
+  }
+
   function toastAfterLeadStatusSave(j, baseOkMsg) {
-    const r = j && j.reonic;
-    const base = baseOkMsg || 'Status gespeichert';
-    if (r && r.synced === true) {
-      showToast('Status aktualisiert & Lead an REONIC übertragen', 'ok');
+    showToast(baseOkMsg || 'Status gespeichert', 'ok');
+  }
+
+  /** Nach „Termin vereinbart“: optional Reonic-Übertragung (nur bei Bestätigung). */
+  async function maybeOfferReonicTransfer(j, ctx) {
+    if (!j || !j.reonicOfferSuggested || !j.pvlDbId) return;
+    const msg = 'Kunde an Reonic übermitteln?';
+    if (!window.confirm(msg)) return;
+    try {
+      const r = await apiFetch('/api/leads/reonic-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dbId: j.pvlDbId }),
+      });
+      const jr = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(jr.error || 'Reonic-Übertragung fehlgeschlagen', 'err');
+        return;
+      }
+      showToast('Erfolgreich an Reonic übertragen', 'ok');
+      const key = ctx && ctx.leadKeyStr;
+      if (key) {
+        const lead = allLeads.find((l) => leadKey(l) === key);
+        if (lead) {
+          lead.reonic_status = 'success';
+          if (jr.reonicId) lead.reonic_id = String(jr.reonicId);
+          lead.reonic_exported = 1;
+          lead.reonic_transferred = 1;
+          lead.reonic_synced = 1;
+        }
+      } else if (ctx && ctx.pvlDbId != null) {
+        const lead = allLeads.find((l) => Number(l.pvlDbId) === Number(ctx.pvlDbId));
+        if (lead) {
+          lead.reonic_status = 'success';
+          if (jr.reonicId) lead.reonic_id = String(jr.reonicId);
+          lead.reonic_exported = 1;
+          lead.reonic_transferred = 1;
+          lead.reonic_synced = 1;
+        }
+      }
+      syncReonicDetailUi();
+      renderList();
+      renderMarkers();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
+  }
+
+  function isLeadReonicTransferred(lead) {
+    if (!lead) return false;
+    if (String(lead.reonic_id || '').trim()) return true;
+    if (String(lead.reonic_status || '').trim().toLowerCase() === 'success') return true;
+    if (Number(lead.reonic_exported) === 1 || Number(lead.reonic_transferred) === 1 || Number(lead.reonic_synced) === 1) {
+      return true;
+    }
+    return false;
+  }
+
+  function syncReonicDetailUi(lead) {
+    const rowLead = lead || (activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null);
+    const wrap = document.getElementById('sd-reonic-wrap');
+    const btnSend = document.getElementById('btn-reonic-send');
+    const btnTest = document.getElementById('btn-reonic-test');
+    const hintSent = document.getElementById('sd-reonic-sent-hint');
+    const hintCfg = document.getElementById('sd-reonic-disabled-hint');
+    const actions = document.getElementById('sd-reonic-actions');
+    if (!wrap || !btnSend || !btnTest) return;
+    const st = normalizeStatusDisplay(detailCurrentStatus);
+    const session = window.__pvlSessionUser || {};
+    const configured = session.reonicConfigured === true;
+    const termin = st === 'Termin vereinbart';
+    const readOnly = !rowLead || rowLead.__pvlLegacy || isCrmArchived(rowLead);
+    if (!termin || readOnly) {
+      wrap.style.display = 'none';
       return;
     }
-    if (r && r.ok === false && r.discreetHint) {
-      showToast(base, 'ok');
-      setTimeout(() => showToast(r.discreetHint, 'info'), 480);
+    wrap.style.display = 'block';
+    if (hintCfg) hintCfg.style.display = configured ? 'none' : 'block';
+    if (actions) actions.style.display = 'flex';
+    btnTest.disabled = activeIsLegacy;
+    const transferred = rowLead && isLeadReonicTransferred(rowLead);
+    btnSend.style.display = transferred || !configured ? 'none' : 'inline-flex';
+    btnSend.disabled = !configured || activeIsLegacy || transferred;
+    if (!configured) {
+      if (hintSent) hintSent.style.display = 'none';
       return;
     }
-    showToast(base, 'ok');
+    if (hintSent) {
+      if (transferred) {
+        hintSent.style.display = 'block';
+        const rid = rowLead && String(rowLead.reonic_id || '').trim();
+        hintSent.textContent = rid
+          ? 'Bereits an Reonic übermittelt (ID: ' + rid.slice(0, 80) + ').'
+          : 'Bereits an Reonic übermittelt.';
+      } else {
+        hintSent.style.display = 'none';
+        hintSent.textContent = '';
+      }
+    }
+  }
+
+  async function sendReonicFromDetail() {
+    if (activeIsLegacy) {
+      showToast('Legacy-Lead: Reonic nicht verfügbar.', 'info');
+      return;
+    }
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (!rowLead || isCrmArchived(rowLead)) return;
+    if (!rowLead.pvlDbId) {
+      showToast('Keine Datenbank-ID für diesen Lead.', 'err');
+      return;
+    }
+    if (isLeadReonicTransferred(rowLead)) return;
+    try {
+      const r = await apiFetch('/api/leads/reonic-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dbId: rowLead.pvlDbId }),
+      });
+      const jr = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(jr.error || 'Reonic-Übertragung fehlgeschlagen', 'err');
+        return;
+      }
+      showToast('Erfolgreich an Reonic übertragen', 'ok');
+      rowLead.reonic_status = 'success';
+      if (jr.reonicId) rowLead.reonic_id = String(jr.reonicId);
+      rowLead.reonic_exported = 1;
+      rowLead.reonic_transferred = 1;
+      rowLead.reonic_synced = 1;
+      syncReonicDetailUi(rowLead);
+      renderList();
+      renderMarkers();
+      await refreshDashboardStatsBar();
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
+  }
+
+  async function testReonicConnectionFromUi() {
+    try {
+      const r = await apiFetch('/api/reonic/test', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Reonic-Test fehlgeschlagen', 'err');
+        return;
+      }
+      showToast(j.message || 'Verbindung OK', 'ok');
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
   }
 
   // ── Map ───────────────────────────────────────────────────────────────────
@@ -1403,7 +2181,17 @@
     zoomSnap: 0,
     zoomDelta: 0.5,
     wheelPxPerZoomLevel: 60,
-  }).setView([48.21, 16.37], 9);
+    maxZoom: PVL_MAP_MAX_ZOOM,
+  }).setView(PVL_MAP_DEFAULT_VIEW.center, PVL_MAP_DEFAULT_VIEW.zoom);
+  /* Leerfläche: Doppelklick = eigene Logik (vorherige Ansicht / alle Leads) — kein Standard-Zoomen */
+  try { map.doubleClickZoom.disable(); } catch (e) { /* ignore */ }
+
+  L.control.scale({
+    position: 'bottomleft',
+    metric: true,
+    imperial: false,
+    maxWidth: 180,
+  }).addTo(map);
 
   function pvlInvalidateMap() {
     requestAnimationFrame(() => {
@@ -1414,6 +2202,15 @@
     });
   }
 
+  /** Sidebar `position:fixed` an den Bereich #pvl-layout unterhalb des Headers koppeln */
+  function pvlSyncSidebarFixedLayout() {
+    const layout = document.getElementById('pvl-layout');
+    if (!layout) return;
+    const r = layout.getBoundingClientRect();
+    document.documentElement.style.setProperty('--pvl-sidebar-fixed-top', `${Math.max(0, r.top)}px`);
+    document.documentElement.style.setProperty('--pvl-sidebar-fixed-height', `${Math.max(0, r.height)}px`);
+  }
+
   let mapLegendControl = null;
 
   /** Neu-Leads nach Erstellungsdatum: gelber Karten-Marker (Grenze ≈ ein Monat). */
@@ -1421,7 +2218,15 @@
   const PVL_MAP_NEW_LEAD_COLOR = '#EAB308';
 
   function pvlPinLegendSvg(stroke, fill) {
-    return '<svg class="pvl-ml-pin" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 40" aria-hidden="true"><path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z" fill="' + fill + '" stroke="' + stroke + '" stroke-width="2.5"/></svg>';
+    return (
+      '<svg class="pvl-ml-pin" xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 28 40" aria-hidden="true">' +
+      '<path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z" fill="' +
+      fill +
+      '" stroke="' +
+      stroke +
+      '" stroke-width="2.5" paint-order="stroke fill"/>' +
+      '</svg>'
+    );
   }
 
   function pvlMapLegendHtml() {
@@ -1438,7 +2243,6 @@
       + '<div class="pvl-ml-title" style="margin-top:0.35rem">Pin-Rand</div>'
       + '<div class="pvl-ml-row">' + pvlPinLegendSvg('#0f172a', '#94a3b8') + '<span style="margin-left:2px">Hauptblatt</span></div>'
       + '<div class="pvl-ml-row">' + pvlPinLegendSvg('#ffffff', '#94a3b8') + '<span style="margin-left:2px">Legacy / Archiv-Blatt</span></div>'
-      + '<div class="pvl-ml-row"><span style="opacity:.72">' + pvlPinLegendSvg('#0f172a', '#cbd5e1') + '</span><span style="margin-left:2px">Abgearbeitet</span></div>'
       + '</div>'
       + '</details>'
       + '</div>';
@@ -1461,36 +2265,24 @@
     mapLegendControl.addTo(map);
   }
 
-  const satellite = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution: 'Satellit &copy; Esri', maxZoom: 19 }
+  /** Eine Kachelquelle: Satellit + Beschriftung (wie üblich für Hausnummern/Straßen über Google). Kein zusätzliches Overlay. */
+  const googleSatelliteHybrid = L.tileLayer(
+    'https://mt{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}',
+    {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: PVL_MAP_MAX_ZOOM,
+      attribution: 'Karte © Google',
+    }
   );
 
-  const roadsOverlay = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
-    { attribution: 'Straßen &copy; Esri', maxZoom: 19, opacity: 0.75 }
-  );
-  const labelsOverlay = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    { attribution: 'Orte &copy; Esri', maxZoom: 19, opacity: 0.9 }
-  );
-
-  /**
-   * Basis immer Esri-Satellit — in Light- und Dark-Mode niemals auf dunkle Rasterkarten (z. B. Carto) umschalten.
-   * Straßen- und Orte/Grenzen-Overlays fest dauerhaft über der Satellitenbasis (nicht per UI ausblendbar).
-   */
-  function pvlInitMapLayersSatelliteOnly() {
-    [satellite, roadsOverlay, labelsOverlay].forEach((layer) => {
-      if (layer && map.hasLayer(layer)) map.removeLayer(layer);
-    });
-    satellite.addTo(map);
-    roadsOverlay.addTo(map);
-    labelsOverlay.addTo(map);
+  function pvlInitMapLayers() {
+    if (googleSatelliteHybrid && map.hasLayer(googleSatelliteHybrid)) map.removeLayer(googleSatelliteHybrid);
+    googleSatelliteHybrid.addTo(map);
     pvlEnsureMapLegend();
     pvlInvalidateMap();
   }
 
-  pvlInitMapLayersSatelliteOnly();
+  pvlInitMapLayers();
 
   /** Alle Lead-Pins einzeln (kein Marker-Clustering). */
   const markerLayer = L.layerGroup().addTo(map);
@@ -1508,19 +2300,15 @@
   function isMapClickOnLeadUi(ev) {
     const t = ev && ev.originalEvent && ev.originalEvent.target;
     if (!t || !t.closest) return false;
+    /* `leaflet-interactive` deckt Tropfen-Pin (SVG/Path) ab — sonst: Map-„Leerklick“-Handler schließt die Sidebar direkt nach Marker-Klick. */
     return !!(t.closest('.leaflet-marker-icon')
       || t.closest('.leaflet-popup'));
   }
 
-  map.on('click', (e) => {
-    const detail = document.getElementById('sidebar-detail');
-    if (!detail || !detail.classList.contains('open')) return;
-    if (isMapClickOnLeadUi(e)) return;
-    closeSidebarDetail();
-  });
-
   /** Einfarbiges Warndreieck (Heroicons-Style), Farbe über `currentColor` / CSS. */
   const PVL_SVG_WARN_TRI = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.674 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" clip-rule="evenodd"/></svg>';
+  /** Reonic übermittelt — kleines Häkchen in der Liste. */
+  const PVL_SVG_REONIC_OK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-7.5 10.5a.75.75 0 0 1-1.175.086l-4-4a.75.75 0 1 1 1.06-1.06l3.294 3.293 6.93-9.702a.75.75 0 0 1 1.052-.143Z" clip-rule="evenodd"/></svg>';
 
   // ── Column keys ───────────────────────────────────────────────────────────
   const COL = {
@@ -1586,23 +2374,29 @@
    * Nur Rot-Töne; kein Wechsel der Kartenbasis nach UI-Theme.
    * (Karten-Marker: `getMarkerColorForLead` setzt Leads der letzten 30 Tage auf Gelb.)
    */
-  function getMarkerColor(msOrLead) {
-    let ms;
-    if (typeof msOrLead === 'object' && msOrLead !== null) {
-      ms = leadCreatedAtMs(msOrLead);
-    } else if (typeof msOrLead === 'number' && Number.isFinite(msOrLead)) {
-      ms = msOrLead;
-    } else {
-      ms = Date.parse(String(msOrLead || ''));
+  function getPinVisualForLead(lead) {
+    if (isAbgearbeitetForMap(lead)) {
+      return { color: '#94a3b8', opacity: 1, done: true };
     }
-    if (!ms || Number.isNaN(ms)) return '#FFA0A0';
-    const days = (Date.now() - ms) / 86400000;
-    if (days < 0) return '#8B0000';
-    if (days < 30) return '#8B0000';
-    if (days < 90) return '#D60000';
-    if (days < 180) return '#FF5C5C';
-    if (days < 365) return '#FFA0A0';
-    return '#FFC7C7';
+    const stDisp = normalizeStatusDisplay(listStatusLabel(lead));
+    const stPin = String(stDisp).trim().toLowerCase();
+    /* In-Arbeit vor „≤21 Tage gelb“, sonst wirkt jeder frische Lead trotz „Nicht erreicht“ gelb. */
+    if (stPin === 'nicht erreicht' || stPin === 'angerufen' || stPin === 'nachfassen') {
+      return { color: '#1a56db', opacity: 1, done: false };
+    }
+    const ageDays = leadAgeDaysFromCreation(lead);
+    if (ageDays != null && ageDays >= 0 && ageDays <= 21) {
+      return { color: '#eab308', opacity: 1, done: false };
+    }
+    if (stDisp === 'Neu') {
+      const ms = leadCreatedAtMs(lead);
+      const days = !ms || Number.isNaN(ms) ? -1 : (Date.now() - ms) / 86400000;
+      if (days < 0 || days < 30) return { color: '#b91c1c', opacity: 1, done: false };
+      if (days < 90) return { color: '#e11d48', opacity: 1, done: false };
+      if (days < 180) return { color: '#fda4af', opacity: 0.98, done: false };
+      return { color: '#fecaca', opacity: 0.36, done: false };
+    }
+    return { color: '#94a3b8', opacity: 0.88, done: false };
   }
 
   function getMarkerColorForLead(lead) {
@@ -1619,28 +2413,88 @@
   const LEGACY_KEY = '::__pvlLegacy';
 
   function leadKey(lead) {
-    const base = lead[COL.email] || lead[COL.name] || '';
+    if (!lead || typeof lead !== 'object') return '_invalid';
+    let base = String(lead[COL.email] || '').trim();
+    if (!base) base = String(lead[COL.name] || '').trim();
+    if (!base && lead.pvlDbId != null && lead.pvlDbId !== '') base = 'pvlDbId:' + String(lead.pvlDbId);
+    if (!base) base = 'anfrage:' + String(lead.anfrage || lead['Anfrage NR'] || lead['Anfrage NR '] || '').trim() || '_noid';
     return lead.__pvlLegacy ? base + LEGACY_KEY : base;
   }
 
   function parseLeadKey(raw) {
-    if (raw.endsWith(LEGACY_KEY)) {
-      return { base: raw.slice(0, -LEGACY_KEY.length), isLegacy: true };
+    const s = raw == null ? '' : String(raw);
+    if (s.endsWith(LEGACY_KEY)) {
+      return { base: s.slice(0, -LEGACY_KEY.length), isLegacy: true };
     }
-    return { base: raw, isLegacy: false };
+    return { base: s, isLegacy: false };
+  }
+
+  /**
+   * Sucht den Lead anhand desselben Schlüssels wie in `data-lk` / `leadKey(lead)`.
+   * (Die frühere Variante per roher E-Mail/Name-Abgleich scheiterte u. a. an Whitespace
+   * oder an Schlüsseln `pvlDbId:…` / `anfrage:…` ohne E-Mail.)
+   */
+  function findLeadBySelectKey(raw) {
+    if (raw == null) return null;
+    const r = String(raw);
+    const byKey = allLeads.find((l) => leadKey(l) === r);
+    if (byKey) return byKey;
+    if (r.startsWith('pvlDbId:')) {
+      const id = r.slice('pvlDbId:'.length);
+      const byId = allLeads.find((l) => l.pvlDbId != null && String(l.pvlDbId) === id);
+      if (byId) return byId;
+    }
+    if (r.startsWith('anfrage:')) {
+      const nr = r.slice('anfrage:'.length);
+      const byNr = allLeads.find((l) => String(anfrageNr(l) || '').trim() === nr);
+      if (byNr) return byNr;
+    }
+    const { base, isLegacy } = parseLeadKey(r);
+    const bTrim = String(base).trim();
+    const lower = bTrim.toLowerCase();
+    return allLeads.find((l) => {
+      if (!!l.__pvlLegacy !== isLegacy) return false;
+      const em = String(l[COL.email] ?? l.email ?? '').trim();
+      const nm = String(l[COL.name] ?? l['Nachname + Vorname'] ?? l.namen ?? '').trim();
+      if (em && (em === bTrim || em.toLowerCase() === lower)) return true;
+      if (nm && (nm === bTrim || nm.toLowerCase() === lower)) return true;
+      return false;
+    }) || null;
   }
 
   let allLeads    = [];
   let activeEmail = null;
   let activeIsLegacy = false;
   let activeLeadKeyStr = null;
+
+  /** Öffnet den Angebotsgenerator (neuer Tab) und befüllt ihn mit dem aktiven Lead. */
+  function openOfferForActiveLead() {
+    const lead = activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null;
+    const email = lead ? String(lead['E-Mail'] || '').trim() : '';
+    const url = '/offer' + (email ? ('?email=' + encodeURIComponent(email)) : '');
+    window.open(url, '_blank', 'noopener');
+  }
+  window.openOfferForActiveLead = openOfferForActiveLead;
   let markerMap   = {}; // leadKey → leaflet marker
   /** Nur Leads ohne gültige DB-Koordinaten (entspricht Header-Warnung). */
   let filterMissingMapCoordsOnly = false;
-  /** Sidebar: `active` ohne Termin/Verloren; `done` = Termin/Verloren oder CRM-Archiv. */
-  let sidebarListTab = 'active';
+  /** Sidebar-Listen-Tab: `active` | `nachfassen` (zurückgestellt) | `done`. */
+  let pvlSidebarListTab = 'active';
+  let _pvlLeadListDelegationBound = false;
   /** Verhindert, dass ein langsamer /api/leads-Request ein neueres Ergebnis überschreibt. */
   let loadLeadsSeq = 0;
+  /** Letzter /api/leads-JSON-String: bei identischer Antwort kein Re-Render (kein Flackern, Karten-Popups bleiben). */
+  let pvlLastLeadsPayloadJson = '';
+
+  /** Stabil: gleiche Leads, auch wenn Object-Key-Reihenfolge von der API wechselt. */
+  function pvlStableStringify(v) {
+    if (v === null) return 'null';
+    if (v === undefined) return '""';
+    if (typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return `[${v.map(pvlStableStringify).join(',')}]`;
+    const keys = Object.keys(v).sort();
+    return `{${keys.map((k) => JSON.stringify(k) + ':' + pvlStableStringify(v[k])).join(',')}}`;
+  }
   let vertrieblerList = [];
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1648,18 +2502,141 @@
     return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function isMesse(lead) { return parseInt(anfrageNr(lead), 10) >= 9000; }
-
-  function getSource(lead) { return isMesse(lead) ? 'Messe' : (lead[COL.source] || ''); }
+  /** Quelle aus der DB; Messel-IDs laufen künftig z. B. als „Messelid“ in dieser Spalte (kein Nummernkreis-Messe mehr). */
+  function getSource(lead) {
+    return String(lead[COL.source] ?? '').trim();
+  }
 
   function isHiddenStatus(lead) {
     const s = (lead[COL.status] || '').trim().toLowerCase();
-    return s === 'termin vereinbart' || s === 'lead verloren' || s === 'termin' || s === 'verloren';
+    return (
+      s === 'termin vereinbart' ||
+      s === 'lead verloren' ||
+      s === 'termin' ||
+      s === 'verloren' ||
+      s === 'archivieren'
+    );
   }
 
   function isCrmArchived(lead) {
     const a = lead && lead.archived_at;
     return !!(a && String(a).trim());
+  }
+
+  /** „Nachfass bis“ als YYYY-MM-DD (lokal vergleichbar), leer wenn ungültig. */
+  function pvlNachfassBisYmd(lead) {
+    const raw = String(lead && lead[COL.nachfass] != null ? lead[COL.nachfass] : '').trim();
+    if (!raw) return '';
+    const head = raw.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(head)) return head;
+    const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (m) {
+      const dd = String(parseInt(m[1], 10)).padStart(2, '0');
+      const mm = String(parseInt(m[2], 10)).padStart(2, '0');
+      const yyyy = m[3];
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return '';
+  }
+
+  function pvlTodayLocalYmd() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /**
+   * Status „Nachfassen“ mit Datum in der Zukunft: nur unter „Nachfassen“, nicht in „Aktive Leads“.
+   * Ohne gültiges Datum: bleibt in der aktiven Liste (sofort bearbeitbar).
+   */
+  function isNachfassSnoozed(lead) {
+    if (normalizeStatusDisplay(lead[COL.status] || '') !== 'Nachfassen') return false;
+    const bis = pvlNachfassBisYmd(lead);
+    if (!bis) return false;
+    return bis > pvlTodayLocalYmd();
+  }
+
+  function passesNachfassenSnoozedList(lead) {
+    if (isCrmArchived(lead)) return false;
+    if (isHiddenStatus(lead)) return false;
+    if (normalizeStatusDisplay(lead[COL.status] || '') !== 'Nachfassen') return false;
+    return isNachfassSnoozed(lead);
+  }
+
+  /** Aktive Sidebar: nur Neu + Pipeline „In Arbeit“. */
+  function passesActiveList(lead) {
+    if (isCrmArchived(lead)) return false;
+    if (isHiddenStatus(lead)) return false;
+    const st = normalizeStatusDisplay(lead[COL.status] || '');
+    if (st === 'Nachfassen' && isNachfassSnoozed(lead)) return false;
+    return st === 'Neu' || st === 'Nicht erreicht' || st === 'Angerufen' || st === 'Nachfassen';
+  }
+
+  /**
+   * Sidebar „Abgearbeitet / Archiv“: Termin, Verlust, CRM-Archiv, Status „Archivieren“
+   * (nicht mehr in der aktiven Liste — Wechsel sofort nach `applyStatus` via renderList).
+   */
+  function passesDoneList(lead) {
+    const st = normalizeStatusDisplay(lead[COL.status] || '');
+    if (st === 'Termin vereinbart' || st === 'Lead verloren') return true;
+    if (isCrmArchived(lead)) return true;
+    if (st === 'Archivieren') return true;
+    return false;
+  }
+
+  function getSidebarListTab() {
+    if (pvlSidebarListTab === 'done') return 'done';
+    if (pvlSidebarListTab === 'nachfassen') return 'nachfassen';
+    return 'active';
+  }
+
+  function passesListTabFilter(lead) {
+    const t = getSidebarListTab();
+    if (t === 'done') return passesDoneList(lead);
+    if (t === 'nachfassen') return passesNachfassenSnoozedList(lead);
+    return passesActiveList(lead);
+  }
+
+  function syncSidebarListTabUi() {
+    const t = getSidebarListTab();
+    const btnA = document.getElementById('pvl-tab-sidebar-active');
+    const btnN = document.getElementById('pvl-tab-sidebar-nachfassen');
+    const btnD = document.getElementById('pvl-tab-sidebar-done');
+    const list = document.getElementById('lead-list');
+    const listNach = document.getElementById('lead-list-nachfassen');
+    const listDone = document.getElementById('lead-list-done');
+    if (btnA) {
+      btnA.classList.toggle('is-active', t === 'active');
+      btnA.setAttribute('aria-selected', t === 'active' ? 'true' : 'false');
+    }
+    if (btnN) {
+      btnN.classList.toggle('is-active', t === 'nachfassen');
+      btnN.setAttribute('aria-selected', t === 'nachfassen' ? 'true' : 'false');
+    }
+    if (btnD) {
+      btnD.classList.toggle('is-active', t === 'done');
+      btnD.setAttribute('aria-selected', t === 'done' ? 'true' : 'false');
+    }
+    if (list) list.toggleAttribute('hidden', t !== 'active');
+    if (listNach) listNach.toggleAttribute('hidden', t !== 'nachfassen');
+    if (listDone) listDone.toggleAttribute('hidden', t !== 'done');
+  }
+
+  function setSidebarListTab(tab) {
+    if (tab === 'done') pvlSidebarListTab = 'done';
+    else if (tab === 'nachfassen') pvlSidebarListTab = 'nachfassen';
+    else pvlSidebarListTab = 'active';
+    syncSidebarListTabUi();
+    renderList();
+    renderMarkers();
+  }
+
+  function passesNonTabFilters(lead) {
+    if (!passesBetreuerFilter(lead)) return false;
+    if (!passesStatusFilterMode(lead)) return false;
+    if (filterMissingMapCoordsOnly && coordsFromDb(lead)) return false;
+    const q = (document.getElementById('search-input')?.value || '').toLowerCase();
+    if (!q) return true;
+    return [lead[COL.name], lead[COL.email], lead[COL.phone], lead[COL.city], lead[COL.street]].some((v) => String(v || '').toLowerCase().includes(q));
   }
 
   function passesBetreuerFilter(lead) {
@@ -1684,10 +2661,10 @@
   function passesStatusFilterMode(lead) {
     const mode = document.getElementById('filter-status')?.value || '';
     if (!mode) return true;
-    if (mode === 'aktiv') return !isHiddenStatus(lead) && !isCrmArchived(lead);
+    if (mode === 'aktiv') return passesActiveList(lead);
     if (mode === 'terminiert') return normalizeStatusDisplay(lead[COL.status]) === 'Termin vereinbart';
     if (mode === 'verloren') return normalizeStatusDisplay(lead[COL.status]) === 'Lead verloren';
-    if (mode === 'abgearbeitet') return isHiddenStatus(lead) || isCrmArchived(lead);
+    if (mode === 'abgearbeitet') return passesDoneList(lead);
     return true;
   }
 
@@ -1697,7 +2674,9 @@
     return lead[COL.status] || '';
   }
 
-  const STATUS_OPTIONS = ['Neu', 'Nicht erreicht', 'Angerufen', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren'];
+  /* Wie src/sheets.js / ältere index.html — alle CRM-Status inkl. Angerufen & Archivieren */
+  const STATUS_OPTIONS = ['Neu', 'Nicht erreicht', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren'];
+  const STATUS_BAR_VERSION = 'v8';
   let detailCurrentStatus = '';
   let userCalendarPreference = 'google';
   /** Anzeigename für Kalender-Details (Google sofort, ohne API). */
@@ -1711,27 +2690,51 @@
     return x;
   }
 
-  function initStatusBar() {
+  /** Gleiche Heuristik wie in applyCanonicalFieldAliases (Leads mit Namen/ohne E-Mail in der URL). */
+  function pvlLooksLikeEmail(s) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+  }
+
+  /**
+   * Status-Zeile: bei Lead-Wechsel immer neu (force=true), Klicks per Delegation (keine toten per-Button-Handler).
+   * @param {boolean} [force] — true: Leiste immer leeren + neu bauen (openSidebarDetail)
+   */
+  function initStatusBar(force) {
     const bar = document.getElementById('sd-status-bar');
-    if (!bar || bar.dataset.inited) return;
-    bar.dataset.inited = '1';
+    if (!bar) return;
+    if (!bar.__pvlStatusDelegationBound) {
+      bar.__pvlStatusDelegationBound = true;
+      bar.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest && e.target.closest('.status-btn');
+        if (!btn || btn.disabled) return;
+        const st = btn.getAttribute('data-status');
+        if (st) applyStatus(st);
+      });
+    }
+    if (!force && bar.dataset.inited === STATUS_BAR_VERSION && bar.querySelector('.status-btn')) return;
+    bar.innerHTML = '';
+    bar.dataset.inited = STATUS_BAR_VERSION;
     for (const st of STATUS_OPTIONS) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'status-btn';
       b.dataset.status = st;
       b.textContent = st;
-      b.addEventListener('click', () => applyStatus(st));
       bar.appendChild(b);
     }
+  }
+
+  /** Anzeige-Key für aktive Markierung (Angerufen und Nicht erreicht sind getrennte Buttons). */
+  function statusKeyForStatusBar(st) {
+    return normalizeStatusDisplay(st);
   }
 
   function syncStatusBarHighlight() {
     const bar = document.getElementById('sd-status-bar');
     if (!bar) return;
-    const cur = normalizeStatusDisplay(detailCurrentStatus);
+    const cur = statusKeyForStatusBar(detailCurrentStatus);
     for (const b of bar.querySelectorAll('.status-btn')) {
-      b.classList.toggle('active', normalizeStatusDisplay(b.dataset.status) === cur);
+      b.classList.toggle('active', b.dataset.status === cur);
     }
   }
 
@@ -1765,49 +2768,15 @@
     return isHiddenStatus(lead) || isCrmArchived(lead);
   }
 
-  function passesSidebarTab(lead) {
-    if (sidebarListTab === 'active') {
-      if (isCrmArchived(lead)) return false;
-      if (isHiddenStatus(lead)) return false;
-      return true;
-    }
-    return isHiddenStatus(lead) || isCrmArchived(lead);
+  /** Karte: nur Leads des aktuellen Sidebar-Tabs + globale Filter — Pins grau für Abgearbeitet. */
+  function passesMapFilters(lead) {
+    if (!passesListTabFilter(lead)) return false;
+    return passesNonTabFilters(lead);
   }
 
-  /** Gleiche Filter wie Lead-Liste (Tabs, Suche, „ohne Kartenpunkt“). */
-  function passesListFilters(lead) {
-    if (!passesSidebarTab(lead)) return false;
-    if (!passesBetreuerFilter(lead)) return false;
-    if (!passesStatusFilterMode(lead)) return false;
-    if (filterMissingMapCoordsOnly && coordsFromDb(lead)) return false;
-    const q = (document.getElementById('search-input')?.value || '').toLowerCase();
-    if (!q) return true;
-    return [lead[COL.name], lead[COL.email], lead[COL.phone], lead[COL.city], lead[COL.street]].some((v) => String(v || '').toLowerCase().includes(q));
-  }
-
-  /** Nur sichtbare Listen-Leads mit gültigen DB-Koordinaten (Karte = Sidebar-Ansicht). */
+  /** Nur Kartenpunkte mit gültigen DB-Koordinaten. */
   function mapLeadsSubset() {
-    return allLeads.filter((l) => passesListFilters(l) && coordsFromDb(l));
-  }
-
-  function setSidebarListTab(tab) {
-    if (tab !== 'active' && tab !== 'done') return;
-    sidebarListTab = tab;
-    const a = document.getElementById('tab-leads-active');
-    const d = document.getElementById('tab-leads-done');
-    if (a) {
-      a.classList.toggle('is-active', tab === 'active');
-      a.setAttribute('aria-selected', tab === 'active' ? 'true' : 'false');
-    }
-    if (d) {
-      d.classList.toggle('is-active', tab === 'done');
-      d.setAttribute('aria-selected', tab === 'done' ? 'true' : 'false');
-    }
-    const detail = document.getElementById('sidebar-detail');
-    const hadOpenDetail = !!(detail && detail.classList.contains('open'));
-    if (hadOpenDetail) closeSidebarDetail();
-    renderList();
-    renderMarkers();
+    return allLeads.filter((l) => passesMapFilters(l) && coordsFromDb(l));
   }
 
   function telHref(phone) {
@@ -1831,16 +2800,34 @@
     return 'onclick="event.stopPropagation()"';
   }
 
+  /** Kurznotiz unter „Nachfassen“ spiegelt dasselbe Feld wie „Notizen“ (ein Speicher). */
+  function syncNachfassKurzFromMain() {
+    if (normalizeStatusDisplay(detailCurrentStatus) !== 'Nachfassen') return;
+    const kurz = document.getElementById('sd-nachfass-kurz');
+    const main = document.getElementById('sd-notizen');
+    if (kurz && main) kurz.value = main.value;
+  }
+
   function syncNachfassTerminVisibility() {
     const st = normalizeStatusDisplay(detailCurrentStatus);
-    document.getElementById('sd-nachfass-wrap').style.display = st === 'Nachfassen' ? 'block' : 'none';
+    const nw = document.getElementById('sd-nachfass-wrap');
+    if (nw) nw.style.display = st === 'Nachfassen' ? 'block' : 'none';
     const tw = document.getElementById('sd-termin-wrap');
+    const typW = document.getElementById('sd-termin-typ-wrap');
     const mw = document.getElementById('sd-meet-wrap');
     if (st === 'Termin vereinbart') {
       if (tw) tw.style.display = 'block';
+      if (typW) {
+        typW.style.display = 'flex';
+        typW.setAttribute('aria-hidden', 'false');
+      }
       syncMeetLinkRow();
     } else {
       if (tw) tw.style.display = 'none';
+      if (typW) {
+        typW.style.display = 'none';
+        typW.setAttribute('aria-hidden', 'true');
+      }
       if (mw) mw.style.display = 'none';
     }
     const rowLead = activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null;
@@ -1849,7 +2836,11 @@
     const setterNeedsAssign = !!(suN && suN.role === 'setter' && rowLead
       && !(Number(rowLead.assigned_to_user_id) > 0));
     const calBtn = document.getElementById('btn-cal-appointment');
-    if (calBtn) calBtn.disabled = !!activeIsLegacy || !!arch || setterNeedsAssign;
+    if (calBtn) {
+      const showCal = st === 'Termin vereinbart' && !activeIsLegacy && !arch && !setterNeedsAssign;
+      calBtn.style.display = showCal ? 'inline-flex' : 'none';
+      if (showCal) calBtn.disabled = false;
+    }
   }
 
   function normalizeLocalDatetime(v) {
@@ -1993,8 +2984,6 @@
         rowLead.assigned_to_user_id = j.assigned_to_user_id == null ? null : Number(j.assigned_to_user_id);
         if (j.betreuer != null) rowLead[COL.betreut] = j.betreuer;
       }
-      const inp = document.getElementById('sd-betreut');
-      if (inp) inp.value = j.betreuer || (rowLead && rowLead[COL.betreut]) || '';
       showToast(userId == null ? 'Zuweisung entfernt.' : 'Vertriebler zugewiesen (NOORTEC).', 'ok');
       await renderSetterSalesChips(rowLead);
       renderList();
@@ -2003,23 +2992,64 @@
     }
   }
 
+  function pvlBetreutMatches(a, b) {
+    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  }
+
   function renderBetreutChips() {
     const el = document.getElementById('sd-betreut-chips');
     if (!el) return;
     el.replaceChildren();
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const cur = rowLead ? String(rowLead[COL.betreut] || '').trim() : '';
     for (const name of vertrieblerList) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'chip';
+      b.className = 'chip' + (pvlBetreutMatches(cur, name) ? ' chip-active' : '');
       b.textContent = name;
       b.addEventListener('click', () => assignBetreut(name));
       el.appendChild(b);
     }
   }
 
-  function assignBetreut(name) {
-    document.getElementById('sd-betreut').value = name;
-    saveFields();
+  async function assignBetreut(name) {
+    if (activeIsLegacy) {
+      showToast('Legacy-Lead: hier nicht änderbar.', 'info');
+      return;
+    }
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    if (rowLead && isCrmArchived(rowLead)) {
+      showToast('Archivierter Lead: bitte zuerst wiederherstellen.', 'info');
+      return;
+    }
+    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
+    if (!apiEmail) {
+      showToast('Keine E-Mail – Betreuer nicht speicherbar.', 'err');
+      return;
+    }
+    try {
+      const r = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/field`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ column: COL.betreut, value: name }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Betreuer speichern fehlgeschlagen', 'err');
+        return;
+      }
+      if (rowLead) {
+        rowLead[COL.betreut] = name;
+        rowLead.last_updated = new Date().toISOString();
+      }
+      renderBetreutChips();
+      renderList();
+      renderMarkers();
+      await refreshDashboardStatsBar();
+      showToast('Betreuer gespeichert.', 'ok');
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
   }
 
   function defaultCalendarSlot() {
@@ -2036,12 +3066,34 @@
     return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   }
 
+  /** Wie `notizenTextForCalendarExport` in `src/calendar-links.js` — System-Anrufzeilen nicht in den Kalender. */
+  function notizenTextForCalendarExportClient(raw) {
+    const s = String(raw ?? '');
+    const lines = s.split(/\r?\n/);
+    const kept = lines.filter((line) => !/^\[System\]:\s*Anrufversuch\b/.test(String(line).trim()));
+    return kept.join('\n');
+  }
+
+  /** Wie `formatKundennameVornameZuerst` in `src/calendar-links.js`: Anzeige Vorname vor Nachname. */
+  function formatKundennameVornameZuerst(raw) {
+    const s = String(raw ?? '').trim();
+    if (!s) return '';
+    if (s.includes(',')) {
+      const [a, b] = s.split(',').map((x) => String(x).trim());
+      return [b, a].filter(Boolean).join(' ').trim();
+    }
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return parts[0] || '';
+    return `${parts.slice(1).join(' ')} ${parts[0]}`.trim();
+  }
+
   /**
    * Beschreibung analog `buildLeadCalendarDescription` in `src/calendar-links.js` (Server ist führend bei API-Pfad).
    * URL-Encoding übernimmt `URLSearchParams` (details/text/location).
    */
   function buildLeadCalendarDescriptionClient(leadObj, partnerName, terminTyp, meetUrl, betreutRaw, sessionUser) {
-    const kunde = String(leadObj['Nachname + Vorname'] ?? '').trim();
+    const kundeRaw = String(leadObj['Nachname + Vorname'] ?? '').trim();
+    const kunde = formatKundennameVornameZuerst(kundeRaw) || kundeRaw || '—';
     const tel = String(leadObj.Telefon ?? '').trim();
     const email = String(leadObj['E-Mail'] ?? '').trim();
     const st = String(leadObj['Straße'] ?? '').trim();
@@ -2051,7 +3103,7 @@
     const addrMid = [plz, ort].filter(Boolean).join(' ').trim();
     const core = st ? `${st}, ${addrMid}`.trim() : addrMid;
     const addressStr = [core, land].filter(Boolean).join(', ') || '';
-    const notizen = String(leadObj.Notizen ?? '').trim();
+    const notizen = notizenTextForCalendarExportClient(String(leadObj.Notizen ?? '')).trim();
     const info = String(leadObj.Info ?? '').trim();
     const detailsBlock = [info || null, notizen || null].filter(Boolean).join('\n\n') || '(keine Angaben)';
     const partner = String(partnerName || '').trim() || '—';
@@ -2068,29 +3120,38 @@
       || (un && (bq === un || bq.includes(un)))
       || (vn && (bq === vn || bq.includes(vn) || vn.includes(bq)));
     if (looksAssigned && (su.telefon || su.email_kontakt || su.voller_name)) {
+      const nm = String(su.voller_name || su.username || '').trim() || '—';
+      const t = String(su.telefon || '').trim() || '—';
+      const em = String(su.email_kontakt || '').trim() || '—';
       salesLines.push(
         '---',
-        'NOORTEC Vertrieb (Betreuung):',
-        `Name: ${String(su.voller_name || su.username || '').trim() || '—'}`,
-        `Tel: ${String(su.telefon || '').trim() || '—'}`,
-        `E-Mail: ${String(su.email_kontakt || '').trim() || '—'}`,
+        `Ihr Ansprechpartner ist ${nm}`,
+        `Telefon: ${t}`,
+        `E-Mail: ${em}`,
       );
     } else if (bet) {
-      salesLines.push('---', `Betreut durch: ${bet}`);
+      salesLines.push('---', `Ihr Ansprechpartner ist ${bet}`);
+    } else {
+      salesLines.push(
+        '---',
+        `Ihr Ansprechpartner ist ${partner}`,
+        'Telefon: —',
+        'E-Mail: —',
+      );
     }
+    salesLines.push('---', `Kundenadresse: ${addressStr || '—'}`, '---');
     return [
-      `Kunde: ${kunde || '—'}`,
-      `Tel: ${tel || '—'}`,
-      `E-Mail: ${email || '—'}`,
-      `Adresse: ${addressStr || '—'}`,
+      `👤 Kunde: ${kunde}`,
+      `📞 Tel: ${tel || '—'}`,
+      `✉️ E-Mail: ${email || '—'}`,
+      `📍 Adresse: ${addressStr || '—'}`,
       '---',
-      'Anfrage-Details & Notizen:',
+      '📝 Anfrage-Details & Notizen:',
       detailsBlock,
       '',
       ...extras,
       ...salesLines,
-      '---',
-      `NOORTEC Kalender / Ansprechpartner: ${partner}`,
+      'NOORTEC Kalender',
     ].join('\n');
   }
 
@@ -2131,48 +3192,6 @@
     return { start, end };
   }
 
-  /** Nur Inhalte, keine Spaltennamen oder internen IDs (NOORTEC). */
-  function copyLeadPlainNoLabels() {
-    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-    const nameEl = document.getElementById('sd-name');
-    const name = (nameEl && nameEl.textContent.trim()) || (rowLead && rowLead[COL.name]) || '';
-    const tel = document.getElementById('sd-c-phone')?.value.trim() || '';
-    const em = document.getElementById('sd-c-email')?.value.trim() || '';
-    const st = document.getElementById('sd-c-street')?.value.trim() || '';
-    const zi = document.getElementById('sd-c-zip')?.value.trim() || '';
-    const ci = document.getElementById('sd-c-city')?.value.trim() || '';
-    const addr = [st, zi, ci].filter(Boolean).join(', ').trim();
-    const betreut = document.getElementById('sd-betreut')?.value.trim() || '';
-    const notizen = document.getElementById('sd-notizen')?.value.trim() || '';
-    const status = detailCurrentStatus || (rowLead && rowLead[COL.status]) || '';
-    const nachf = document.getElementById('sd-nachfass')?.value.trim() || '';
-    const termin = document.getElementById('sd-termin')?.value.trim() || '';
-    const meet = document.getElementById('sd-meet-link')?.value.trim() || '';
-    const lines = [name, tel, em, addr, betreut, notizen, status, nachf, termin, meet].filter((x) => x && String(x).trim());
-    const text = lines.join('\n');
-    if (!text) {
-      showToast('NOORTEC: nichts zu kopieren.', 'info');
-      return;
-    }
-    const done = () => showToast('NOORTEC: Lead-Daten kopiert.', 'ok');
-    const fail = () => showToast('Kopieren fehlgeschlagen.', 'err');
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(fail);
-    } else {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-        done();
-      } catch (_) {
-        fail();
-      }
-    }
-  }
-
   async function openCalendarAppointment() {
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     if (rowLead && isCrmArchived(rowLead)) {
@@ -2185,76 +3204,35 @@
     const terminTyp = getSelectedTerminTyp();
     const meetL = (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '';
 
-    const customerName = (document.getElementById('sd-name') && document.getElementById('sd-name').textContent) || (rowLead && rowLead[COL.name]) || '';
+    const customerName = ((document.getElementById('sd-c-name') && document.getElementById('sd-c-name').value.trim()) || (rowLead && String(rowLead[COL.name] || '').trim()) || '');
     const st = (document.getElementById('sd-c-street') && document.getElementById('sd-c-street').value) || '';
     const zi = (document.getElementById('sd-c-zip') && document.getElementById('sd-c-zip').value) || '';
     const ci = (document.getElementById('sd-c-city') && document.getElementById('sd-c-city').value) || '';
-    const location = [st, zi, ci].map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+    const land = (rowLead && String(rowLead[COL.country] || '').trim()) || '';
+    const location = [st, zi, ci, land].map((x) => String(x || '').trim()).filter(Boolean).join(', ');
     const locClient = terminTyp === 'online' ? 'Google Meet (Online-Termin)' : location;
+    const betRaw = (rowLead && String(rowLead[COL.betreut] || '').trim()) || '';
+    const vertrieblerForTitle = betRaw || String(calendarPartnerName || '').trim() || 'Vertrieb';
+    const kundeFuerTitel = formatKundennameVornameZuerst(String(customerName || '').trim()) || String(customerName || '').trim() || 'Kunde';
+    const title = `PV-Termin ${kundeFuerTitel} + ${vertrieblerForTitle}`;
     const partner = calendarPartnerName || 'Vertrieb';
-    const title = `NOORTEC — ${String(customerName || 'Kunde').trim() || 'Kunde'}`;
+    const addEmail = (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value.trim()) || '';
+    const leadObj = {
+      'Nachname + Vorname': String(customerName || '').trim(),
+      Telefon: (document.getElementById('sd-c-phone') && document.getElementById('sd-c-phone').value) || '',
+      'E-Mail': (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value) || '',
+      'Straße': st,
+      PLZ: zi,
+      Ort: ci,
+      Land: (rowLead && rowLead[COL.country]) ? String(rowLead[COL.country]) : '',
+      Notizen: (document.getElementById('sd-notizen') && document.getElementById('sd-notizen').value) || '',
+      Info: (rowLead && rowLead[COL.info]) ? String(rowLead[COL.info]) : '',
+      'Meet-Link': meetL,
+    };
+    const description = buildLeadCalendarDescriptionClient(leadObj, partner, terminTyp, meetL, betRaw, window.__pvlSessionUser || null);
 
-    if (apiEmail) {
-      try {
-        const r = await apiFetch('/api/calendar/build', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: apiEmail,
-            start: start.toISOString(),
-            end: end.toISOString(),
-            terminTyp,
-            meetLink: meetL,
-          }),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          showToast(j.error || 'Kalender-Link fehlgeschlagen', 'err');
-          return;
-        }
-        if (pref === 'apple' && j.icsContent) {
-          const blob = new Blob([j.icsContent], { type: 'text/calendar;charset=utf-8' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = j.icsFilename || 'termin.ics';
-          a.rel = 'noopener noreferrer';
-          a.target = '_blank';
-          a.click();
-          URL.revokeObjectURL(a.href);
-          showToast('Kalendereintrag (.ics) heruntergeladen.', 'ok');
-          return;
-        }
-        if (pref === 'google' && j.googleUrl) {
-          window.open(j.googleUrl, '_blank', 'noopener,noreferrer');
-          return;
-        }
-        if (pref === 'outlook' && j.outlookUrl) {
-          window.open(j.outlookUrl, '_blank', 'noopener,noreferrer');
-          return;
-        }
-        showToast('Kalender-Antwort ohne URL.', 'err');
-      } catch (e) {
-        showToast(e.message || String(e), 'err');
-      }
-      return;
-    }
-
+    /* Google: immer `calendar/render?action=TEMPLATE&…` (neuer Tab), unabhängig von /api/calendar/build */
     if (pref === 'google') {
-      const addEmail = (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value.trim()) || '';
-      const leadObj = {
-        'Nachname + Vorname': String(customerName || '').trim(),
-        Telefon: (document.getElementById('sd-c-phone') && document.getElementById('sd-c-phone').value) || '',
-        'E-Mail': (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value) || '',
-        'Straße': st,
-        PLZ: zi,
-        Ort: ci,
-        Land: (rowLead && rowLead[COL.country]) ? String(rowLead[COL.country]) : '',
-        Notizen: (document.getElementById('sd-notizen') && document.getElementById('sd-notizen').value) || '',
-        Info: (rowLead && rowLead[COL.info]) ? String(rowLead[COL.info]) : '',
-        'Meet-Link': meetL,
-      };
-      const betRaw = (document.getElementById('sd-betreut') && document.getElementById('sd-betreut').value) || '';
-      const description = buildLeadCalendarDescriptionClient(leadObj, partner, terminTyp, meetL, betRaw, window.__pvlSessionUser || null);
       const url = buildGoogleCalendarUrlClient({
         title,
         location: locClient,
@@ -2268,7 +3246,47 @@
       return;
     }
 
-    showToast('Kalender (Outlook/Apple): Bitte eine E-Mail zum Lead hinterlegen.', 'info');
+    if (!apiEmail) {
+      showToast('Kalender (Outlook/Apple): Bitte eine E-Mail zum Lead hinterlegen.', 'info');
+      return;
+    }
+    try {
+      const r = await apiFetch('/api/calendar/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: apiEmail,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          terminTyp,
+          meetLink: meetL,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showToast(j.error || 'Kalender-Link fehlgeschlagen', 'err');
+        return;
+      }
+      if (pref === 'apple' && j.icsContent) {
+        const blob = new Blob([j.icsContent], { type: 'text/calendar;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = j.icsFilename || 'termin.ics';
+        a.rel = 'noopener noreferrer';
+        a.target = '_blank';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('Kalendereintrag (.ics) heruntergeladen.', 'ok');
+        return;
+      }
+      if (pref === 'outlook' && j.outlookUrl) {
+        window.open(j.outlookUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      showToast('Kalender-Antwort ohne URL.', 'err');
+    } catch (e) {
+      showToast(e.message || String(e), 'err');
+    }
   }
 
   async function restoreLeadFromArchive() {
@@ -2312,22 +3330,42 @@
       showToast('Archivierter Lead: bitte „Wiederherstellen“ nutzen.', 'info');
       return;
     }
-    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
-    if (!apiEmail) {
+    const dbId = rowLead && rowLead.pvlDbId != null && String(rowLead.pvlDbId).trim() !== ''
+      ? parseInt(String(rowLead.pvlDbId), 10)
+      : NaN;
+    const useLeadRowId = !activeIsLegacy && rowLead && Number.isFinite(dbId) && dbId > 0;
+    const emailFromRow = (rowLead && rowLead[COL.email] && String(rowLead[COL.email]).trim()) || '';
+    const apiEmail = emailFromRow || (pvlLooksLikeEmail(activeEmail) ? String(activeEmail).trim() : '');
+    if (!useLeadRowId && !apiEmail) {
       showToast('Keine E-Mail – Status nicht speicherbar.', 'err');
       return;
     }
+    if (!useLeadRowId && !pvlLooksLikeEmail(apiEmail)) {
+      showToast('Keine gültige E-Mail – Status nicht speicherbar. (Bitte Seite neu laden.)', 'err');
+      return;
+    }
     if (status === 'Archivieren') {
-      if (!confirm(`„${rowLead?.[COL.name] || apiEmail}“ archivieren und aus der aktiven Liste nehmen?`)) return;
+      if (!confirm(`„${rowLead?.[COL.name] || apiEmail || ('#' + dbId)}“ archivieren und aus der aktiven Liste nehmen?`)) return;
     }
     try {
-      const r = await apiFetch(`/api/leads/${encodeURIComponent(apiEmail)}/status`, {
+      if (document.getElementById('sidebar-detail')?.classList.contains('open')) {
+        const detailSaved = await saveFields();
+        if (detailSaved === false) return;
+      }
+      const statusUrl = useLeadRowId
+        ? '/api/lead-rows/' + encodeURIComponent(String(dbId)) + '/status'
+        : `/api/leads/${encodeURIComponent(apiEmail)}/status`;
+      const r = await apiFetch(statusUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
+        showToast(j.error || 'Status speichern fehlgeschlagen', 'err');
+        return;
+      }
+      if (j && j.ok === false) {
         showToast(j.error || 'Status speichern fehlgeschlagen', 'err');
         return;
       }
@@ -2342,13 +3380,24 @@
       if (lead) {
         lead[COL.status] = status;
         lead.last_updated = new Date().toISOString();
-        if (j.reonic && j.reonic.synced === true) lead.reonic_synced = 1;
+        if (Object.prototype.hasOwnProperty.call(j, 'Notizen')) {
+          const nz = j.Notizen == null ? '' : String(j.Notizen);
+          lead[COL.notes] = nz;
+          lead.Notizen = nz;
+          const taN = document.getElementById('sd-notizen');
+          if (taN) taN.value = nz;
+        }
       }
       syncStatusBarHighlight();
       syncNachfassTerminVisibility();
+      syncNachfassKurzFromMain();
+      syncReonicDetailUi(lead);
       renderList();
       renderMarkers();
       toastAfterLeadStatusSave(j, 'Status gespeichert');
+      if (status === 'Termin vereinbart') {
+        await maybeOfferReonicTransfer(j, { leadKeyStr: activeLeadKeyStr });
+      }
       await refreshDashboardStatsBar();
     } catch (e) {
       showToast(e.message || String(e), 'err');
@@ -2408,7 +3457,7 @@
         if (miss > 0) {
           foot.innerHTML = ic + '<span>' + esc(String(miss)) + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt — tippen für Filter in der Liste.</span>';
           foot.classList.remove('ok-state');
-          foot.title = 'Nur Leads ohne gültigen Kartenpunkt anzeigen (entspricht der Checkbox unter „Filter & Sortierung“).';
+          foot.title = 'Nur Leads ohne gültigen Kartenpunkt anzeigen (entspricht der Checkbox unter „Sortierung & Filter“).';
         } else {
           foot.innerHTML = '<span>' + esc(String(miss)) + ' Lead' + (miss === 1 ? '' : 's') + ' ohne Kartenpunkt — alle aktiven Einträge sind auf der Karte platzierbar.</span>';
           foot.classList.add('ok-state');
@@ -2478,8 +3527,9 @@
         card.querySelector('.mc-st-termin')?.addEventListener('click', () => missingCoordsStatus(id, 'Termin vereinbart'));
         card.querySelector('.mc-st-arch')?.addEventListener('click', () => missingCoordsStatus(id, 'Archivieren'));
       });
-    } catch {
-      body.innerHTML = '<p style="color:#b91c1c;font-size:0.85rem">Netzwerkfehler.</p>';
+    } catch (e) {
+      console.error('refreshMissingModalBody:', e);
+      body.innerHTML = '<p style="color:#b91c1c;font-size:0.85rem">Fehler beim Laden der Liste. Bitte Konsole prüfen.</p>';
     }
   }
 
@@ -2540,17 +3590,25 @@
       else toastAfterLeadStatusSave(j, 'Status gespeichert.');
       await loadLeads();
       await refreshMissingModalBody();
+      if (!j.archived && status === 'Termin vereinbart' && j.reonicOfferSuggested && j.pvlDbId) {
+        const lead = allLeads.find((l) => Number(l.pvlDbId) === Number(j.pvlDbId));
+        await maybeOfferReonicTransfer(j, { leadKeyStr: lead ? leadKey(lead) : null, pvlDbId: j.pvlDbId });
+      }
     } catch (e) {
       showToast(e.message || String(e), 'err');
     }
   }
 
-  async function loadLeads() {
+  async function loadLeads(opts) {
+    const o = (opts && typeof opts === 'object') ? opts : {};
+    const silent = !!o.silent;
     const seq = ++loadLeadsSeq;
     const layout = document.querySelector('.layout');
     const rb = document.querySelector('.refresh-btn');
-    layout?.classList.add('app-loading');
-    rb?.classList.add('spin');
+    if (!silent) {
+      layout?.classList.add('app-loading');
+      rb?.classList.add('spin');
+    }
     try {
       const res = await apiFetch('/api/leads?includeArchived=1');
       if (seq !== loadLeadsSeq) return;
@@ -2561,9 +3619,14 @@
         if (seq !== loadLeadsSeq) return;
         console.error('loadLeads JSON:', parseErr);
         allLeads = [];
+        pvlLastLeadsPayloadJson = '';
         showLoadError('Ungültige Server-Antwort (kein JSON).');
-        renderList();
-        renderMarkers();
+        try {
+          renderList();
+          renderMarkers();
+        } catch (uiErr) {
+          console.error('UI-Crash beim Verarbeiten der Leads:', uiErr);
+        }
         return;
       }
       if (seq !== loadLeadsSeq) return;
@@ -2573,54 +3636,113 @@
       }
       if (!res.ok) {
         allLeads = [];
+        pvlLastLeadsPayloadJson = '';
         showLoadError((data && data.error) || `API-Fehler (${res.status})`);
-        renderList();
-        renderMarkers();
+        try {
+          renderList();
+          renderMarkers();
+        } catch (uiErr) {
+          console.error('UI-Crash beim Verarbeiten der Leads:', uiErr);
+        }
         return;
       }
       if (!Array.isArray(data)) {
+        console.warn('/api/leads: Antwort ist kein Array:', typeof data, data);
         allLeads = [];
+        pvlLastLeadsPayloadJson = '';
         showLoadError('Ungültige Server-Antwort.');
-        renderList();
-        renderMarkers();
+        try {
+          renderList();
+          renderMarkers();
+        } catch (uiErr) {
+          console.error('UI-Crash beim Verarbeiten der Leads:', uiErr);
+        }
         return;
       }
-      hideLoadError();
-      allLeads = data;
-      if (filterMissingMapCoordsOnly) {
-        const anyMiss = allLeads.some((l) => !isCrmArchived(l) && !coordsFromDb(l));
-        if (!anyMiss) {
-          filterMissingMapCoordsOnly = false;
-          document.getElementById('filter-clear-missing-coords')?.classList.add('is-hidden');
-          syncFilterGeoCheckbox();
+      try {
+        hideLoadError();
+        const nextJson = pvlStableStringify(data);
+        const unchanged = pvlLastLeadsPayloadJson !== '' && nextJson === pvlLastLeadsPayloadJson;
+        allLeads = data;
+        if (!unchanged) {
+          pvlLastLeadsPayloadJson = nextJson;
+          if (filterMissingMapCoordsOnly) {
+            const anyMiss = allLeads.some((l) => !isCrmArchived(l) && !coordsFromDb(l));
+            if (!anyMiss) {
+              filterMissingMapCoordsOnly = false;
+              document.getElementById('filter-clear-missing-coords')?.classList.add('is-hidden');
+              syncFilterGeoCheckbox();
+            }
+          }
+          if (data.length === 0) {
+            showLoadError('Keine Leads geladen. Auf dem Server: Ordner data/, SQLite mit Zeilen (Import z. B. npm run import-leads-csv -- "auto_leads - sheet1.csv"). Diagnose: /api/debug/leads-db (Alias: /api/debug/leads-sheet)');
+          }
+          renderList();
+          renderMarkers();
         }
+        if (seq === loadLeadsSeq && res.ok) {
+          try {
+            pvlMaybeToastNachfassReactivated();
+          } catch (e) {
+            console.warn('[NOORTEC] Nachfassen-Toast', e && e.message);
+          }
+        }
+      } catch (uiErr) {
+        console.error('UI-Crash beim Verarbeiten der Leads:', uiErr);
+        showLoadError('Anzeigefehler (bitte Konsole prüfen): ' + (uiErr.message || String(uiErr)));
+        try {
+          renderList();
+          renderMarkers();
+        } catch (_) { /* ignore */ }
       }
-      if (data.length === 0) {
-        showLoadError('Keine Leads geladen. Auf dem Server: Ordner data/, SQLite mit Zeilen (Import z. B. npm run import-leads-csv -- "auto_leads - sheet1.csv"). Diagnose: /api/debug/leads-db (Alias: /api/debug/leads-sheet)');
-      }
-      renderList();
-      renderMarkers();
     } catch (e) {
       if (seq !== loadLeadsSeq) return;
-      console.error('Failed to load leads:', e);
+      console.error('loadLeads Abruf fehlgeschlagen (Netzwerk o. ä.):', e);
       allLeads = [];
-      showLoadError('Netzwerk- oder Serverfehler: ' + (e.message || String(e)));
-      renderList();
-      renderMarkers();
+      pvlLastLeadsPayloadJson = '';
+      showLoadError('Verbindungsfehler zum Server. Bitte Seite neu laden oder später erneut versuchen. (' + (e.message || String(e)) + ')');
+      try {
+        renderList();
+        renderMarkers();
+      } catch (uiErr) {
+        console.error('UI-Crash beim Verarbeiten der Leads:', uiErr);
+      }
     } finally {
       if (seq === loadLeadsSeq) {
         layout?.classList.remove('app-loading');
         rb?.classList.remove('spin');
-        void refreshDashboardStatsBar();
-        pvlInvalidateMap();
+        try {
+          void refreshDashboardStatsBar();
+        } catch (e) {
+          console.error('refreshDashboardStatsBar (nach loadLeads):', e);
+        }
+        try {
+          pvlInvalidateMap();
+        } catch (e) {
+          console.error('pvlInvalidateMap (nach loadLeads):', e);
+        }
       }
     }
   }
 
   // ── Filter ────────────────────────────────────────────────────────────────
-  function getFiltered() {
+  function getFilteredActive() {
     const sortMode = document.getElementById('sort-leads')?.value || 'created_at_desc';
-    let rows = allLeads.filter(passesListFilters);
+    let rows = allLeads.filter((l) => passesActiveList(l) && passesNonTabFilters(l));
+    rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
+    return rows;
+  }
+
+  function getFilteredDone() {
+    const sortMode = document.getElementById('sort-leads')?.value || 'created_at_desc';
+    let rows = allLeads.filter((l) => passesDoneList(l) && passesNonTabFilters(l));
+    rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
+    return rows;
+  }
+
+  function getFilteredNachfassen() {
+    const sortMode = document.getElementById('sort-leads')?.value || 'created_at_desc';
+    let rows = allLeads.filter((l) => passesNachfassenSnoozedList(l) && passesNonTabFilters(l));
     rows = [...rows].sort((a, b) => compareBySort(a, b, sortMode));
     return rows;
   }
@@ -2640,6 +3762,8 @@
 
   function activateMissingCoordsMapFilter() {
     filterMissingMapCoordsOnly = true;
+    pvlSidebarListTab = 'active';
+    syncSidebarListTabUi();
     document.getElementById('filter-clear-missing-coords')?.classList.remove('is-hidden');
     syncFilterGeoCheckbox();
     const sd = document.getElementById('sidebar-detail');
@@ -2649,19 +3773,8 @@
   }
 
   // ── Sidebar list ──────────────────────────────────────────────────────────
-  function renderList() {
-    const list  = document.getElementById('lead-list');
-    const leads = getFiltered();
-    document.getElementById('lead-count').textContent = leads.length;
-    if (leads.length === 0 && allLeads.length > 0) {
-      list.innerHTML = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:var(--pvl-muted);font-size:0.82rem;line-height:1.45">Keine Einträge in dieser Ansicht. Prüfen Sie Tab <strong>Aktive Leads</strong> / <strong>Abgearbeitet</strong>, Suche, <strong>Filter &amp; Sortierung</strong> oder „Nur ohne Kartenpunkt“.</p>';
-      return;
-    }
-    if (leads.length === 0) {
-      list.innerHTML = '';
-      return;
-    }
-      list.innerHTML = leads.map(l => {
+  function pvlLeadListItemHtml(l, isDonePanel) {
+    try {
       const color = getMarkerColorForLead(l);
       const lk = encodeURIComponent(leadKey(l));
       const act = leadKey(l) === activeLeadKeyStr;
@@ -2671,7 +3784,10 @@
       const warnIcon = mapMiss
         ? '<span class="lead-map-warn-icon" title="Kein gültiger Kartenpunkt in der Datenbank — Adresse prüfen" aria-label="Warnung: keine Kartenkoordinaten">' + PVL_SVG_WARN_TRI + '</span>'
         : '';
-      const tabDoneCls = sidebarListTab === 'done' ? ' lead-item-abgearbeitet' : '';
+      const reonicIcon = isLeadReonicTransferred(l)
+        ? '<span class="lead-reonic-icon" title="An Reonic übermittelt" aria-label="Reonic">' + PVL_SVG_REONIC_OK + '</span>'
+        : '';
+      const tabDoneCls = isDonePanel ? ' lead-item-abgearbeitet' : '';
       const emailRaw = String(l[COL.email] || '').trim();
       const emailH = mailtoHref(emailRaw);
       const phoneRaw = String(l[COL.phone] || '').trim();
@@ -2688,26 +3804,268 @@
       const addrHtml = addr
         ? (addrH ? `<a href="${esc(addrH)}" target="_blank" rel="noopener noreferrer" ${stopPropAttr()}>${esc(addr)}</a>` : esc(addr))
         : '';
+      const nr = anfrageNr(l);
+      const nrSeg = nr ? ` · #${esc(nr)}` : '';
+      const stSeg = stShow ? ` · ${esc(stShow)}` : '';
+      const dtRaw = String(l[COL.date] || '').trim();
+      const dtSeg = dtRaw ? ` · ${esc(dtRaw)}` : '';
+      const row1Inner = `${esc(l[COL.name] || '(kein Name)')}${nrSeg}${stSeg}${dtSeg}`;
+      const addrBlock = addrHtml
+        ? `<div class="lead-address">${addrHtml}</div>`
+        : '';
+      const contactBlock = (phoneHtml || emailHtml)
+        ? `<div class="lead-contact-row">
+          ${phoneHtml ? `<span class="lead-contact-phone">${phoneHtml}</span>` : ''}
+          ${emailHtml ? `<span class="lead-contact-email">${emailHtml}</span>` : ''}
+        </div>`
+        : '';
 
       return `<div class="lead-item${act ? ' active' : ''}${arch ? ' lead-archived' : ''}${tabDoneCls}"
            data-lk="${lk}"
            style="border-left-color:${color}"
-           onclick="selectLead('${lk}')">
-        <div class="lead-name">${warnIcon}${esc(l[COL.name] || '(kein Name)')}
-          <span style="color:#94a3b8;font-weight:400;font-size:0.72rem"> #${esc(anfrageNr(l))}</span>
-        </div>
-        <div class="lead-meta">
-          ${esc(l[COL.city] || '')}${l[COL.zip] ? ' ' + esc(l[COL.zip]) : ''}
-          &nbsp;·&nbsp;${esc(l[COL.date] || '')}${stShow ? ` · <span style="font-weight:600">${esc(stShow)}</span>` : ''}
-        </div>
-        ${(emailHtml || phoneHtml || addrHtml) ? `<div class="lead-meta" style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
-          ${phoneHtml ? `<div>Tel. ${phoneHtml}</div>` : ''}
-          ${emailHtml ? `<div>E‑Mail ${emailHtml}</div>` : ''}
-          ${addrHtml ? `<div>Adresse ${addrHtml}</div>` : ''}
-        </div>` : ''}
+           role="button"
+           tabindex="0">
+        <div class="lead-row1">${warnIcon}${reonicIcon}<span class="lead-row1-txt">${row1Inner}</span></div>
+        ${addrBlock}
+        ${contactBlock}
         ${l[COL.betreut] ? `<div class="lead-betreut">Betreut: ${esc(l[COL.betreut])}</div>` : ''}
       </div>`;
-    }).join('');
+    } catch (rowErr) {
+      console.warn('[NOORTEC] Lead-Listenzeile übersprungen:', rowErr && rowErr.message, l);
+      return '';
+    }
+  }
+
+  function renderListPanelInto(listEl, leads, opts) {
+    const isDonePanel = !!(opts && opts.donePanel);
+    const emptyHint = opts && opts.emptyHint;
+    if (!listEl) return;
+    if (leads.length === 0 && allLeads.length > 0) {
+      listEl.innerHTML = emptyHint || '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:var(--pvl-muted);font-size:0.82rem;line-height:1.45">Keine Einträge. Suche, <strong>Sortierung &amp; Filter</strong>, „Nur ohne Kartenpunkt“ oder den anderen Reiter prüfen.</p>';
+      return;
+    }
+    if (leads.length === 0) {
+      listEl.innerHTML = '';
+      return;
+    }
+    try {
+      listEl.innerHTML = leads.map((l) => pvlLeadListItemHtml(l, isDonePanel)).join('');
+    } catch (e) {
+      console.error('UI-Crash beim Verarbeiten der Leads (renderList):', e);
+      listEl.innerHTML = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:#b91c1c;font-size:0.82rem">Listenfehler — bitte Konsole öffnen.</p>';
+      throw e;
+    }
+  }
+
+  function renderList() {
+    const scroller = document.querySelector('.pvl-lead-list-stack [role="tabpanel"]:not([hidden])');
+    const savedListScrollTop = scroller ? scroller.scrollTop : 0;
+    const list = document.getElementById('lead-list');
+    const listNach = document.getElementById('lead-list-nachfassen');
+    const listDone = document.getElementById('lead-list-done');
+    if (!list) return;
+    let activeLeads;
+    let nachLeads;
+    let doneLeads;
+    const emptyNach = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:var(--pvl-muted);font-size:0.82rem;line-height:1.45">Keine zurückgestellten Nachfassen-Leads. Suche oder <strong>Sortierung &amp; Filter</strong> prüfen.</p>';
+    try {
+      activeLeads = getFilteredActive();
+      nachLeads = getFilteredNachfassen();
+      doneLeads = getFilteredDone();
+    } catch (e) {
+      console.error('UI-Crash beim Verarbeiten der Leads (Filter/Sort):', e);
+      const err = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:#b91c1c;font-size:0.82rem">Filter/Sortierung fehlgeschlagen — Konsole prüfen.</p>';
+      list.innerHTML = err;
+      if (listNach) listNach.innerHTML = err;
+      if (listDone) listDone.innerHTML = err;
+      throw e;
+    }
+    const cnt = document.getElementById('lead-count');
+    const cntNach = document.getElementById('pvl-nachfass-count');
+    const cntDone = document.getElementById('pvl-done-count');
+    if (cnt) cnt.textContent = activeLeads.length;
+    if (cntNach) cntNach.textContent = nachLeads.length;
+    if (cntDone) cntDone.textContent = doneLeads.length;
+    const tab = getSidebarListTab();
+    if (tab === 'active') {
+      renderListPanelInto(list, activeLeads, { donePanel: false });
+      if (listNach) listNach.innerHTML = '';
+      if (listDone) listDone.innerHTML = '';
+    } else if (tab === 'nachfassen') {
+      list.innerHTML = '';
+      renderListPanelInto(listNach, nachLeads, { donePanel: false, emptyHint: emptyNach });
+      if (listDone) listDone.innerHTML = '';
+    } else {
+      list.innerHTML = '';
+      if (listNach) listNach.innerHTML = '';
+      if (listDone) renderListPanelInto(listDone, doneLeads, { donePanel: true });
+    }
+    if (scroller) {
+      requestAnimationFrame(() => {
+        try {
+          scroller.scrollTop = savedListScrollTop;
+        } catch (_) { /* ignore */ }
+      });
+    }
+  }
+
+  function pvlUpdateLeadCountLabels() {
+    const cnt = document.getElementById('lead-count');
+    const cntNach = document.getElementById('pvl-nachfass-count');
+    const cntDone = document.getElementById('pvl-done-count');
+    let activeLeads;
+    let nachLeads;
+    let doneLeads;
+    try {
+      activeLeads = getFilteredActive();
+      nachLeads = getFilteredNachfassen();
+      doneLeads = getFilteredDone();
+    } catch (_) {
+      return;
+    }
+    if (cnt) cnt.textContent = activeLeads.length;
+    if (cntNach) cntNach.textContent = nachLeads.length;
+    if (cntDone) cntDone.textContent = doneLeads.length;
+  }
+
+  function pvlNormTerminForCompare(raw) {
+    const v = String(raw || '').trim();
+    if (!v) return '';
+    const u = v.includes('T') ? v : v.replace(' ', 'T');
+    if (u.length >= 16) {
+      const sn = snapDatetimeLocalStep15(u.slice(0, 16));
+      return sn || u.slice(0, 16);
+    }
+    return v;
+  }
+
+  function pvlLeadTerminTypForCompare(lead) {
+    if (!lead) return 'vor_ort';
+    return String(lead[COL.termintyp] || lead.Termintyp || 'vor_ort').toLowerCase() === 'online' ? 'online' : 'vor_ort';
+  }
+
+  /**
+   * Formular-Inhalt = gespeicherte Zeile: kein erneutes PATCH (verhindert Dauer-„Gespeichert“-Schleife).
+   * `Betreut` nutzt `rowLead` wie in saveFields, nicht die Chips direkt.
+   */
+  function pvlIsDetailSaveUnchanged(rowLead) {
+    if (!rowLead) return false;
+    const notizen = document.getElementById('sd-notizen') ? document.getElementById('sd-notizen').value : '';
+    const nachfass = document.getElementById('sd-nachfass') ? document.getElementById('sd-nachfass').value : '';
+    const terminRaw = document.getElementById('sd-termin') ? document.getElementById('sd-termin').value : '';
+    const nameVal = (document.getElementById('sd-c-name') && document.getElementById('sd-c-name').value.trim()) || '';
+    const email = (document.getElementById('sd-c-email') && document.getElementById('sd-c-email').value.trim()) || '';
+    const phone = (document.getElementById('sd-c-phone') && document.getElementById('sd-c-phone').value.trim()) || '';
+    const street = (document.getElementById('sd-c-street') && document.getElementById('sd-c-street').value.trim()) || '';
+    const zip = (document.getElementById('sd-c-zip') && document.getElementById('sd-c-zip').value.trim()) || '';
+    const city = (document.getElementById('sd-c-city') && document.getElementById('sd-c-city').value.trim()) || '';
+    const meetLink = (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '';
+    if (String(rowLead[COL.notes] ?? '') !== notizen) return false;
+    if (String(rowLead[COL.nachfass] || '').trim() !== nachfass) return false;
+    if (pvlNormTerminForCompare(rowLead[COL.termin]) !== pvlNormTerminForCompare(terminRaw)) return false;
+    if (getSelectedTerminTyp() !== pvlLeadTerminTypForCompare(rowLead)) return false;
+    if (String(rowLead[COL.meetLink] || rowLead['Meet-Link'] || '').trim() !== meetLink) return false;
+    if (String(rowLead[COL.name] || '').trim() !== nameVal) return false;
+    if (String(rowLead[COL.email] || '').trim() !== email) return false;
+    if (String(rowLead[COL.phone] || '').trim() !== phone) return false;
+    if (String(rowLead[COL.street] || '').trim() !== street) return false;
+    if (String(rowLead[COL.zip] || '').trim() !== zip) return false;
+    if (String(rowLead[COL.city] || '').trim() !== city) return false;
+    return true;
+  }
+
+  function pvlPatchLeadListAfterDetailSave(lead) {
+    if (!lead) return;
+    let activeRows;
+    let nachRows;
+    let doneRows;
+    try {
+      activeRows = getFilteredActive();
+      nachRows = getFilteredNachfassen();
+      doneRows = getFilteredDone();
+    } catch (e) {
+      console.error('[NOORTEC] pvlPatchLeadListAfterDetailSave', e);
+      renderList();
+      return;
+    }
+    const enc = encodeURIComponent(leadKey(lead));
+    const escA = cssEscAttr(enc);
+    const list = document.getElementById('lead-list');
+    const listNach = document.getElementById('lead-list-nachfassen');
+    const listDone = document.getElementById('lead-list-done');
+    const lk = leadKey(lead);
+    const inActive = activeRows.some((l) => leadKey(l) === lk);
+    const inNach = nachRows.some((l) => leadKey(l) === lk);
+    const inDone = doneRows.some((l) => leadKey(l) === lk);
+    const elA = list && list.querySelector(`[data-lk="${escA}"]`);
+    const elN = listNach && listNach.querySelector(`[data-lk="${escA}"]`);
+    const elD = listDone && listDone.querySelector(`[data-lk="${escA}"]`);
+    if (!inActive && !inNach && !inDone) {
+      if (elA) elA.remove();
+      if (elN) elN.remove();
+      if (elD) elD.remove();
+      pvlUpdateLeadCountLabels();
+      return;
+    }
+    const htmlA = pvlLeadListItemHtml(lead, false);
+    const htmlN = pvlLeadListItemHtml(lead, false);
+    const htmlD = pvlLeadListItemHtml(lead, true);
+    const pvlInsertRowAt = (panel, idx, html) => {
+      if (!panel) return false;
+      const ref = panel.children[idx];
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html.trim();
+      const node = wrap.firstElementChild;
+      if (!node) return false;
+      try {
+        if (ref) panel.insertBefore(node, ref);
+        else panel.appendChild(node);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+    if (inActive) {
+      if (elD) elD.remove();
+      if (elN) elN.remove();
+      if (elA) {
+        elA.outerHTML = htmlA;
+      } else {
+        const idx = activeRows.findIndex((l) => leadKey(l) === lk);
+        if (idx < 0 || !pvlInsertRowAt(list, idx, htmlA)) {
+          renderList();
+          return;
+        }
+      }
+    } else if (inNach) {
+      if (elA) elA.remove();
+      if (elD) elD.remove();
+      if (elN) {
+        elN.outerHTML = htmlN;
+      } else {
+        const idx = nachRows.findIndex((l) => leadKey(l) === lk);
+        if (idx < 0 || !pvlInsertRowAt(listNach, idx, htmlN)) {
+          renderList();
+          return;
+        }
+      }
+    } else if (inDone) {
+      if (elA) elA.remove();
+      if (elN) elN.remove();
+      if (elD) {
+        elD.outerHTML = htmlD;
+      } else {
+        const idx = doneRows.findIndex((l) => leadKey(l) === lk);
+        if (idx < 0 || !pvlInsertRowAt(listDone, idx, htmlD)) {
+          renderList();
+          return;
+        }
+      }
+    }
+    pvlUpdateLeadCountLabels();
+    try {
+      pvlUpdateActiveLeadRowHighlight(enc);
+    } catch (_) { /* ignore */ }
   }
 
   function parseLeadCoord(v) {
@@ -2729,36 +4087,71 @@
   /** Marker nur aus DB-Koordinaten — kein Browser-Geocoding (Performance / Nominatim-Fair-Use). */
   function renderMarkers() {
     const gen = ++markerRenderGen;
+    const reopenPopupLeadKey = pvlOpenMapPopupLeadKey;
     try {
       markerLayer.clearLayers();
     } catch (e) {
       console.warn('[NOORTEC] Karte: clearLayers fehlgeschlagen', e && e.message);
     }
     markerMap = {};
-    const subset = mapLeadsSubset();
-    for (let i = 0; i < subset.length; i += 1) {
-      const lead = subset[i];
-      if (gen !== markerRenderGen) return;
-      const coords = coordsFromDb(lead);
-      if (!coords) continue;
+    let subset = [];
+    try {
+      subset = mapLeadsSubset();
+    } catch (e) {
+      console.error('[NOORTEC] Karte: mapLeadsSubset fehlgeschlagen', e);
+    }
+    try {
+      for (let i = 0; i < subset.length; i += 1) {
+        const lead = subset[i];
+        if (gen !== markerRenderGen) return;
+        const leadId = lead && (lead.pvlDbId != null ? lead.pvlDbId : lead.id);
+        try {
+          const laRaw = lead && (lead.latitude != null ? lead.latitude : lead.lat);
+          const loRaw = lead && (lead.longitude != null ? lead.longitude : lead.lng);
+          if (laRaw == null || loRaw == null || laRaw === '' || loRaw === '') continue;
+          const laN = typeof laRaw === 'number' ? laRaw : parseFloat(String(laRaw).trim().replace(',', '.'));
+          const loN = typeof loRaw === 'number' ? loRaw : parseFloat(String(loRaw).trim().replace(',', '.'));
+          if (!Number.isFinite(laN) || !Number.isFinite(loN) || laN === 0 || loN === 0) continue;
+          const coords = coordsFromDb(lead);
+          if (!coords) continue;
+          placeMarker(lead, coords);
+        } catch (e) {
+          console.error('Fehler bei Lead ID ' + leadId, e);
+        }
+      }
+    } catch (e) {
+      console.error('[NOORTEC] Karte: Marker-Schleife fehlgeschlagen', e);
+    }
+    if (gen === markerRenderGen) {
       try {
-        placeMarker(lead, coords);
+        refreshTempFocusAfterMarkers();
       } catch (e) {
-        console.warn('[NOORTEC] Karte: Marker übersprungen (ungültige Daten)', e && e.message);
+        console.error('[NOORTEC] Karte: Nachbearbeitung (Focus)', e);
+      }
+      if (reopenPopupLeadKey && markerMap[reopenPopupLeadKey]) {
+        requestAnimationFrame(() => {
+          try {
+            markerMap[reopenPopupLeadKey].openPopup();
+          } catch (e) {
+            console.warn('[NOORTEC] Karte: Popup wieder öffnen', e && e.message);
+          }
+        });
       }
     }
-    if (gen === markerRenderGen) refreshTempFocusAfterMarkers();
   }
 
-  // ── Individual pin ────────────────────────────────────────────────────────
-  function pinIcon(color, isLegacy, isDoneStyle) {
+  /** Tropfen-Pin (DivIcon); `svgOpacity` für sehr alte „Neu“-Leads (zusätzliche Abschwächung). */
+  function pinIcon(color, isLegacy, isDoneStyle, svgOpacity) {
+    const safeColor = /^#[0-9A-Fa-f]{6}$/.test(String(color || '')) ? color : '#94a3b8';
     const ringStroke = isLegacy ? '#ffffff' : '#0f172a';
     const ringW = isLegacy ? 3 : 2.5;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="-2 -2 28 40">
+    let op = isDoneStyle ? 0.72 : 1;
+    if (!isDoneStyle && svgOpacity != null && Number.isFinite(Number(svgOpacity))) {
+      op = Math.min(1, Math.max(0.12, Number(svgOpacity)));
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="-2 -2 28 40" aria-hidden="true" style="opacity:${op}">
       <path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z"
-            fill="${color}" stroke="${ringStroke}" stroke-width="${ringW}" paint-order="stroke fill"/>
-      <path d="M13 0C5.82 0 0 5.82 0 13c0 10.2 13 25 13 25S26 23.2 26 13C26 5.82 20.18 0 13 0z"
-            fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.2"/>
+            fill="${safeColor}" stroke="${ringStroke}" stroke-width="${ringW}" paint-order="stroke fill"/>
       <circle cx="13" cy="13" r="5" fill="white" fill-opacity="0.45"/>
     </svg>`;
     return L.divIcon({
@@ -2766,20 +4159,37 @@
       className: isDoneStyle ? 'pvl-pin-done' : '',
       iconSize: [28, 40],
       iconAnchor: [14, 38],
-      popupAnchor: [0, -38],
+      popupAnchor: [0, -36],
     });
+  }
+
+  /** Rechter Rand für Leaflet autoPan, damit Popups nicht unter der fixierten Sidebar liegen. */
+  function pvlPopupEdgePaddingBottomRight() {
+    try {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue('--pvl-sidebar-w').trim();
+      const m = /^([\d.]+)px$/.exec(raw);
+      const sw = m ? parseFloat(m[1]) : 360;
+      const resW = 6;
+      const margin = 36;
+      return L.point(Math.min(560, Math.round(sw + resW + margin)), 96);
+    } catch (_) {
+      return L.point(440, 96);
+    }
   }
 
   function placeMarker(lead, coords) {
     if (!coords) return;
-    const color  = getMarkerColorForLead(lead);
+    const pv = getPinVisualForLead(lead);
+    const color  = pv.color;
     const src    = getSource(lead);
     const donePin = isAbgearbeitetForMap(lead);
-    const marker = L.marker(coords, { icon: pinIcon(color, !!lead.__pvlLegacy, donePin) });
+    const addressStr = (lead && typeof lead.address === 'string') ? lead.address : '';
+    const strasseRaw = addressStr || (lead && lead[COL.street]);
+    const marker = L.marker(coords, { icon: pinIcon(color, !!lead.__pvlLegacy, donePin, donePin ? null : pv.opacity) });
 
     const emailRawPop = String(lead[COL.email] || '').trim();
     const emailHPop = mailtoHref(emailRawPop);
-    const addrPartsPop = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).map((x) => String(x).trim()).filter(Boolean);
+    const addrPartsPop = [strasseRaw || lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).map((x) => String(x).trim()).filter(Boolean);
     const addrLinePop = addrPartsPop.join(', ');
     const addrHPop = googleMapsSearchHref(addrLinePop);
     const popupContent = `
@@ -2797,11 +4207,32 @@
         Bearbeiten / Details
       </button>`;
 
+    marker.on('dblclick', (ev) => {
+      if (ev && ev.originalEvent) {
+        L.DomEvent.stopPropagation(ev.originalEvent);
+        L.DomEvent.preventDefault(ev.originalEvent);
+      }
+      zoomMapToLeadMax(lead);
+    });
+    marker.bindPopup(popupContent, {
+      maxWidth: 320,
+      autoPan: true,
+      autoPanPaddingTopLeft: L.point(12, 12),
+      autoPanPaddingBottomRight: pvlPopupEdgePaddingBottomRight(),
+    });
+    marker.bindTooltip(esc(String(lead[COL.name] || '').trim() || '(kein Name)'), {
+      permanent: false,
+      direction: 'top',
+      offset: [0, -40],
+      className: 'pvl-lead-marker-tooltip',
+      opacity: 0.95,
+    });
+    /* Nach bindPopup: Leaflet öffnet die Sprechblase zuerst, danach Detail-Seitenleiste (kein doppelter openPopup davor, sonst kollidiert es mit dem Popup-Toggle) */
     marker.on('click', (ev) => {
       if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
       selectLead(encodeURIComponent(leadKey(lead)));
     });
-    marker.bindPopup(popupContent, { maxWidth: 320 });
+    marker._pvlLeadKey = leadKey(lead);
     marker.addTo(markerLayer);
 
     markerMap[leadKey(lead)] = marker;
@@ -2809,19 +4240,13 @@
 
   /** NOORTEC: hervorgehobener Pin für abgearbeitete Leads solange Detail offen (siehe `syncTempFocusMarker`). */
   function tempAbgearbeitetFocusIcon() {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="-4 -4 40 50">
-      <path d="M16 0C7.16 0 0 7.16 0 16c0 12.5 16 30 16 30S32 28.5 32 16C32 7.16 24.84 0 16 0z"
-            fill="#1a56db" stroke="#f59e0b" stroke-width="3" paint-order="stroke fill"/>
-      <path d="M16 0C7.16 0 0 7.16 0 16c0 12.5 16 30 16 30S32 28.5 32 16C32 7.16 24.84 0 16 0z"
-            fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.2"/>
-      <circle cx="16" cy="16" r="5.5" fill="#fff" fill-opacity="0.92"/>
-    </svg>`;
+    const html = `<div class="pvl-temp-focus-dot" style="width:28px;height:28px;border-radius:50%;background:#1a56db;border:3px solid #f59e0b;box-shadow:0 0 0 2px rgba(255,255,255,0.6),0 2px 8px rgba(0,0,0,0.35)"></div>`;
     return L.divIcon({
-      html: svg,
+      html,
       className: 'pvl-noortec-temp-focus-marker',
-      iconSize: [40, 50],
-      iconAnchor: [20, 48],
-      popupAnchor: [0, -46],
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -12],
     });
   }
 
@@ -2878,12 +4303,71 @@
     renderList();
     const rowEl = document.querySelector(`[data-lk="${cssEscAttr(encodedKey)}"]`);
     if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-    openSidebarDetail(lead);
+    if (listDblMaxZoom) {
+      try {
+        zoomMapToLeadMax(lead);
+      } catch (e) {
+        console.warn('[NOORTEC] selectLead listDblMaxZoom', e && e.message);
+      }
+      try {
+        highlightMarkerForLead(lead);
+      } catch (e) {
+        /* ignore */
+      }
+    } else if (!opts || !opts.skipMapFocus) {
+      if (fromList) {
+        focusMapOnLeadPreserveZoom(lead, () => { highlightMarkerForLead(lead); });
+      } else if (fromMarker) {
+        /* Einfachklick auf Pin: Detail + Sprechblase, kein Pan/Zoom (Max-Zoom nur per Doppelklick auf dem Pin). */
+        const m = markerMap[leadKey(lead)];
+        if (m) {
+          try { m.openPopup(); } catch (_) { /* ignore */ }
+        }
+      } else {
+        focusMapOnLead(lead, () => { highlightMarkerForLead(lead); });
+      }
+    } else if (fromMarker) {
+      requestAnimationFrame(() => {
+        const m = markerMap[leadKey(lead)];
+        if (m) {
+          try {
+            m.openPopup();
+          } catch (_) { /* ignore */ }
+        }
+      });
+    }
   }
 
-  function openSidebarDetail(lead) {
-    if (typeof map.closePopup === 'function') map.closePopup();
+  window.selectLead = selectLead;
+  function PVL_onLeadRowClick(ev) {
+    try {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+    } catch (_) { /* ignore */ }
+    const el = ev && ev.currentTarget;
+    const enc = el && el.getAttribute('data-lk');
+    if (!enc) return;
+    selectLead(enc, { fromList: true });
+  }
+  window.PVL_onLeadRowClick = PVL_onLeadRowClick;
+
+  function openSidebarDetail(lead, detailOpts) {
+    const sdPre = document.getElementById('sidebar-detail');
+    const wasDetailOpen = sdPre && sdPre.classList.contains('open');
+    if (!wasDetailOpen) {
+      try {
+        const c = map.getCenter();
+        pvlMapOverviewState = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+      } catch (_) {
+        pvlMapOverviewState = null;
+      }
+    }
+    const skipClosePopup = !!(detailOpts && detailOpts.skipClosePopup);
+    if (!skipClosePopup && typeof map.closePopup === 'function') {
+      try { map.closePopup(); } catch (_) { /* Leaflet: Popup schon zu / kein Pane */ }
+    }
+    if (typeof map.closeTooltip === 'function') {
+      try { map.closeTooltip(); } catch (_) { /* Leaflet: kein aktives Tooltip / _layer undefined (Tooltip.js) */ }
+    }
     const pvlLayout = document.getElementById('pvl-layout');
     if (pvlLayout && pvlLayout.classList.contains('pvl-is-mobile')) {
       setMobileTab('list', true);
@@ -2891,24 +4375,36 @@
     if (pvlLayout && pvlLayout.classList.contains('pvl-sidebar-collapsed')) {
       pvlSetSidebarCollapsed(false);
     }
+    try {
+      pvlSyncSidebarFixedLayout();
+    } catch (_) { /* ignore */ }
     pvlEnterDetailSidebarWidth();
     document.getElementById('pvl-layout')?.classList.add('pvl-detail-open');
     document.getElementById('sidebar-detail').classList.add('open');
-    document.getElementById('sidebar-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      const sd = document.getElementById('sidebar-detail');
+      if (sd) sd.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (_) { /* ignore */ }
+
+    /* Status-Zeile bei jedem Lead-Wechsel neu; vor readOnly/disabled. */
+    initStatusBar(true);
 
     const legacy = !!lead.__pvlLegacy;
     const arch = isCrmArchived(lead);
+    /* Nur Legacy-Zeilen / CRM-Archiv sind gesperrt — Pipeline-Status darf die Bearbeitung nicht blockieren. */
     const readOnly = legacy || arch;
-    document.getElementById('sd-legacy-banner').style.display = legacy ? 'block' : 'none';
+    const legBanner = document.getElementById('sd-legacy-banner');
+    if (legBanner) legBanner.style.display = legacy ? 'block' : 'none';
     const restoreBtn = document.getElementById('btn-restore-archive');
     if (restoreBtn) restoreBtn.style.display = arch && lead[COL.email] ? 'inline-block' : 'none';
-    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city', 'sd-meet-link'].forEach((id) => {
+    ['sd-c-name', 'sd-notizen', 'sd-nachfass', 'sd-nachfass-kurz', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city', 'sd-meet-link'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = readOnly;
     });
     document.querySelectorAll('input[name="sd-termin-typ"]').forEach((inp) => { inp.disabled = readOnly; });
     document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = readOnly; });
-    document.getElementById('btn-save').disabled = readOnly;
+    const saveBtnD = document.getElementById('btn-detail-save');
+    if (saveBtnD) saveBtnD.disabled = readOnly;
     const chipRow = document.getElementById('sd-betreut-chips');
     if (chipRow) {
       chipRow.style.pointerEvents = readOnly ? 'none' : '';
@@ -2917,21 +4413,21 @@
     const suSetter = window.__pvlSessionUser || {};
     const isSetterUi = !readOnly && suSetter.role === 'setter';
     const setterWrap = document.getElementById('sd-setter-assign-wrap');
-    const betFieldWrap = document.getElementById('sd-betreut-field-wrap');
     const betChipsWrap = document.getElementById('sd-betreut-chips-wrap');
     if (setterWrap) setterWrap.style.display = isSetterUi ? 'block' : 'none';
-    if (betFieldWrap) betFieldWrap.style.display = isSetterUi ? 'none' : 'block';
     if (betChipsWrap) betChipsWrap.style.display = isSetterUi ? 'none' : 'block';
 
     const color = getMarkerColorForLead(lead);
-    const titleEl = document.getElementById('sd-name');
-    titleEl.textContent = lead[COL.name] || '(kein Name)';
-    titleEl.style.borderLeft = `4px solid ${color}`;
+    const nameInp = document.getElementById('sd-c-name');
+    if (nameInp) {
+      nameInp.value = lead[COL.name] || '';
+      nameInp.style.borderLeft = `4px solid ${color}`;
+    }
 
     const mapWarn = document.getElementById('sd-map-warn');
     if (mapWarn) {
       if (!coordsFromDb(lead)) {
-        mapWarn.textContent = 'NOORTEC: Dieser Lead konnte nicht auf der Karte platziert werden. Bitte Adresse prüfen.';
+        mapWarn.textContent = 'Lead konnte nicht auf Karte platziert werden.';
         mapWarn.classList.add('show');
       } else {
         mapWarn.textContent = '';
@@ -2939,73 +4435,77 @@
       }
     }
 
-    const addr = [lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).join(', ');
     const emailRaw = String(lead[COL.email] || '').trim();
     const emailH = mailtoHref(emailRaw);
-    const addrH = googleMapsSearchHref(addr);
-    const emailCell = emailH
-      ? `<a href="${esc(emailH)}" onclick="event.stopPropagation()">${esc(emailRaw)}</a>`
-      : esc(emailRaw);
-    const addrCell = addrH
-      ? `<a href="${esc(addrH)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${esc(addr)}</a>`
-      : esc(addr);
+    const emailRow = emailRaw
+      ? (emailH
+        ? `<a href="${esc(emailH)}" onclick="event.stopPropagation()">${esc(emailRaw)}</a>`
+        : esc(emailRaw))
+      : '—';
+    const phoneRaw = String(lead[COL.phone] || '').trim();
+    const phoneTh = phoneRaw ? telHref(lead[COL.phone]) : '';
+    const phoneRow = phoneRaw
+      ? (phoneTh ? `<a class="tel-link" href="${esc(phoneTh)}">${esc(lead[COL.phone])}</a>` : esc(lead[COL.phone]))
+      : '—';
+    const nrVal = anfrageNr(lead);
+    const nrRow = nrVal ? `#${esc(nrVal)}` : '—';
+    const srcRow = esc(getSource(lead) || '—');
+    const dtRow = esc(String(lead[COL.date] || '').trim() || '—');
+    const infoRaw = String(lead[COL.info] || '').trim();
+    const infoHtml = `
+      <div class="sd-info-row sd-info-row-contact">
+        <span class="sd-info-cell sd-info-phone">${phoneRow}</span>
+        <span class="sd-info-sep" aria-hidden="true">|</span>
+        <span class="sd-info-cell sd-info-email">${emailRow}</span>
+      </div>
+      <div class="sd-info-row sd-info-row-meta">
+        <span>${nrRow}</span><span class="sd-info-sep-inline">|</span><span>${srcRow}</span><span class="sd-info-sep-inline">|</span><span>${dtRow}</span>
+      </div>
+      <div class="sd-info-row sd-info-row-info">
+        <span class="sd-info-info-label">Info</span>
+        <div class="sd-info-info-body">${infoRaw ? esc(infoRaw) : '—'}</div>
+      </div>
+    `;
+    const sdInfo = document.getElementById('sd-info');
+    if (sdInfo) sdInfo.innerHTML = infoHtml;
 
-    const infoRows = [
-      ['Anfrage Nr.', esc(anfrageNr(lead))],
-      ['E-Mail',      emailCell],
-      ['Adresse',     addrCell],
-      ['Quelle',      getSource(lead)],
-      ['Datum',       lead[COL.date]],
-      ['Info',        lead[COL.info]],
-      ['Status',      arch ? 'Archivieren' : lead[COL.status]],
-      ['Nachfass bis', lead[COL.nachfass]],
-      ['Termin',      lead[COL.termin]],
-      ['Termintyp', (String(lead[COL.termintyp] || lead.Termintyp || '').toLowerCase() === 'online') ? 'Online' : 'Vor-Ort'],
-    ].filter(([, v]) => v);
+    const setVal = (id, v) => { const n = document.getElementById(id); if (n) n.value = v != null ? String(v) : ''; };
+    setVal('sd-c-email', lead[COL.email] || '');
+    setVal('sd-c-phone', lead[COL.phone] || '');
+    setVal('sd-c-street', lead[COL.street] || '');
+    setVal('sd-c-zip', lead[COL.zip] || '');
+    setVal('sd-c-city', lead[COL.city] || '');
 
-    let infoHtml = infoRows.map(([l, v]) => `<b>${esc(l)}:</b><span>${v}</span>`).join('');
-    if (lead[COL.phone]) {
-      const th = telHref(lead[COL.phone]);
-      const phoneCell = th
-        ? `<a class="tel-link" href="${esc(th)}">${esc(lead[COL.phone])}</a>`
-        : esc(lead[COL.phone]);
-      infoHtml = `<b>Telefon:</b><span>${phoneCell}</span>` + infoHtml;
-    }
-    document.getElementById('sd-info').innerHTML = infoHtml;
-
-    document.getElementById('sd-c-email').value = lead[COL.email] || '';
-    document.getElementById('sd-c-phone').value = lead[COL.phone] || '';
-    document.getElementById('sd-c-street').value = lead[COL.street] || '';
-    document.getElementById('sd-c-zip').value = lead[COL.zip] || '';
-    document.getElementById('sd-c-city').value = lead[COL.city] || '';
-
-    initStatusBar();
     const storedTyp = String(lead[COL.termintyp] || lead.Termintyp || 'vor_ort').toLowerCase() === 'online' ? 'online' : 'vor_ort';
     const tr = document.querySelector(`input[name="sd-termin-typ"][value="${storedTyp}"]`);
     if (tr) tr.checked = true;
     const ml = document.getElementById('sd-meet-link');
     if (ml) ml.value = String(lead[COL.meetLink] || lead['Meet-Link'] || '').trim();
     syncMeetLinkRow();
-    const su = window.__pvlSessionUser;
-    document.getElementById('sd-betreut').value = (lead[COL.betreut] && String(lead[COL.betreut]).trim())
-      ? lead[COL.betreut]
-      : (su ? String(su.voller_name || su.username || '').trim() : '');
-    document.getElementById('sd-notizen').value = lead[COL.notes]   || '';
+    setVal('sd-notizen', lead[COL.notes] ?? lead.notizen ?? '');
     detailCurrentStatus = arch ? 'Archivieren' : normalizeStatusDisplay(lead[COL.status]);
-    document.getElementById('sd-nachfass').value = (lead[COL.nachfass] || '').trim().slice(0, 10);
-    document.getElementById('sd-termin').value = normalizeLocalDatetime(lead[COL.termin]);
+    setVal('sd-nachfass', (lead[COL.nachfass] || '').trim().slice(0, 10));
+    setVal('sd-termin', normalizeLocalDatetime(lead[COL.termin]));
+    pvlEnsureLeadDatePickersAndSync();
+    pvlSetLeadDatePickerInteraction(readOnly);
     syncStatusBarHighlight();
     syncNachfassTerminVisibility();
+    syncNachfassKurzFromMain();
+    syncReonicDetailUi(lead);
     renderBetreutChips();
     renderSetterSalesChips(lead);
     document.getElementById('save-hint').style.display = 'none';
     syncTempFocusMarker(lead);
-    const cd = document.getElementById('sd-contact-details');
-    if (cd) cd.removeAttribute('open');
+    /* Kein erneutes initPvlLayoutEnhancements() — würde Filter/Tabs/… mehrfach belegen. */
+    pvlBindSidebarDetailFieldDelegationOnce();
+    try {
+      const sdet = document.getElementById('sidebar-detail');
+      if (sdet) sdet.style.setProperty('pointer-events', 'auto', 'important');
+    } catch (_) { /* ignore */ }
     pvlInvalidateMap();
   }
 
-  function closeSidebarDetail() {
+  function closeSidebarDetail(opts) {
     clearTempFocusMarker();
     document.getElementById('sidebar-detail').classList.remove('open');
     document.getElementById('pvl-layout')?.classList.remove('pvl-detail-open');
@@ -3015,15 +4515,19 @@
     activeEmail = null;
     activeIsLegacy = false;
     activeLeadKeyStr = null;
-    ['sd-betreut', 'sd-notizen', 'sd-nachfass', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city', 'sd-meet-link'].forEach((id) => {
+    ['sd-c-name', 'sd-notizen', 'sd-nachfass', 'sd-nachfass-kurz', 'sd-termin', 'sd-c-email', 'sd-c-phone', 'sd-c-street', 'sd-c-zip', 'sd-c-city', 'sd-meet-link'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = false;
     });
     document.querySelectorAll('input[name="sd-termin-typ"]').forEach((inp) => { inp.disabled = false; });
     document.querySelectorAll('#sd-status-bar .status-btn').forEach((b) => { b.disabled = false; });
-    document.getElementById('btn-save').disabled = false;
     const calBtn = document.getElementById('btn-cal-appointment');
-    if (calBtn) calBtn.disabled = false;
+    if (calBtn) {
+      calBtn.disabled = false;
+      calBtn.style.display = 'none';
+    }
+    const saveBtn = document.getElementById('btn-detail-save');
+    if (saveBtn) saveBtn.disabled = false;
     const chipRow = document.getElementById('sd-betreut-chips');
     if (chipRow) {
       chipRow.style.pointerEvents = '';
@@ -3034,28 +4538,31 @@
   }
 
   // ── Save fields ───────────────────────────────────────────────────────────
+  /** @returns {Promise<boolean>} true = ok oder nichts zu tun; false = Netzwerk/Validierungsfehler */
   async function saveFields() {
-    if (!activeEmail) return;
+    if (!activeEmail) return false;
     if (activeIsLegacy) {
       showToast('Archiv-Blatt: hier nicht änderbar.', 'info');
-      return;
+      return true;
     }
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     if (rowLead && isCrmArchived(rowLead)) {
       showToast('Archivierter Lead: bitte zuerst wiederherstellen.', 'info');
-      return;
+      return true;
     }
     const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
     if (!apiEmail) {
       showToast('Keine E-Mail in der Zeile – Speichern nicht möglich.', 'err');
-      return;
+      return false;
     }
-    const betreut = document.getElementById('sd-betreut').value;
+    const betreut = rowLead ? String(rowLead[COL.betreut] || '').trim() : '';
     const notizen = document.getElementById('sd-notizen').value;
     const nachfass = document.getElementById('sd-nachfass').value;
     const termin = document.getElementById('sd-termin').value;
+    const nameVal = (document.getElementById('sd-c-name') && document.getElementById('sd-c-name').value.trim()) || '';
 
     const contactUpdates = {
+      'Nachname + Vorname': nameVal,
       'E-Mail': document.getElementById('sd-c-email').value.trim(),
       'Telefon': document.getElementById('sd-c-phone').value.trim(),
       'Straße': document.getElementById('sd-c-street').value.trim(),
@@ -3078,12 +4585,12 @@
       [COL.meetLink, (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value) ? document.getElementById('sd-meet-link').value.trim() : ''],
     ];
 
-    const btn = document.getElementById('btn-save');
+    if (pvlIsDetailSaveUnchanged(rowLead)) return true;
+
     const hint = document.getElementById('save-hint');
     hint.style.display = 'none';
     hint.classList.remove('err');
     hint.textContent = 'Gespeichert!';
-    btn.disabled = true;
     try {
       const rContact = await apiFetch('/api/leads/update', {
         method: 'POST',
@@ -3093,7 +4600,7 @@
       if (!rContact.ok) {
         const j = await rContact.json().catch(() => ({}));
         showToast(j.error || 'Kontakt/Adresse speichern fehlgeschlagen', 'err');
-        return;
+        return false;
       }
       const patchEmail = (document.getElementById('sd-c-email').value || '').trim() || apiEmail;
       const results = await Promise.all(cols.map(([column, value]) =>
@@ -3106,7 +4613,7 @@
       if (failed) {
         const j = await failed.json().catch(() => ({}));
         showToast('Speichern fehlgeschlagen: ' + (j.error || failed.statusText || String(failed.status)), 'err');
-        return;
+        return false;
       }
       const lead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
       if (lead) {
@@ -3115,6 +4622,7 @@
         lead[COL.street] = contactUpdates['Straße'];
         lead[COL.zip] = contactUpdates['PLZ'];
         lead[COL.city] = contactUpdates['Ort'];
+        lead[COL.name] = nameVal;
         lead[COL.betreut] = betreut;
         lead[COL.notes] = notizen;
         lead[COL.nachfass] = nachfass;
@@ -3149,7 +4657,15 @@
       hint.style.display = 'inline';
       hint.style.color = '';
       setTimeout(() => { hint.style.display = 'none'; }, 2000);
-      renderList();
+      const sortMode = document.getElementById('sort-leads')?.value || '';
+      if (sortMode === 'last_updated_asc' || sortMode === 'last_updated_desc') {
+        renderList();
+      } else if (lead) {
+        pvlPatchLeadListAfterDetailSave(lead);
+      } else {
+        renderList();
+      }
+      /* Marker: nach Speichern aktualisieren (Farbe/Popup-Text/Subset). Sprechblase: pvlOpenMapPopupLeadKey + Re-Open. */
       renderMarkers();
       await refreshDashboardStatsBar();
       const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
@@ -3158,19 +4674,18 @@
       }
     } catch (e) {
       showToast('Netzwerkfehler beim Speichern: ' + (e.message || String(e)), 'err');
-    } finally {
-      btn.disabled = false;
+      return false;
     }
   }
 
   async function refreshSessionUi() {
+    const el = document.getElementById('session-user');
+    const adminOnly = Array.from(document.querySelectorAll('.pvl-admin-only'));
     try {
       const r = await apiFetch('/api/auth/me');
-      const j = await r.json();
-      const el = document.getElementById('session-user');
-      const adminOnly = Array.from(document.querySelectorAll('.pvl-admin-only'));
-      if (!el) return;
-      if (j.user) {
+      const j = await r.json().catch(() => ({}));
+      if (!el) return { status: 'no_el' };
+      if (r.ok && j.user) {
         window.__pvlSessionUser = j.user;
         calendarPartnerName = String(j.user.voller_name || j.user.username || '').trim() || '';
         el.textContent = j.user.username + (j.user.role === 'admin' ? ' · Admin' : '');
@@ -3179,21 +4694,37 @@
         if (nav) nav.value = userCalendarPreference;
         const showImport = j.user.role === 'admin';
         for (const b of adminOnly) b.style.display = showImport ? 'inline-flex' : 'none';
+        if (showImport && j.user.emailLeadImportEnabled === false) {
+          for (const b of document.querySelectorAll('.pvl-n8n-sync-btn')) b.style.display = 'none';
+        }
         if (j.user.profileComplete === false && !/\/profile(\.html)?\/?$/i.test(location.pathname)) {
           window.location.replace(`/profile?next=${encodeURIComponent(pvlSafeReturnPath())}`);
-          return;
+          return { status: 'redirect_profile' };
         }
-      } else {
+        if (document.getElementById('sidebar-detail')?.classList.contains('open')) {
+          const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+          if (openLead) syncReonicDetailUi(openLead);
+        }
+        return { status: 'ok', user: j.user };
+      }
+      if (r.ok && !j.user) {
         window.__pvlSessionUser = null;
         calendarPartnerName = '';
         el.textContent = '';
         for (const b of adminOnly) b.style.display = 'none';
+        return { status: 'logged_out' };
       }
+      window.__pvlSessionUser = null;
+      calendarPartnerName = '';
+      el.textContent = '';
+      for (const b of adminOnly) b.style.display = 'none';
+      return { status: 'error', httpStatus: r.status };
     } catch {
       window.__pvlSessionUser = null;
-      document.getElementById('session-user').textContent = '';
-      const adminOnly = Array.from(document.querySelectorAll('.pvl-admin-only'));
+      calendarPartnerName = '';
+      if (el) el.textContent = '';
       for (const b of adminOnly) b.style.display = 'none';
+      return { status: 'error' };
     }
   }
 
@@ -3201,6 +4732,7 @@
   const PVL_LS_SIDEBAR = 'pv_lead_manager_sidebar_width';
   const PVL_LS_MOBILE_VIEW = 'pv_lead_manager_mobile_view';
   const PVL_LS_SIDEBAR_COLLAPSED = 'pv_lead_manager_sidebar_collapsed';
+  const PVL_LS_STATS_VISIBLE = 'pv_lead_manager_stats_visible';
 
   let _sidebarWBeforeDetail = null;
 
@@ -3239,6 +4771,7 @@
     layout.classList.toggle('pvl-sidebar-collapsed', collapsed);
     pvlSyncSidebarCollapseToggleUi();
     try { localStorage.setItem(PVL_LS_SIDEBAR_COLLAPSED, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
+    pvlSyncSidebarFixedLayout();
     pvlInvalidateMap();
   }
 
@@ -3273,7 +4806,7 @@
     if (!btn) return;
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     const sun = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
-    const moon = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 0 1 1-9-9Z"/></svg>';
+    const moon = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9a9 9 0 1 1-9-9"/></svg>';
     btn.innerHTML = dark ? sun : moon;
     btn.title = dark ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren';
     btn.setAttribute('aria-label', dark ? 'Zu hellem NOORTEC-Design wechseln' : 'Zu dunklem NOORTEC-Design wechseln');
@@ -3325,6 +4858,7 @@
       layout.classList.remove('pvl-is-mobile', 'pvl-mobile-view-map', 'pvl-mobile-view-list');
       layout.classList.add('pvl-mobile-view-map');
       pvlTryRestoreSidebarCollapsedFromLs();
+      pvlSyncSidebarFixedLayout();
       pvlInvalidateMap();
     }
   }
@@ -3366,9 +4900,54 @@
     resizer.addEventListener('pointercancel', endDrag);
   }
 
+  function syncStatsBarToggleUi() {
+    const layout = document.getElementById('pvl-layout');
+    const btn = document.getElementById('pvl-stats-toggle');
+    if (!layout || !btn) return;
+    const visible = layout.classList.contains('pvl-stats-visible');
+    btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    btn.setAttribute('aria-expanded', visible ? 'true' : 'false');
+    btn.title = visible ? 'Statistiken ausblenden' : 'Statistiken einblenden';
+  }
+
+  function setStatsBarVisible(visible, persist) {
+    const layout = document.getElementById('pvl-layout');
+    if (!layout) return;
+    layout.classList.toggle('pvl-stats-visible', !!visible);
+    syncStatsBarToggleUi();
+    if (persist !== false) {
+      try {
+        localStorage.setItem(PVL_LS_STATS_VISIBLE, visible ? '1' : '0');
+      } catch (e) { /* ignore */ }
+    }
+    try {
+      pvlSyncSidebarFixedLayout();
+    } catch (_) { /* ignore */ }
+    pvlInvalidateMap();
+  }
+
+  function pvlTryRestoreStatsBarFromLs() {
+    let visible = false;
+    try {
+      visible = localStorage.getItem(PVL_LS_STATS_VISIBLE) === '1';
+    } catch (e) { /* ignore */ }
+    setStatsBarVisible(visible, false);
+  }
+
   function initPvlLayoutEnhancements() {
+    pvlTryRestoreStatsBarFromLs();
+    pvlSyncSidebarFixedLayout();
+    document.getElementById('pvl-stats-toggle')?.addEventListener('click', () => {
+      const layout = document.getElementById('pvl-layout');
+      const next = !layout?.classList.contains('pvl-stats-visible');
+      setStatsBarVisible(next, true);
+    });
+    syncSidebarListTabUi();
     syncFilterGeoCheckbox();
     syncBetreuerPillsFromHidden();
+    document.getElementById('pvl-tab-sidebar-active')?.addEventListener('click', () => setSidebarListTab('active'));
+    document.getElementById('pvl-tab-sidebar-nachfassen')?.addEventListener('click', () => setSidebarListTab('nachfassen'));
+    document.getElementById('pvl-tab-sidebar-done')?.addEventListener('click', () => setSidebarListTab('done'));
     document.getElementById('filter-geo-only-missing')?.addEventListener('change', () => {
       const c = document.getElementById('filter-geo-only-missing');
       if (c && c.checked) activateMissingCoordsMapFilter();
@@ -3397,6 +4976,18 @@
       if (nextCollapsed && detail && detail.classList.contains('open')) closeSidebarDetail();
       pvlSetSidebarCollapsed(nextCollapsed);
     });
+    /* Klicks in Sidebar/ Dock steigen nicht zur Karte auf (Bubble-Phase — innere Controls bleiben klickbar). */
+    (function pvlIsolateSidebarClicksFromMap() {
+      const stop = (e) => { e.stopPropagation(); };
+      ['pvl-sidebar-dock', 'pvl-sidebar-dock-slide', 'sidebar-main', 'pvl-sidebar-collapse-toggle'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        /* Nur Bubble auf Karte stoppen; keine Capture-Phase — innere Buttons/Inputs bleiben zuverlässig klickbar. */
+        ['click', 'dblclick', 'wheel', 'touchstart'].forEach((type) => {
+          el.addEventListener(type, stop, false);
+        });
+      });
+    })();
     document.getElementById('pvl-theme-toggle')?.addEventListener('click', () => {
       setUiTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
     });
@@ -3405,7 +4996,14 @@
       const ro = new ResizeObserver(() => { pvlInvalidateMap(); });
       ro.observe(mw);
     }
-    window.addEventListener('resize', () => { pvlInvalidateMap(); });
+    window.addEventListener('resize', () => {
+      pvlSyncSidebarFixedLayout();
+      pvlInvalidateMap();
+    });
+
+    pvlBindLeadListDelegationOnce();
+    pvlBindSidebarDetailFieldDelegationOnce();
+    pvlInitLeadDatePickers();
   }
 
   initPvlLayoutEnhancements();
@@ -3422,13 +5020,31 @@
   document.getElementById('modal-missing-backdrop')?.addEventListener('click', () => { closeMissingCoordsModal(); });
   document.getElementById('modal-csv-import-close')?.addEventListener('click', () => { closeCsvImportModal(); });
   document.getElementById('modal-csv-import-backdrop')?.addEventListener('click', () => { closeCsvImportModal(); });
-  document.getElementById('csv-import-skip-geocode')?.addEventListener('change', (e) => {
-    const el = e && e.target;
-    if (el && el.dataset) el.dataset.pvlTouched = '1';
-  });
   document.addEventListener('keydown', (e) => {
-    if (e && e.key === 'Escape') {
+    if (!e || e.key !== 'Escape') return;
+    if (document.getElementById('modal-csv-import')?.classList.contains('open')) {
       closeCsvImportModal();
+      return;
+    }
+    if (document.getElementById('modal-missing-coords')?.classList.contains('open')) {
+      closeMissingCoordsModal();
+      return;
+    }
+    const sd = document.getElementById('sidebar-detail');
+    if (sd && sd.classList.contains('open')) {
+      const snap = pvlMapOverviewState;
+      closeSidebarDetail({ skipMapRestore: true });
+      if (snap && Number.isFinite(snap.lat) && Number.isFinite(snap.lng) && Number.isFinite(snap.zoom)) {
+        try {
+          map.flyTo([snap.lat, snap.lng], snap.zoom, { duration: 0.55, animate: true });
+        } catch (err) {
+          console.warn('[NOORTEC] Escape Karte', err && err.message);
+          pvlFlyToDefaultMapView();
+        }
+      } else {
+        pvlFlyToDefaultMapView();
+      }
+      return;
     }
   });
 
@@ -3464,12 +5080,30 @@
   });
   (async function boot() {
     initStatusBar();
-    await refreshSessionUi();
-    await loadVertrieblerNames();
-    await loadLeads();
-    await refreshSessionUi();
+    const s1 = await refreshSessionUi();
+    if (s1 && s1.status === 'redirect_profile') return;
+    if (s1 && s1.status === 'logged_out') {
+      window.location.replace('/login.html?next=' + encodeURIComponent(pvlSafeReturnPath()));
+      return;
+    }
+    try {
+      await loadVertrieblerNames();
+    } catch (e) {
+      console.error('loadVertrieblerNames (Boot):', e);
+      vertrieblerList = [];
+    }
+    try {
+      await loadLeads();
+    } catch (e) {
+      console.error('loadLeads (Boot):', e);
+    }
+    try {
+      await refreshSessionUi();
+    } catch (e) {
+      console.error('refreshSessionUi (Boot, zweiter Lauf):', e);
+    }
   })();
-  setInterval(loadLeads, 5 * 60 * 1000);
+  /* Leads-Liste: kein Polling-Intervall — Refresh nach manuellem Klick, Import und wo explizit loadLeads() genutzt wird. */
 </script>
 </body>
 </html>

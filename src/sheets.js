@@ -2,8 +2,9 @@
 
 require('./load-env');
 const { getDb, getDbPath } = require('./database');
+const { formatAnfrageNumber } = require('./anfrage-format');
 const { geocodeAddressCascade } = require('./geocode-address-cascade');
-const { syncReonicAfterTerminVereinbart } = require('./reonic-sync');
+const { reonicV2OffersConfigured } = require('./integrations/reonic');
 const { getProfile } = require('./user-profile');
 const { readUsers, normalizeUserRole } = require('./users');
 
@@ -44,7 +45,9 @@ function applyCanonicalFieldAliases(lead) {
   set('Meet-Link', out['Meet-Link'] || firstMatch((t) => t === 'meet_link' || t === 'meetlink' || t.includes('meet-link') || (t.includes('meet') && t.includes('link'))));
   const nr = out['Anfrage NR'] || out['Anfrage NR '] || firstMatch((t) => t === 'anfrage') || firstMatch((t) => t.replace(/\s/g, '').includes('anfrag') && t.includes('nr'));
   if (nr) {
-    if (!String(out['Anfrage NR'] || '').trim()) out['Anfrage NR'] = String(nr).trim();
+    const nrs = String(nr).trim();
+    if (!String(out['Anfrage NR'] || '').trim()) out['Anfrage NR'] = nrs;
+    if (!String(out['Anfrage NR '] || '').trim()) out['Anfrage NR '] = nrs;
   }
   if (!String(out['E-Mail'] || '').trim()) {
     for (const v of Object.values(out)) {
@@ -62,6 +65,24 @@ function parseCoord(v) {
   if (v == null || v === '') return null;
   const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
   return Number.isFinite(n) ? n : null;
+}
+
+/** Nach manuellem Bestätigen: Reonic-Dialog im Frontend, wenn konfiguriert und noch nicht übertragen. */
+function reonicOfferSuggestionPayload(db, leadId, newStatus) {
+  const s = String(newStatus || '').trim();
+  if (s !== 'Termin vereinbart') return {};
+  if (!reonicV2OffersConfigured()) return {};
+  const r = db.prepare(`
+    SELECT COALESCE(reonic_exported, 0) AS rx, COALESCE(reonic_transferred, 0) AS rt,
+      COALESCE(reonic_synced, 0) AS rs,
+      lower(trim(COALESCE(reonic_status, ''))) AS rst,
+      trim(COALESCE(reonic_id, '')) AS rid
+    FROM leads WHERE id = ?
+  `).get(leadId);
+  if (!r) return {};
+  if (r.rst === 'success' || r.rid) return {};
+  if (Number(r.rx) === 1 || Number(r.rt) === 1 || Number(r.rs) === 1) return {};
+  return { reonicOfferSuggested: true, pvlDbId: leadId };
 }
 
 function dbRowToApiLead(row) {
@@ -84,6 +105,7 @@ function dbRowToApiLead(row) {
     notizen: row.notizen ?? '',
     col_14: row.col_14 ?? '',
     'Anfrage NR': row.anfrage != null ? String(row.anfrage) : '',
+    'Anfrage NR ': row.anfrage != null ? String(row.anfrage) : '',
     'Nachname + Vorname': row.namen ?? '',
     'E-Mail': emailNorm,
     Telefon: row.telefon ?? '',
@@ -104,6 +126,10 @@ function dbRowToApiLead(row) {
     Termintyp: row.termin_typ === 'online' ? 'online' : 'vor_ort',
     'Meet-Link': row.meet_link ?? '',
     reonic_synced: row.reonic_synced ? 1 : 0,
+    reonic_transferred: row.reonic_transferred ? 1 : 0,
+    reonic_exported: row.reonic_exported ? 1 : 0,
+    reonic_status: row.reonic_status != null ? String(row.reonic_status) : '',
+    reonic_id: row.reonic_id != null ? String(row.reonic_id) : '',
     last_updated: row.last_updated || '',
     created_at: row.created_at || '',
     archived_at: row.archived_at == null ? '' : String(row.archived_at),
@@ -128,6 +154,8 @@ function normalizeTerminTypDbValue(raw) {
 const PATCH_COLUMN_TO_SQL = {
   'betreut durch': 'betreuer',
   betreuer: 'betreuer',
+  'nachname + vorname': 'namen',
+  namen: 'namen',
   notizen: 'notizen',
   status: 'status',
   'nachfass bis': 'nachfass_bis',
@@ -294,7 +322,11 @@ function iso8601FromLeadDate(raw) {
   return new Date().toISOString();
 }
 
-async function appendLead(lead, opts = {}) {
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function appendLead(lead) {
   const db = getDb();
   const nr = nextAnfrageNr(db);
   const email = String(lead.email || '').trim();
@@ -313,7 +345,7 @@ async function appendLead(lead, opts = {}) {
     )
   `);
   const info = stmt.run({
-    anfrage: String(nr),
+    anfrage: formatAnfrageNumber(nr),
     namen: lead.name != null ? String(lead.name) : '',
     telefon: lead.phone != null ? String(lead.phone) : '',
     email,
@@ -333,8 +365,7 @@ async function appendLead(lead, opts = {}) {
   });
   const rid = Number(info.lastInsertRowid);
   const needsGeo = rid > 0 && (lat == null || lng == null || lat === 0 || lng === 0);
-  const skipGeocode = !!(opts && opts.skipGeocode);
-  if (needsGeo && !skipGeocode) {
+  if (needsGeo) {
     const r = db.prepare('SELECT strasse, plz, ort FROM leads WHERE id = ?').get(rid);
     if (r) {
       const g = await geocodeAddressCascade({
@@ -352,7 +383,69 @@ async function appendLead(lead, opts = {}) {
   return { id: rid };
 }
 
-async function updateLeadField(email, columnHeader, value) {
+const NICHT_ERREICHT_STATUS = 'Nicht erreicht';
+
+/** Eingeloggter Vertriebler: einzeilig, ohne Zeilenumbruch in der Notiz. */
+function sanitizeVertrieblerProtocolLabel(raw) {
+  const t = String(raw ?? '').replace(/[\r\n\t]+/g, ' ').trim();
+  if (!t) return '';
+  return t.length > 150 ? `${t.slice(0, 150)}…` : t;
+}
+
+/** Protokollzeile für automatische Notiz bei Status „Nicht erreicht“ (Europe/Vienna). */
+function buildNichtErreichtSystemNoteLine(vertrieblerLabel) {
+  const namePart = sanitizeVertrieblerProtocolLabel(vertrieblerLabel);
+  let timePart;
+  try {
+    const parts = new Intl.DateTimeFormat('de-AT', {
+      timeZone: 'Europe/Vienna',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    const get = (t) => parts.find((p) => p.type === t)?.value || '';
+    timePart = `Anrufversuch am ${get('day')}.${get('month')}.${get('year')} um ${get('hour')}:${get('minute')} Uhr`;
+  } catch {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    timePart = `Anrufversuch am ${dd}.${mm}.${yyyy} um ${hh}:${mi} Uhr`;
+  }
+  if (namePart) {
+    return `[System]: ${timePart} (Vertriebler: ${namePart})`;
+  }
+  return `[System]: ${timePart}`;
+}
+
+/**
+ * Hängt eine System-Notiz an `notizen` an, wenn neu auf „Nicht erreicht“ gewechselt wurde.
+ * @returns {boolean} ob eine Zeile angehängt wurde
+ */
+function maybeAppendNichtErreichtProtocol(db, leadId, prevStatus, newStatus, vertrieblerLabel) {
+  const ns = String(newStatus || '').trim();
+  const ps = String(prevStatus || '').trim();
+  if (ns !== NICHT_ERREICHT_STATUS || ps === NICHT_ERREICHT_STATUS) return false;
+  const line = buildNichtErreichtSystemNoteLine(vertrieblerLabel);
+  const row = db.prepare('SELECT notizen FROM leads WHERE id = ?').get(leadId);
+  const prevNotes = row && row.notizen != null ? String(row.notizen) : '';
+  const t = prevNotes.trim();
+  const next = t ? `${t}\n${line}` : line;
+  db.prepare(`UPDATE leads SET notizen = ?, last_updated = datetime('now') WHERE id = ?`).run(next, leadId);
+  return true;
+}
+
+function readLeadNotizenById(db, leadId) {
+  const row = db.prepare('SELECT notizen FROM leads WHERE id = ?').get(leadId);
+  return row && row.notizen != null ? String(row.notizen) : '';
+}
+
+async function updateLeadField(email, columnHeader, value, vertrieblerLabel) {
   const col = resolvePatchColumn(columnHeader);
   if (!col) return {};
   const db = getDb();
@@ -369,15 +462,24 @@ async function updateLeadField(email, columnHeader, value) {
     db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(em, em, row.id);
     return {};
   }
+  let prevStatus = '';
+  if (col === 'status') {
+    const stRow = db.prepare('SELECT status FROM leads WHERE id = ?').get(row.id);
+    prevStatus = stRow ? String(stRow.status || '').trim() : '';
+  }
   let v = String(value ?? '');
   if (col === 'termin_typ') v = normalizeTerminTypDbValue(v);
   if (col === 'meet_link') v = String(value ?? '').trim();
   db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(v, row.id);
-  let reonic = null;
-  if (col === 'status' && String(v).trim() === 'Termin vereinbart') {
-    reonic = await syncReonicAfterTerminVereinbart(row.id);
+  if (col === 'status') {
+    maybeAppendNichtErreichtProtocol(db, row.id, prevStatus, v, vertrieblerLabel);
   }
-  return { reonic };
+  const out = {};
+  if (col === 'status') {
+    Object.assign(out, reonicOfferSuggestionPayload(db, row.id, v));
+    out.Notizen = readLeadNotizenById(db, row.id);
+  }
+  return out;
 }
 
 /**
@@ -385,7 +487,7 @@ async function updateLeadField(email, columnHeader, value) {
  * @param {string} currentEmail
  * @param {Record<string, string>} updates — z. B. { 'E-Mail': '…', Telefon: '…', Straße: '…', PLZ: '…', Ort: '…' }
  */
-async function updateLeadFieldsBulk(currentEmail, updates) {
+async function updateLeadFieldsBulk(currentEmail, updates, vertrieblerLabel) {
   if (!updates || typeof updates !== 'object') throw new Error('updates fehlt');
   const db = getDb();
   const e0 = String(currentEmail || '').trim().toLowerCase();
@@ -397,6 +499,9 @@ async function updateLeadFieldsBulk(currentEmail, updates) {
   `).get(e0);
   if (!row) throw new Error('Lead nicht gefunden');
   const { id } = row;
+
+  const beforeStatusRow = db.prepare('SELECT status FROM leads WHERE id = ?').get(id);
+  const prevStatusForNichtErreicht = String(beforeStatusRow && beforeStatusRow.status != null ? beforeStatusRow.status : '').trim();
 
   const allowedCols = new Set(Object.values(PATCH_COLUMN_TO_SQL));
   const pairs = [];
@@ -421,11 +526,15 @@ async function updateLeadFieldsBulk(currentEmail, updates) {
   if (newEmail !== null) {
     db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(newEmail, newEmail, id);
   }
-  let reonic = null;
+  const afterStatusRow = db.prepare('SELECT status FROM leads WHERE id = ?').get(id);
+  const afterStatus = String(afterStatusRow && afterStatusRow.status != null ? afterStatusRow.status : '').trim();
+  maybeAppendNichtErreichtProtocol(db, id, prevStatusForNichtErreicht, afterStatus, vertrieblerLabel);
+
+  const out = {};
   if (String(bulkStatusVal || '').trim() === 'Termin vereinbart') {
-    reonic = await syncReonicAfterTerminVereinbart(id);
+    Object.assign(out, reonicOfferSuggestionPayload(db, id, bulkStatusVal));
   }
-  return { reonic };
+  return out;
 }
 
 const STATUS_VALUES = new Set([
@@ -435,7 +544,7 @@ const STATUS_VALUES = new Set([
 /**
  * Setzt CRM-Status; bei „Archivieren“ wird der Lead archiviert (wie /archive).
  */
-async function setLeadStatus(email, status) {
+async function setLeadStatus(email, status, vertrieblerLabel) {
   const s = String(status || '').trim();
   if (!STATUS_VALUES.has(s)) throw new Error('Ungültiger Status');
   if (s === 'Archivieren') {
@@ -445,18 +554,18 @@ async function setLeadStatus(email, status) {
   const db = getDb();
   const e = String(email || '').trim().toLowerCase();
   const row = db.prepare(`
-    SELECT id FROM leads
+    SELECT id, status FROM leads
     WHERE lower(trim(email)) = ? AND (archived_at IS NULL OR archived_at = '')
     ORDER BY id DESC
     LIMIT 1
   `).get(e);
-  if (!row) return { ok: false };
+  if (!row) throw new Error('Lead nicht gefunden');
+  const prevStatus = String(row.status || '').trim();
   db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, row.id);
-  let reonic = null;
-  if (s === 'Termin vereinbart') {
-    reonic = await syncReonicAfterTerminVereinbart(row.id);
-  }
-  return { ok: true, reonic };
+  maybeAppendNichtErreichtProtocol(db, row.id, prevStatus, s, vertrieblerLabel);
+  const extra = s === 'Termin vereinbart' ? reonicOfferSuggestionPayload(db, row.id, s) : {};
+  const Notizen = readLeadNotizenById(db, row.id);
+  return { ok: true, Notizen, ...extra };
 }
 
 async function archiveLead(email) {
@@ -609,6 +718,64 @@ function getLeadsMissingMapCoordsList() {
 }
 
 /**
+ * Alle aktiven Leads ohne gültige Kartenkoordinaten nacheinander geocodieren (Rate-Limit: Pause zwischen Leads).
+ * @param {{ delayBetweenMs?: number }} [opts]
+ */
+async function geocodeLeadsMissingCoordinates(opts = {}) {
+  const delayBetweenMs = Math.max(0, Number(opts.delayBetweenMs) || 1000);
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT id, email FROM leads
+    WHERE (archived_at IS NULL OR archived_at = '')
+      AND (
+        latitude IS NULL OR longitude IS NULL
+        OR latitude = 0 OR longitude = 0
+      )
+    ORDER BY id ASC
+  `).all();
+
+  const hasValidCoord = (la, lo) => {
+    const plat = parseFloat(String(la ?? ''));
+    const plon = parseFloat(String(lo ?? ''));
+    return Number.isFinite(plat) && Number.isFinite(plon) && plat !== 0 && plon !== 0;
+  };
+
+  const total = rows.length;
+  const out = {
+    total,
+    processed: 0,
+    withCoords: 0,
+    stillMissing: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const id = row.id;
+    try {
+      await updateLeadAddressAndGeocodeById(id);
+      const chk = db.prepare('SELECT latitude, longitude FROM leads WHERE id = ?').get(id);
+      if (hasValidCoord(chk && chk.latitude, chk && chk.longitude)) {
+        out.withCoords += 1;
+      } else {
+        out.stillMissing += 1;
+      }
+    } catch (err) {
+      out.errors.push({
+        id,
+        email: row.email != null ? String(row.email) : '',
+        error: err.message || String(err),
+      });
+    }
+    out.processed += 1;
+    if (i < rows.length - 1 && delayBetweenMs > 0) {
+      await delay(delayBetweenMs);
+    }
+  }
+  return out;
+}
+
+/**
  * Adresse speichern + Nominatim-Kaskade (AT) + lat/lng schreiben.
  * @param {number|string} id — SQLite `leads.id`
  */
@@ -661,24 +828,24 @@ async function updateLeadStreetPlzOrtById(id, strasse, plz, ort) {
 }
 
 /** Status/Archiv per DB-ID (für Leads ohne E-Mail). */
-async function setLeadStatusByDbId(id, status) {
+async function setLeadStatusByDbId(id, status, vertrieblerLabel) {
   const s = String(status || '').trim();
   if (!STATUS_VALUES.has(s)) throw new Error('Ungültiger Status');
   const idNum = parseInt(String(id), 10);
   if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Lead-ID');
   const db = getDb();
-  const row = db.prepare(`SELECT id FROM leads WHERE id = ? AND (archived_at IS NULL OR archived_at = '')`).get(idNum);
+  const row = db.prepare(`SELECT id, status FROM leads WHERE id = ? AND (archived_at IS NULL OR archived_at = '')`).get(idNum);
   if (!row) throw new Error('Lead nicht gefunden');
   if (s === 'Archivieren') {
     db.prepare(`UPDATE leads SET archived_at = datetime('now'), last_updated = datetime('now') WHERE id = ?`).run(idNum);
     return { archived: true };
   }
+  const prevStatus = String(row.status || '').trim();
   db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, idNum);
-  let reonic = null;
-  if (s === 'Termin vereinbart') {
-    reonic = await syncReonicAfterTerminVereinbart(idNum);
-  }
-  return { ok: true, reonic };
+  maybeAppendNichtErreichtProtocol(db, idNum, prevStatus, s, vertrieblerLabel);
+  const extra = s === 'Termin vereinbart' ? reonicOfferSuggestionPayload(db, idNum, s) : {};
+  const Notizen = readLeadNotizenById(db, idNum);
+  return { ok: true, Notizen, ...extra };
 }
 
 function csvEscapeCell(v) {
@@ -693,7 +860,7 @@ function buildLeadsExportCsv() {
   const rows = db.prepare(`
     SELECT id, anfrage, namen, telefon, email, strasse, plz, ort, land, quelle,
       anfragezeitpunkt, info, betreuer, notizen, col_14, status, nachfass_bis, termin,
-      termin_typ, meet_link, reonic_synced, assigned_to_user_id,
+      termin_typ, meet_link, reonic_synced, reonic_transferred, reonic_exported, reonic_status, reonic_id, assigned_to_user_id,
       archived_at, created_at, last_updated, latitude, longitude
     FROM leads
     ORDER BY id ASC
@@ -701,7 +868,7 @@ function buildLeadsExportCsv() {
   const headers = [
     'id', 'anfrage', 'namen', 'telefon', 'email', 'strasse', 'plz', 'ort', 'land', 'quelle',
     'anfragezeitpunkt', 'info', 'betreuer', 'notizen', 'col_14', 'status', 'nachfass_bis', 'termin',
-    'termin_typ', 'meet_link', 'reonic_synced', 'assigned_to_user_id',
+    'termin_typ', 'meet_link', 'reonic_synced', 'reonic_transferred', 'reonic_exported', 'reonic_status', 'reonic_id', 'assigned_to_user_id',
     'archived_at', 'created_at', 'last_updated', 'latitude', 'longitude',
   ];
   const lines = [headers.join(',')];
@@ -731,4 +898,5 @@ module.exports = {
   setLeadStatusByDbId,
   buildLeadsExportCsv,
   regeocodeLeadByEmail,
+  geocodeLeadsMissingCoordinates,
 };
