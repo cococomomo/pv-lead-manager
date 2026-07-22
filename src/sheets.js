@@ -538,7 +538,8 @@ async function updateLeadFieldsBulk(currentEmail, updates, vertrieblerLabel) {
 }
 
 const STATUS_VALUES = new Set([
-  'Neu', 'Nicht erreicht', 'Angerufen', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren',
+  'Neu', 'Nicht erreicht', 'Angerufen', 'Nachfassen', 'Termin vereinbart',
+  'Angebot gesendet', 'Lead verloren', 'Archivieren',
 ]);
 
 /**

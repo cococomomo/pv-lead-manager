@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Angebot erstellen · NOORTEC</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f4f5f7'/%3E%3Cpath fill='%23ffffff' stroke='%23c5c9d0' stroke-width='1' d='M7 3h13l7 7v18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z'/%3E%3Cpath fill='%23e8eaee' stroke='%23c5c9d0' stroke-width='1' d='M20 3v6a1 1 0 0 0 1 1h6z'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Arial Black,Arial,sans-serif' font-weight='900' font-size='11' fill='%23e7a13a'%3ENA%3C/text%3E%3C/svg%3E" />
 <style>
   :root {
     --accent: #e7a13a;
@@ -60,15 +61,20 @@
   .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
 
   .optlist { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
-  .optrow { display: grid; grid-template-columns: 96px 1fr 104px 20px; gap: 0.4rem; align-items: center; }
+  .optrow { display: grid; grid-template-columns: 96px 1fr 104px 20px; gap: 0.4rem 0.4rem; align-items: start; }
   .optrow .opt-mode { padding: 0.32rem 0.3rem; font-size: 0.76rem; }
   .optrow .opt-name { font-size: 0.8rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .optrow input.opt-name { padding: 0.34rem 0.4rem; white-space: normal; }
   .optrow .opt-price-wrap { display: flex; align-items: center; gap: 0.2rem; }
   .optrow .opt-price { padding: 0.32rem 0.35rem; font-size: 0.8rem; text-align: right; }
   .optrow .opt-price-wrap .eur { color: var(--muted); font-size: 0.78rem; }
-  .optrow .opt-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; }
+  .optrow .opt-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; padding-top: 0.35rem; }
   .optrow .opt-mode[data-mode="off"] { color: var(--muted); }
+  .optrow .opt-hint {
+    grid-column: 2 / 4; font-size: 0.72rem; padding: 0.28rem 0.4rem; color: var(--text);
+    border: 1px dashed var(--border); border-radius: 6px; background: #fafbfc;
+  }
+  .optrow .opt-hint:focus { border-color: var(--accent); outline: none; }
   .repeater { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.35rem; }
   .dachrow { display: grid; grid-template-columns: 1fr 92px 20px; gap: 0.4rem; align-items: center; }
   .serow { display: grid; grid-template-columns: 1fr 74px 88px 20px; gap: 0.4rem; align-items: center; }
@@ -97,11 +103,310 @@
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.error { background: var(--danger); }
   .toast.ok { background: var(--good); }
+  .variant-modal {
+    position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.45);
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .variant-modal[hidden] { display: none !important; }
+  .variant-modal-card {
+    background: #fff; border-radius: 12px; padding: 1.1rem 1.25rem; max-width: 420px; width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+  }
+  .variant-modal-card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+  .variant-modal-actions { display: flex; flex-direction: column; gap: 0.45rem; }
   .mic { background: #eef0f3; color: var(--text); }
   .mic.rec { background: var(--danger); color: #fff; }
+  .module-stepper {
+    display: flex; align-items: stretch; gap: 0; max-width: 220px;
+  }
+  .module-stepper button {
+    width: 36px; border: 1px solid var(--border); background: #eef0f3; color: var(--text);
+    font-size: 1.1rem; font-weight: 700; cursor: pointer; line-height: 1;
+  }
+  .module-stepper button:hover { background: #e2e5ea; }
+  .module-stepper button:first-child { border-radius: 7px 0 0 7px; }
+  .module-stepper button:last-child { border-radius: 0 7px 7px 0; }
+  .module-stepper input {
+    border-radius: 0; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums;
+    border-left: none; border-right: none; max-width: 72px;
+  }
+  .kwp-live {
+    font-size: 1.05rem; font-weight: 700; color: var(--accent-dark);
+    padding: 0.5rem 0.6rem; background: #faf6ef; border: 1px solid #f0e0c4;
+    border-radius: 7px; font-variant-numeric: tabular-nums;
+  }
+  .price-hint {
+    font-size: 0.78rem; color: var(--muted); margin-top: 0.55rem;
+    padding: 0.45rem 0.6rem; background: #f7f8fa; border-radius: 7px; border: 1px dashed var(--border);
+  }
+  .klima-stub {
+    opacity: 0.72; pointer-events: none; user-select: none;
+  }
+  .klima-stub .badge {
+    display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; background: #eef0f3; color: var(--muted);
+    padding: 0.15rem 0.45rem; border-radius: 999px; margin-left: 0.35rem;
+  }
+  .clarify-box {
+    display: none; margin-top: 0.7rem; padding: 0.65rem 0.75rem;
+    background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px;
+  }
+  .clarify-box.show { display: block; }
+  .clarify-box h3 { margin: 0 0 0.4rem; font-size: 0.85rem; color: #9a3412; }
+  .clarify-list { display: flex; flex-direction: column; gap: 0.65rem; }
+  .clarify-q { font-size: 0.82rem; color: #7c2d12; font-weight: 600; margin: 0 0 0.35rem; }
+  .clarify-answers { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .clarify-ans {
+    font-size: 0.75rem; font-weight: 600; padding: 0.28rem 0.55rem;
+    border: 1px solid #fb923c; background: #fff; color: #9a3412;
+    border-radius: 6px; cursor: pointer; line-height: 1.2;
+  }
+  .clarify-ans:hover { background: #ffedd5; border-color: #ea580c; }
+  .clarify-ans.picked { background: #ea580c; color: #fff; border-color: #c2410c; }
+  .clarify-item.done .clarify-q { opacity: 0.75; }
+  .clarify-item.done .clarify-answers { opacity: 1; }
+  .clarify-actions { margin-top: 0.55rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .pv-toggle-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 0.5rem 0 0.2rem; }
+  .klima-pkg-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.4rem; }
+  .klima-pkg {
+    display: grid; grid-template-columns: 22px 1fr auto; gap: 0.45rem; align-items: start;
+    padding: 0.45rem 0.5rem; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .klima-pkg:hover { border-color: var(--accent); }
+  .klima-pkg.active { border-color: var(--accent); background: #faf6ef; }
+  .klima-pkg .pkg-title { font-size: 0.82rem; font-weight: 600; }
+  .klima-pkg .pkg-meta { font-size: 0.72rem; color: var(--muted); }
+  .klima-pkg .pkg-price { font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
   .spin { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Belegungsplan: kompakt nebeneinander – Infos links, kleines Vorschaubild rechts */
+  .layout-panel-body {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 0.45rem;
+  }
+  .layout-panel-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .layout-panel-meta .hint { margin: 0; line-height: 1.35; }
+  .layout-panel-meta .btn-row {
+    margin-top: 0;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .layout-panel-preview {
+    flex: 0 0 152px;
+    width: 152px;
+    height: 114px;
+    display: none;
+    flex-shrink: 0;
+  }
+  .layout-panel-body.has-preview .layout-panel-preview { display: block; }
+  .layout-thumb {
+    display: block;
+    width: 152px;
+    height: 114px;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #e8eaee;
+  }
+  @media (max-width: 520px) {
+    .layout-panel-body {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    .layout-panel-preview {
+      flex-basis: 100%;
+      width: 100%;
+      height: auto;
+      max-width: 220px;
+    }
+    .layout-thumb {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 4 / 3;
+      max-height: 140px;
+    }
+  }
+  .layout-modal {
+    display: none; position: fixed; inset: 0; z-index: 100; background: rgba(15,18,25,0.55);
+    align-items: stretch; justify-content: center; padding: 1rem;
+  }
+  .layout-modal.show { display: flex; }
+  .layout-modal-inner {
+    background: #fff; border-radius: 12px; width: min(1100px, 100%);
+    max-height: 96vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .layout-modal-head {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--border); background: var(--dark); color: #fff;
+    flex-wrap: wrap;
+  }
+  .layout-modal-head h3 { margin: 0; font-size: 0.95rem; white-space: nowrap; }
+  .layout-steps {
+    display: flex; align-items: stretch; gap: 0; background: rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 2px; flex: 1; min-width: 280px; max-width: 420px;
+  }
+  .layout-step {
+    flex: 1; border: 0; background: transparent; color: rgba(255,255,255,0.72);
+    font: 600 0.78rem/1.2 inherit; padding: 0.45rem 0.7rem; cursor: pointer;
+    border-radius: 6px; position: relative; letter-spacing: 0.01em;
+  }
+  .layout-step:hover { color: #fff; background: rgba(255,255,255,0.06); }
+  .layout-step.active {
+    color: #fff; background: #2563eb;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+  }
+  .layout-step.active::after {
+    content: ""; position: absolute; left: 18%; right: 18%; bottom: 3px;
+    height: 2px; border-radius: 2px; background: rgba(255,255,255,0.85);
+  }
+  .layout-stats {
+    display: flex; align-items: baseline; gap: 0.75rem;
+    font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.88rem;
+    color: #fff; margin-left: auto;
+  }
+  .layout-stats span { white-space: nowrap; }
+  #layout-stat-kwp { color: #93c5fd; }
+  .layout-toolbar {
+    display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: end;
+    padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); background: #fafafa;
+  }
+  .layout-toolbar label { margin: 0; font-size: 0.65rem; color: var(--muted); line-height: 1.2; }
+  .layout-toolbar .field { min-width: 72px; }
+  .layout-toolbar .field[hidden],
+  .layout-toolbar .layout-tool-group[hidden],
+  .layout-toolbar [data-step][hidden] { display: none !important; }
+  .layout-tool-group {
+    display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: end;
+  }
+  .layout-toolbar input, .layout-toolbar select {
+    padding: 0.28rem 0.4rem; font-size: 0.78rem; height: 1.85rem; box-sizing: border-box;
+  }
+  .layout-toolbar .btn {
+    padding: 0.28rem 0.55rem; font-size: 0.78rem; height: 1.85rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem;
+  }
+  .layout-toolbar .btn.icon-btn {
+    width: 1.85rem; min-width: 1.85rem; padding: 0;
+  }
+  .layout-toolbar .btn.icon-btn svg {
+    width: 16px; height: 16px; display: block;
+  }
+  .layout-toolbar .btn.tool-active {
+    background: #2563eb; color: #fff;
+  }
+  .layout-toolbar .btn.tool-active svg { stroke: #fff; }
+  .layout-toolbar .btn.snap-on {
+    background: #dbeafe; color: #1e3a8a; border: 1px solid #93c5fd;
+  }
+  .layout-toolbar .btn.snap-off {
+    background: #eef0f3; color: var(--muted);
+  }
+  .layout-toolbar .field.compact { min-width: 64px; max-width: 76px; }
+  .layout-toolbar .field.compact input { width: 100%; }
+  .layout-module-tools {
+    display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: end;
+    padding: 0.15rem 0 0; border-top: 1px dashed #e5e7eb; margin-top: 0.15rem;
+    flex: 1 1 100%;
+  }
+  .layout-toolbar[data-editor-step="building"] .layout-module-tools { display: none; }
+  .layout-size-hint {
+    font-size: 0.68rem; color: var(--muted); max-width: 220px; line-height: 1.25;
+    white-space: normal;
+  }
+  .layout-addr-wrap { position: relative; width: 100%; }
+  .layout-addr-wrap input { width: 100%; box-sizing: border-box; }
+  .layout-addr-suggest {
+    display: none; position: absolute; left: 0; right: 0; top: calc(100% + 2px);
+    z-index: 120; max-height: 260px; overflow-y: auto;
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(15, 18, 25, 0.14);
+  }
+  .layout-addr-suggest.show { display: block; }
+  .layout-addr-suggest button {
+    display: block; width: 100%; text-align: left; border: 0; background: transparent;
+    padding: 0.55rem 0.7rem; font-size: 0.82rem; color: var(--text); cursor: pointer;
+    border-bottom: 1px solid #eef0f3; font-family: inherit; line-height: 1.35;
+  }
+  .layout-addr-suggest button:last-child { border-bottom: 0; }
+  .layout-addr-suggest button:hover,
+  .layout-addr-suggest button.active { background: #f3f6fb; }
+  .layout-addr-suggest .empty {
+    padding: 0.65rem 0.7rem; font-size: 0.8rem; color: var(--muted);
+  }
+  #layout-map { flex: 1; min-height: 420px; background: #ddd; }
+  .layout-hn-marker {
+    background: transparent !important;
+    border: 0 !important;
+  }
+  .layout-hn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 1.15rem; padding: 0.05rem 0.28rem;
+    background: rgba(255, 255, 255, 0.92);
+    color: #1a1f2a;
+    font: 700 0.68rem/1.1 system-ui, sans-serif;
+    border-radius: 3px;
+    border: 1px solid rgba(15, 18, 25, 0.35);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
+  .layout-module-poly {
+    cursor: grab;
+  }
+  .layout-module-poly:active {
+    cursor: grabbing;
+  }
+  .layout-pitch-arrow {
+    pointer-events: none !important;
+  }
+  .layout-draw-modes {
+    display: flex; gap: 0.25rem;
+  }
+  .layout-mode-btn {
+    flex: 1;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.78rem;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .layout-mode-btn.active {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+    font-weight: 600;
+  }
+  .layout-mode-btn.layout-mode-obstacle.active {
+    background: #b91c1c;
+    border-color: #b91c1c;
+  }
+  .layout-mode-btn:hover:not(.active) {
+    background: #f3f6fb;
+  }
+  .layout-modal-foot {
+    display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
+    padding: 0.65rem 0.85rem; border-top: 1px solid var(--border);
+  }
+  .layout-modal-foot .spacer { flex: 1; }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 </head>
 <body>
 <header>
@@ -116,19 +421,28 @@
   <div>
     <div class="panel">
       <h2><span class="num">1</span> KI-Sprachbefehl</h2>
-      <textarea id="command" rows="5" placeholder="z. B.: Angebot für Albert Jakaj, Baumschulgasse 11, 3443 Elsbach, jakajalbert@hotmail.com, +43 676 9055471. Möchte eine 10 kWp Anlage mit 9 kWh Speicher, Sigenergy, Ziegeldach, dazu eine Wallbox. Telefonisch besprochen."></textarea>
+      <textarea id="command" rows="5" placeholder="z. B.: PV 12 Module Sigenergy 6+9 kWh Speicher, Ziegel – plus optional Multi-Klima 4,1 kW mit 2× 2,5 kW Innen. Oder: 2×9 kWh Speicher / 18 kWh."></textarea>
       <div class="btn-row">
         <button class="btn" id="btn-parse">Mit KI analysieren</button>
         <button class="btn mic" id="btn-mic" title="Diktieren (Spracheingabe)">🎤 Diktieren</button>
         <button class="btn secondary" id="btn-clear">Felder leeren</button>
       </div>
-      <div class="hint">Die KI trennt automatisch Kundendaten von den Anlagen-Anforderungen. Alle Felder bleiben editierbar.</div>
+      <div class="hint">Die KI trennt Kundendaten, PV- und Klima-Anforderungen. Bei Unklarheiten fragt sie nach, bevor Werte übernommen werden.</div>
+      <div class="clarify-box" id="clarify-box">
+        <h3>Bitte noch klären – per Button antworten</h3>
+        <div class="clarify-list" id="clarify-list"></div>
+        <div class="clarify-actions">
+          <button type="button" class="btn" id="btn-clarify-reparse" style="display:none">Antworten übernehmen &amp; erneut analysieren</button>
+        </div>
+        <div class="hint" style="margin-top:0.45rem">Jeder Klick hängt die Antwort ans Befehlsende an (Wechsel der Antwort ersetzt den vorherigen Nachtrag). Kein Neu-Diktieren nötig.</div>
+      </div>
     </div>
 
     <div class="panel">
       <h2><span class="num">2</span> Kundendaten</h2>
       <div class="grid2">
-        <div style="grid-column: 1 / -1"><label>Name</label><input id="c-name" /></div>
+        <div><label>Vorname</label><input id="c-vorname" /></div>
+        <div><label>Nachname</label><input id="c-nachname" /></div>
         <div style="grid-column: 1 / -1"><label>Straße + Hausnummer</label><input id="c-street" /></div>
         <div><label>PLZ</label><input id="c-zip" /></div>
         <div><label>Ort</label><input id="c-city" /></div>
@@ -137,21 +451,62 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-layout">
+      <h2><span class="num">3</span> Belegungsplan <span style="font-weight:400;color:var(--muted);font-size:0.78rem">(optional)</span></h2>
+      <div class="layout-panel-body" id="layout-panel-body">
+        <div class="layout-panel-meta">
+          <div class="hint" id="layout-status">Kein Belegungsplan – Angebot kann auch ohne Plan erstellt werden.</div>
+          <div class="btn-row">
+            <button type="button" class="btn" id="btn-layout-open">Belegungsplan öffnen</button>
+            <button type="button" class="btn secondary" id="btn-layout-apply" style="display:none">Modulanzahl übernehmen</button>
+            <button type="button" class="btn secondary" id="btn-layout-clear" style="display:none">Plan trennen</button>
+          </div>
+        </div>
+        <div class="layout-panel-preview">
+          <img class="layout-thumb" id="layout-thumb" alt="Belegungsplan" />
+        </div>
+      </div>
+    </div>
+
     <div class="panel">
-      <h2><span class="num">3</span> Konfiguration &amp; Varianten</h2>
+      <h2><span class="num">4</span> Konfiguration &amp; Varianten</h2>
       <div class="tabs" id="variant-tabs"></div>
       <div class="btn-row" style="margin-top:0">
         <button class="btn secondary" id="btn-add-variant">+ Variante hinzufügen</button>
       </div>
-      <div class="grid3" style="margin-top:0.6rem">
-        <div><label>Marke</label><select id="f-brand"></select></div>
-        <div><label>Leistung (kWp)</label><select id="f-kwp"></select></div>
-        <div><label>Speicher (kWh)</label><select id="f-speicher"></select></div>
-        <div><label>Module (Anzahl)</label><input id="f-modules" type="number" min="0" placeholder="auto aus Paket" /></div>
-        <div><label>Modultyp</label><select id="f-module"></select></div>
-        <div><label>Brutto-Override (€)</label><input id="f-brutto" type="number" placeholder="auto" title="Manueller Gesamtpreis brutto – überschreibt die Kalkulation" /></div>
-        <div style="grid-column: 1 / -1"><label>Wechselrichter (Override)</label><input id="f-inverter" placeholder="automatisch aus kWp" /></div>
+      <div class="pv-toggle-row">
+        <span class="inline"><input type="checkbox" id="f-include-pv" checked /> <label for="f-include-pv" style="margin:0;color:var(--text);font-weight:600">Photovoltaik einbeziehen</label></span>
       </div>
+      <div id="pv-config-block">
+      <div class="grid3" style="margin-top:0.6rem">
+        <div><label>Anlagenvariante / Marke</label><select id="f-brand"></select></div>
+        <div><label>Modultyp</label><select id="f-module"></select></div>
+        <div>
+          <label>Speicher (kWh)</label>
+          <select id="f-speicher"></select>
+          <div class="hint" id="speicher-comp-hint" style="margin-top:0.25rem">Sigenergy: 6-/9-kWh-Module · Fronius Reserva: 3,2-kWh-Module (max. 3 Tower).</div>
+        </div>
+        <div>
+          <label>Module (Anzahl)</label>
+          <div class="module-stepper">
+            <button type="button" id="btn-mod-minus" aria-label="Ein Modul weniger">−</button>
+            <input id="f-modules" type="number" min="1" step="1" value="22" />
+            <button type="button" id="btn-mod-plus" aria-label="Ein Modul mehr">+</button>
+          </div>
+        </div>
+        <div>
+          <label>Leistung (berechnet)</label>
+          <div class="kwp-live" id="f-kwp-live" title="Module × Wp / 1000">—</div>
+          <input type="hidden" id="f-kwp" value="" />
+        </div>
+        <div><label>Brutto-Override (€)</label><input id="f-brutto" type="number" placeholder="auto" title="Manueller Gesamtpreis brutto – überschreibt die Kalkulation" /></div>
+        <div style="grid-column: 1 / -1">
+          <label>Wechselrichter <span style="font-weight:400;color:var(--muted)">(manuell wählbar · Fronius / Sigenergy)</span></label>
+          <select id="f-inverter"></select>
+          <div class="hint" id="f-inverter-meta" style="margin-top:0.25rem">Automatisch: kleinstes Modell mit Max.-PV ≥ Modul-kWp. Oder manuell aus dem Katalog wählen.</div>
+        </div>
+      </div>
+      <div class="price-hint" id="price-hint">Preisanlage wird aus Modulanzahl berechnet.</div>
 
       <label>Dachflächen <span style="font-weight:400;color:var(--muted)">(mehrere für gemischte Dächer – Aufschlag anteilig nach Modulen)</span></label>
       <div class="repeater" id="dach-list"></div>
@@ -159,22 +514,63 @@
         <button class="btn secondary" id="btn-add-dach" type="button">+ Dachfläche</button>
       </div>
 
-      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(zusätzliche Blöcke über die Standardgröße)</span></label>
+      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy: +6 / +9 kWh BAT · Fronius: +3,2 kWh)</span></label>
       <div class="repeater" id="speicher-list"></div>
       <div class="btn-row" style="margin-top:0.4rem; align-items:center">
         <select id="se-size" style="max-width:300px; flex:1"></select>
-        <button class="btn secondary" id="btn-add-speicher" type="button">+ Speicherblock</button>
+        <button class="btn secondary" id="btn-add-speicher" type="button">+ Speicherblock (Fix im Preis)</button>
       </div>
+
+      <label style="margin-top:0.7rem">Optional: Speicher-Upgrade <span style="font-weight:400;color:var(--muted)">(Preisdifferenz statt Basisgröße)</span></label>
+      <div class="btn-row" style="margin-top:0.35rem; align-items:center">
+        <select id="su-target" style="max-width:360px; flex:1"></select>
+        <button class="btn secondary" id="btn-add-upgrade" type="button">+ Upgrade als Option</button>
+      </div>
+      <div class="hint" id="su-hint">Wähle z. B. 9,5 kWh Basis und biete optional das Upgrade auf 12,6 oder 15,8 kWh an – Preis = Differenz der Paketpreise.</div>
+
       <label>Optionen &amp; Zusatzleistungen</label>
       <div class="optlist" id="opts"></div>
       <div class="btn-row" style="margin-top:0.5rem">
         <button class="btn secondary" id="btn-add-option" type="button">+ Manuelle Position</button>
       </div>
-      <div class="hint">Pro Position wählst du <b>Optional</b> oder <b>Fix</b>. Zusätzliche Module über die Paketgröße: +200 €/Modul inkl. Unterkonstruktion. Sigenergy-Speicher stapelbar (9+6=15, 9+9=18, 9+6+6=21 kWh). Brutto-Override setzt den Gesamtpreis manuell.</div>
+      <div class="hint">Pro Position wählst du <b>Optional</b> oder <b>Fix</b>. Zusatzmodule über das Preispaket: <b>+200 € netto</b> je Modul. Hinweiszeile erscheint im PDF bei der Komponente (z. B. Gateway für Heizstab + Notstrom).</div>
+      <label style="margin-top:0.7rem">Allgemeine Angebotshinweise</label>
+      <textarea id="f-offer-notes" rows="2" placeholder="Freie Hinweise fürs PDF (eine Zeile = ein Hinweis) …"></textarea>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-klima">
+      <h2><span class="num">5</span> Klimageräte · LG STANDARD II</h2>
+      <div class="pv-toggle-row">
+        <span class="inline"><input type="checkbox" id="f-klima-enabled" /> <label for="f-klima-enabled" style="margin:0;color:var(--text);font-weight:600">Klimapaket hinzufügen</label></span>
+        <span class="inline">
+          <label for="f-klima-mode" style="margin:0;font-weight:600;color:var(--muted)">Im Angebot</label>
+          <select id="f-klima-mode" style="width:auto;padding:0.28rem 0.45rem;font-size:0.78rem">
+            <option value="fix">Fix (im Preis)</option>
+            <option value="optional">Optional (nur ausgewiesen)</option>
+          </select>
+        </span>
+      </div>
+      <div id="klima-config-block" style="display:none">
+        <label>Paket wählen</label>
+        <div class="klima-pkg-list" id="klima-pkg-list"></div>
+        <div class="grid2" style="margin-top:0.55rem">
+          <div>
+            <label>Zusatz-Kältemittelleitung (m)</label>
+            <input id="f-klima-piping" type="number" min="0" step="1" value="0" title="Über die inkl. 10 m je Innengerät hinaus" />
+            <div class="hint">Inkl. 10 m je Innengerät · jeder weitere Meter 40 € brutto</div>
+          </div>
+          <div>
+            <label style="margin-bottom:0.45rem">&nbsp;</label>
+            <span class="inline"><input type="checkbox" id="f-klima-pump" /> <label for="f-klima-pump" style="margin:0;color:var(--text);font-weight:600">Kondensatwasserpumpe (+240 €)</label></span>
+          </div>
+        </div>
+      </div>
+      <div class="hint">Single 2,5 / 3,5 kW oder Multi 4,1 / 6,3 kW. Kombi mit PV möglich (Fix oder optional).</div>
     </div>
 
     <div class="panel">
-      <h2><span class="num">4</span> Angebot &amp; E-Mail</h2>
+      <h2><span class="num">6</span> Angebot</h2>
       <div class="grid2">
         <div><label>Angebotsnummer</label><input id="f-nummer" /></div>
         <div><label>Datum</label><input id="f-datum" /></div>
@@ -185,21 +581,13 @@
         <div><input id="v-email" placeholder="E-Mail" /></div>
         <div><input id="v-phone" placeholder="Telefon" /></div>
       </div>
-      <label>Erstkontakt</label>
-      <div class="inline" style="gap:1.2rem">
-        <span class="inline"><input type="radio" name="contact" value="telefonisch" id="ct-tel" /> <label for="ct-tel" style="margin:0;color:var(--text);font-weight:600">Telefonisch</label></span>
-        <span class="inline"><input type="radio" name="contact" value="schriftlich" id="ct-schrift" checked /> <label for="ct-schrift" style="margin:0;color:var(--text);font-weight:600">Schriftlich</label></span>
-      </div>
       <label>Zusatztext (optional, erscheint in der E-Mail)</label>
       <textarea id="f-extra" rows="2" placeholder="Persönliche Notiz an den Kunden …"></textarea>
-      <div class="inline" style="margin-top:0.5rem">
-        <input type="checkbox" id="f-useai" />
-        <label for="f-useai" style="margin:0;color:var(--text);font-weight:600">E-Mail-Text per KI formulieren</label>
-      </div>
       <div class="inline" style="margin-top:0.4rem">
-        <input type="checkbox" id="f-vollmacht" checked />
+        <input type="checkbox" id="f-vollmacht" checked disabled />
         <label for="f-vollmacht" style="margin:0;color:var(--text);font-weight:600">Vollmacht an PDF anhängen</label>
       </div>
+      <div class="hint" id="vollmacht-hint">Bei PV- und Kombi-Angeboten wird die Vollmacht automatisch angehängt; bei reinen Klima-Angeboten nicht. E-Mail-Text wird immer per KI formuliert (editierbar). Angebot gültig 30 Tage.</div>
     </div>
   </div>
 
@@ -209,16 +597,25 @@
       <h2>Überblick</h2>
       <div class="summary" id="summary">
         <div class="lbl">Konfiguration</div><div class="val" id="s-config">—</div>
+        <div class="lbl">Preisanlage</div><div class="val" id="s-package">—</div>
         <div class="lbl">Gesamt (Netto)</div><div class="val" id="s-netto">—</div>
         <div class="lbl" id="s-mwst-lbl">MwSt. (20,0 %)</div><div class="val" id="s-mwst">—</div>
         <div class="lbl brutto">Gesamt (Brutto)</div><div class="val brutto" id="s-brutto">—</div>
       </div>
       <div class="btn-row">
+        <button class="btn dark" id="btn-finish-outlook" title="KI-E-Mail erzeugen, PDF inkl. Vollmacht (bei PV) laden und Outlook-Draft öffnen">Angebot fertigstellen → Outlook-Draft</button>
         <button class="btn" id="btn-preview">PDF-Vorschau aktualisieren</button>
-        <button class="btn dark" id="btn-download">PDF herunterladen</button>
-        <button class="btn secondary" id="btn-emailtext">E-Mail-Text erzeugen</button>
-        <button class="btn dark" id="btn-eml">Outlook-Entwurf (.eml)</button>
+        <button class="btn secondary" id="btn-download">PDF herunterladen</button>
+        <button class="btn secondary" id="btn-save-version" title="Aktuelle Konfiguration inkl. PDF als Version speichern (ohne Versand)">Version speichern</button>
+        <button class="btn secondary" id="btn-emailtext">E-Mail-Text neu erzeugen (KI)</button>
+        <button class="btn secondary" id="btn-eml">Outlook öffnen (aktueller Text)</button>
       </div>
+      <div class="hint">Du kannst Angebot und E-Mail-Text jederzeit nachbearbeiten. „Fertigstellen“ erzeugt den KI-Text frisch, lädt das PDF und öffnet einen Outlook-Draft. „Version speichern“ legt eine Kunden-Version (V1, V2, …) ab.</div>
+    </div>
+
+    <div class="panel" id="offer-history-panel">
+      <h2>Gespeicherte Versionen</h2>
+      <div id="offer-history-list" class="hint">Noch keine Versionen – nach Speichern oder Fertigstellen erscheinen sie hier.</div>
     </div>
 
     <div class="panel">
@@ -227,11 +624,12 @@
       <input id="m-subject" />
       <label>Nachricht</label>
       <textarea id="m-body" rows="8"></textarea>
-      <div class="hint">Der „Outlook-Entwurf (.eml)“ öffnet beim Doppelklick eine neue Nachricht mit Betreff, Text und angehängtem PDF.</div>
+      <div class="hint">Text ist editierbar. Outlook öffnet eine neue Draft-Mail; das PDF wird parallel heruntergeladen und kann angehängt werden.</div>
     </div>
 
     <div class="panel">
       <h2>PDF-Vorschau</h2>
+      <div id="pdf-preview-status" class="hint" style="margin-bottom:0.45rem">Noch keine Vorschau – wird nach der Kalkulation automatisch geladen.</div>
       <iframe class="preview" id="pdf-frame" title="Angebotsvorschau"></iframe>
     </div>
   </div>
@@ -239,11 +637,146 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Variante hinzufügen -->
+<div id="variant-modal" class="variant-modal" aria-hidden="true" hidden>
+  <div class="variant-modal-card" role="dialog" aria-labelledby="variant-modal-title">
+    <h3 id="variant-modal-title">Variante hinzufügen</h3>
+    <p class="hint" style="margin:0 0 0.85rem">Duplikat übernimmt Formular und Belegungsplan (als Kopie). Leere Variante startet ohne Plan.</p>
+    <div class="variant-modal-actions">
+      <button type="button" class="btn" id="variant-btn-dup">Aktuelle duplizieren</button>
+      <button type="button" class="btn secondary" id="variant-btn-empty">Leere Standardvariante</button>
+      <button type="button" class="btn secondary" id="variant-btn-cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Belegungsplan Modal -->
+<div class="layout-modal" id="layout-modal" aria-hidden="true">
+  <div class="layout-modal-inner">
+    <div class="layout-modal-head">
+      <h3>Belegungsplan</h3>
+      <div class="layout-steps" role="tablist" aria-label="Planungsschritte">
+        <button type="button" class="layout-step active" id="layout-step-building" data-step="building" role="tab" aria-selected="true">Gebäude planen</button>
+        <button type="button" class="layout-step" id="layout-step-modules" data-step="modules" role="tab" aria-selected="false">Module planen</button>
+      </div>
+      <div class="layout-stats" aria-live="polite">
+        <span id="layout-stat-count">0 #</span>
+        <span id="layout-stat-kwp">0,00 kWp</span>
+      </div>
+      <button type="button" class="btn secondary" id="layout-btn-close" style="background:#fff;color:var(--dark)">Schließen</button>
+    </div>
+    <div class="layout-toolbar" id="layout-toolbar" data-editor-step="building">
+      <div class="field" style="flex:1;min-width:200px">
+        <label>Adresse</label>
+        <div class="layout-addr-wrap">
+          <input id="layout-address" placeholder="z.B. Schuhmeierstraße 35, Schwechat" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="layout-address-suggest" />
+          <div class="layout-addr-suggest" id="layout-address-suggest" role="listbox" hidden></div>
+        </div>
+      </div>
+      <button type="button" class="btn secondary" id="layout-btn-search">Suchen</button>
+      <div class="field" style="min-width:140px">
+        <label>Kartengrundlage</label>
+        <select id="layout-basemap"></select>
+      </div>
+
+      <div class="layout-tool-group" data-step="building">
+        <div class="field" style="min-width:200px">
+          <label>Zeichenmodus</label>
+          <div class="layout-draw-modes" role="group" aria-label="Zeichenmodus">
+            <button type="button" class="layout-mode-btn active" id="layout-mode-roof" data-mode="roof" title="Dachflächen zeichnen (blau)">Dachfläche</button>
+            <button type="button" class="layout-mode-btn layout-mode-obstacle" id="layout-mode-obstacle" data-mode="obstacle" title="Sperrzone / Hindernis zeichnen (rot) – Module werden ausgespart">Sperrzone</button>
+          </div>
+          <input type="hidden" id="layout-draw-mode" value="roof" />
+        </div>
+      </div>
+      <div class="field compact" data-step="always">
+        <label id="layout-tilt-label">Neigung ° <span class="hint" style="font-weight:400">(First)</span></label>
+        <input id="layout-tilt" type="number" value="30" min="0" max="90" title="Dachneigung Richtung First – verkürzt die Modul-Darstellung hangaufwärts (cos). Für dichteres Raster danach Auto-Belegung erneut ausführen." />
+      </div>
+      <div class="field compact" data-step="modules" hidden>
+        <label id="layout-tilt-cross-label">Querneg. ° <span class="hint" style="font-weight:400">(Traufe)</span></label>
+        <input id="layout-tilt-cross" type="number" value="0" min="0" max="90" title="Querneigung parallel zur Traufe – verkürzt die projizierte Modulbreite" />
+      </div>
+      <div class="field compact" data-step="always">
+        <label>Azimut ° <span class="hint" style="font-weight:400">(1. Kante)</span></label>
+        <input id="layout-azimuth" type="number" value="180" min="0" max="360" title="Wird aus der ersten Polygonkante (Dachaußenkante) ermittelt" readonly />
+      </div>
+
+      <div class="layout-tool-group layout-module-tools" data-step="modules" hidden>
+        <button type="button" class="btn secondary" id="layout-btn-auto" title="Module automatisch belegen">Auto</button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-select-rect" title="Rechteck-Auswahl" aria-label="Rechteck-Auswahl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"/>
+          </svg>
+        </button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-select-lasso" title="Lasso-Auswahl" aria-label="Lasso-Auswahl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 8c2-3 8-4 11-1 3 3 1 8-2 10-4 2-9 0-10-4-1-3 2-6 5-5 2 1 3 3 2 5"/>
+            <circle cx="14" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+        <div class="field" style="min-width:150px">
+          <label>Modultyp</label>
+          <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
+            <select id="layout-module-type">
+              <option value="das">DAS 455</option>
+              <option value="aiko">Aiko 490</option>
+            </select>
+            <span id="layout-module-size" class="layout-size-hint" title="Katalogmaß DAS-DH108ND-455: 1800 × 1134 × 30 mm">1,134 × 1,800 m · 455 Wp</span>
+          </div>
+        </div>
+        <div class="field" style="min-width:auto">
+          <label>&nbsp;</label>
+          <span class="inline"><input type="checkbox" id="layout-landscape" /> <label for="layout-landscape" style="margin:0;color:var(--text);font-size:0.78rem" title="Nur markierte Module; sonst Vorgabe für neue Module">Quer (Auswahl)</label></span>
+        </div>
+        <div class="field compact">
+          <label>Rand m</label>
+          <input id="layout-setback" type="number" value="0.3" min="0" step="0.05" />
+        </div>
+        <div class="field compact">
+          <label>Abstand m</label>
+          <input id="layout-gap" type="number" value="0.02" min="0" step="0.01" />
+        </div>
+        <button type="button" class="btn secondary" id="layout-btn-add-mod" title="Modul manuell setzen">+</button>
+      </div>
+
+      <div class="layout-tool-group" data-step="always">
+        <button type="button" class="btn secondary" id="layout-btn-del-poly" title="Auswahl löschen (Entf)">Entf</button>
+        <button type="button" class="btn secondary" id="layout-btn-dup" title="Duplizieren (D)">Dupl.</button>
+        <button type="button" class="btn secondary snap-on" id="layout-btn-snap" title="Snap (Alt)">Snap</button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-undo" title="Rückgängig (Ctrl+Z)" disabled aria-label="Rückgängig">↶</button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-redo" title="Wiederholen (Ctrl+Y)" disabled aria-label="Wiederholen">↷</button>
+      </div>
+    </div>
+    <div id="layout-map"></div>
+    <div class="layout-modal-foot">
+      <button type="button" class="btn secondary" id="layout-btn-clear-mod">Module löschen</button>
+      <button type="button" class="btn secondary" id="layout-btn-clear-roof">Alle Polygone löschen</button>
+      <span class="hint" style="margin:0">Module: <b id="layout-module-count">0</b> · Shift+Klick Mehrfachauswahl · Henkel/Q/E drehen (360°) · D duplizieren · Quer nur Auswahl</span>
+      <button type="button" class="btn secondary" id="layout-btn-apply-count">Anzahl → Angebot</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="layout-btn-save">Speichern &amp; übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="/layout-editor.js?v=20260722-hybrid-rotate"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let CATALOG = null;
 let variants = [];      // Array von Konfig-Objekten
 let activeVariant = 0;
+let currentLeadId = null;
+let currentLayoutId = null;
+let customerSalutationOverride = null; // 'herr' | 'frau' | null
+let currentLayout = null;
+let layoutEditor = null;
+/** Geladene Angebotsversion – beim nächsten Finalize neue Angebotsnummer. */
+let loadedVersionId = null;
+let allocateNewNumberOnFinalize = false;
 
 function toast(msg, type) {
   const t = $('toast');
@@ -267,22 +800,61 @@ async function loadCatalog() {
   const res = await api('/api/offer/catalog');
   CATALOG = await res.json();
   const brand = $('f-brand');
-  brand.innerHTML = CATALOG.brands.map((b) => `<option value="${b.id}">${b.label}</option>`).join('');
+  brand.innerHTML = CATALOG.brands.map((b) => {
+    const lab = b.label || b.id;
+    return `<option value="${b.id}">${lab}</option>`;
+  }).join('');
   $('f-module').innerHTML = CATALOG.moduleTypes.map((m) => `<option value="${m.id}">${m.label}</option>`).join('');
+  populateLayoutModuleSelect();
+  if (layoutEditor && typeof layoutEditor.setModuleDimensions === 'function') {
+    layoutEditor.setModuleDimensions(CATALOG.moduleDimensions || {});
+  }
   renderOptionRows();
   applyDachSegments(null);
   refreshStorageExtSelect();
-  refreshKwpSelect();
+  refreshInverterSelect(null);
+  renderKlimaPackages();
+  if (!$('f-modules').value) $('f-modules').value = '22';
+  syncModuleDerivedUi();
+  syncPvKlimaVisibility();
 }
 
 // ── Dachflächen (gemischte Dächer) ──────────────────────────────────────────
+/** Fallback, falls Katalog noch alte Labels liefert (Hard-Refresh / Session). */
+const DACH_LABELS_FALLBACK = [
+  'Ziegel', 'Welleternit', 'Trapezblech', 'Falzblech',
+  'Schindel-Eternit', 'Rhombus', 'Biberschwanz', 'Wiener Tasche', 'Prefa',
+  'Flachdach', 'Flachdach Ost-West', 'Flachdach Südaufständerung',
+  'Freifläche Ost-West', 'Freifläche Süd',
+];
+
+function dachLabelsForUi() {
+  const fromCat = (CATALOG && Array.isArray(CATALOG.dachLabels) && CATALOG.dachLabels.length)
+    ? CATALOG.dachLabels.slice()
+    : [];
+  // Sicherstellen, dass die drei Flachdach-Varianten immer wählbar sind
+  const must = ['Flachdach', 'Flachdach Ost-West', 'Flachdach Südaufständerung', 'Freifläche Ost-West', 'Freifläche Süd'];
+  const base = fromCat.length ? fromCat : DACH_LABELS_FALLBACK.slice();
+  for (const m of must) {
+    if (!base.some((l) => String(l).toLowerCase() === m.toLowerCase())) base.push(m);
+  }
+  // Alte Bezeichnung „Flachdach Süd“ → Südaufständerung
+  return base.map((l) => (String(l) === 'Flachdach Süd' ? 'Flachdach Südaufständerung' : l))
+    .filter((l, i, arr) => arr.indexOf(l) === i);
+}
+
 function createDachRow(type, modules) {
   const row = document.createElement('div');
   row.className = 'dachrow';
   const sel = document.createElement('select');
   sel.className = 'dach-type';
-  (CATALOG.dachLabels || []).forEach((d) => { const o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o); });
-  sel.value = type || 'Ziegel';
+  const labels = dachLabelsForUi();
+  labels.forEach((d) => { const o = document.createElement('option'); o.value = d; o.textContent = d; sel.appendChild(o); });
+  const want = mapDachLabel(type || 'Ziegel');
+  if (want && !labels.includes(want)) {
+    const o = document.createElement('option'); o.value = want; o.textContent = want; sel.appendChild(o);
+  }
+  sel.value = want;
   sel.addEventListener('change', compute);
   const mod = document.createElement('input');
   mod.className = 'dach-mod'; mod.type = 'number'; mod.min = '0'; mod.placeholder = 'Module';
@@ -324,10 +896,10 @@ function createSpeicherRow({ label = '', kwh = 0, price = 0 }) {
   row.className = 'serow';
   const lab = document.createElement('input');
   lab.className = 'se-label'; lab.value = label; lab.placeholder = 'Bezeichnung';
-  lab.addEventListener('input', compute);
+  lab.addEventListener('input', () => { updateSpeicherCompositionHint(); compute(); });
   const k = document.createElement('input');
   k.className = 'se-kwh'; k.type = 'number'; k.step = '0.1'; k.min = '0'; k.title = 'kWh'; k.value = kwh;
-  k.addEventListener('input', compute);
+  k.addEventListener('input', () => { updateSpeicherCompositionHint(); compute(); });
   const pw = document.createElement('div'); pw.className = 'price-wrap';
   const p = document.createElement('input');
   p.className = 'se-price'; p.type = 'number'; p.step = '10'; p.min = '0'; p.title = 'Preis (€)'; p.value = price;
@@ -336,7 +908,7 @@ function createSpeicherRow({ label = '', kwh = 0, price = 0 }) {
   pw.append(p, eur);
   const del = document.createElement('span');
   del.className = 'rrow-del'; del.textContent = '✕'; del.title = 'Speicherblock entfernen';
-  del.addEventListener('click', () => { row.remove(); compute(); });
+  del.addEventListener('click', () => { row.remove(); updateSpeicherCompositionHint(); compute(); });
   row.append(lab, k, pw, del);
   return row;
 }
@@ -357,10 +929,11 @@ function applySpeicherZusatz(blocks) {
   const box = $('speicher-list');
   box.innerHTML = '';
   (blocks || []).forEach((b) => box.appendChild(createSpeicherRow(b)));
+  updateSpeicherCompositionHint();
 }
 
-// ── Optionen-Zeilen (Optional/Fix + editierbarer Preis + manuelle Posten) ───
-function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false }) {
+// ── Optionen-Zeilen (Optional/Fix + editierbarer Preis + Hinweis + manuelle Posten) ───
+function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false, hint = '' }) {
   const row = document.createElement('div');
   row.className = 'optrow' + (manual ? ' manual' : '');
   if (key) row.dataset.key = key;
@@ -396,7 +969,14 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
     del.addEventListener('click', () => { row.remove(); compute(); });
   }
 
+  const hintEl = document.createElement('input');
+  hintEl.className = 'opt-hint';
+  hintEl.placeholder = 'Hinweis im Angebot (optional)…';
+  hintEl.value = hint || '';
+  hintEl.addEventListener('input', compute);
+
   row.appendChild(sel); row.appendChild(nameEl); row.appendChild(pw); row.appendChild(del);
+  row.appendChild(hintEl);
   return row;
 }
 
@@ -404,7 +984,8 @@ function renderOptionRows() {
   const box = $('opts');
   box.innerHTML = '';
   (CATALOG.options || []).filter((o) => !o.alwaysIncluded).forEach((o) => {
-    box.appendChild(createOptionRow({ key: o.key, label: o.label, price: o.price, mode: 'off' }));
+    const label = o.key === 'notstrom' ? 'Notstrom / Gateway / Umschaltbox' : o.label;
+    box.appendChild(createOptionRow({ key: o.key, label, price: o.price, mode: 'off' }));
   });
 }
 
@@ -418,8 +999,14 @@ function readOptionRows() {
     const nameEl = row.querySelector('.opt-name');
     const label = (nameEl.value !== undefined ? nameEl.value : nameEl.textContent).trim();
     const price = Number(row.querySelector('.opt-price').value) || 0;
+    const hint = (row.querySelector('.opt-hint') && row.querySelector('.opt-hint').value.trim()) || '';
     if (!label && !price) return;
-    list.push({ key, label, price, mode });
+    const item = { key, label, price, mode, hint: hint || null };
+    if (key === 'speicher_upgrade') {
+      item.upgradeFrom = Number(row.dataset.upgradeFrom) || null;
+      item.upgradeTo = Number(row.dataset.upgradeTo) || null;
+    }
+    list.push(item);
   });
   return list;
 }
@@ -432,47 +1019,380 @@ function applyOptionsToRows(optionen) {
     sel.value = 'off'; sel.setAttribute('data-mode', 'off');
     const cat = (CATALOG.options || []).find((o) => o.key === row.dataset.key);
     if (cat) row.querySelector('.opt-price').value = cat.price;
+    const hintEl = row.querySelector('.opt-hint');
+    if (hintEl) hintEl.value = '';
   });
   (optionen || []).forEach((o) => {
+    if (o.key === 'speicher_upgrade') {
+      let row = document.querySelector('#opts .optrow[data-key="speicher_upgrade"]');
+      if (!row) {
+        row = createOptionRow({
+          key: 'speicher_upgrade',
+          label: o.label,
+          price: (Number(o.price) > 0) ? o.price : 0,
+          mode: o.mode || 'optional',
+          manual: true,
+          hint: o.hint || '',
+        });
+        row.dataset.key = 'speicher_upgrade';
+        $('opts').appendChild(row);
+      }
+      const sel = row.querySelector('.opt-mode');
+      sel.value = o.mode || 'optional'; sel.setAttribute('data-mode', sel.value);
+      if (Number(o.price) > 0) row.querySelector('.opt-price').value = o.price;
+      if (o.upgradeFrom != null) row.dataset.upgradeFrom = String(o.upgradeFrom);
+      if (o.upgradeTo != null) row.dataset.upgradeTo = String(o.upgradeTo);
+      const nameEl = row.querySelector('.opt-name');
+      if (nameEl && o.label) {
+        const clean = String(o.label).replace(/\s*→\s*/g, ' -> ');
+        if (nameEl.value !== undefined) nameEl.value = clean;
+        else { nameEl.textContent = clean; nameEl.title = clean; }
+      }
+      const hintEl = row.querySelector('.opt-hint');
+      if (hintEl) hintEl.value = o.hint || '';
+      refreshExistingUpgradePrice();
+      return;
+    }
     if (o.key) {
       const row = document.querySelector(`#opts .optrow[data-key="${o.key}"]`);
       if (row) {
         const sel = row.querySelector('.opt-mode');
         sel.value = o.mode || 'optional'; sel.setAttribute('data-mode', sel.value);
-        if (o.price != null) row.querySelector('.opt-price').value = o.price;
+        if (o.key === 'optimierer') {
+          const mc = Number($('f-modules').value) || 0;
+          const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
+          const price = (Number(o.price) > 0) ? Number(o.price) : (mc > 0 ? unit * mc : unit);
+          row.querySelector('.opt-price').value = price;
+        } else if (o.price != null) {
+          row.querySelector('.opt-price').value = o.price;
+        }
+        if (o.label && (o.key === 'notstrom' || o.key === 'speichererweiterung' || o.key === 'optimierer')) {
+          const nameEl = row.querySelector('.opt-name');
+          if (nameEl && nameEl.textContent !== undefined) {
+            nameEl.textContent = o.label;
+            nameEl.title = o.label;
+          }
+        }
+        const hintEl = row.querySelector('.opt-hint');
+        if (hintEl) hintEl.value = o.hint || '';
         return;
       }
     }
-    $('opts').appendChild(createOptionRow({ label: o.label, price: o.price, mode: o.mode || 'optional', manual: true }));
+    $('opts').appendChild(createOptionRow({
+      label: o.label, price: o.price, mode: o.mode || 'optional', manual: true, hint: o.hint || '',
+    }));
   });
 }
 
 /** Speichererweiterung-Default je Marke (nur wenn Zeile nicht aktiv). */
+/** Speichererweiterung-Default je Marke + Upgrade-Select. */
 function updateBrandDependentOptionDefaults() {
+  const brand = currentBrandId();
+  const hasStorage = brandHasStorageClient(brand);
+  const rowSe = document.querySelector('#opts .optrow[data-key="speichererweiterung"]');
+  if (rowSe) {
+    rowSe.style.display = hasStorage ? '' : 'none';
+    if (!hasStorage) {
+      const mode = rowSe.querySelector('.opt-mode');
+      if (mode) mode.value = 'off';
+    } else {
+      const se = brand === 'fronius'
+        ? { label: '+3,2 kWh Speicherelement – Fronius Reserva', price: 1320 }
+        : { label: '+6 kWh Speicherblock – SigenStor BAT', price: 3300 };
+      const nameEl = rowSe.querySelector('.opt-name');
+      if (nameEl && nameEl.textContent !== undefined) {
+        nameEl.textContent = se.label;
+        nameEl.title = se.label;
+      }
+      if (rowSe.querySelector('.opt-mode').value === 'off') {
+        rowSe.querySelector('.opt-price').value = se.price;
+      }
+    }
+  }
+  const rowNs = document.querySelector('#opts .optrow[data-key="notstrom"]');
+  if (rowNs) {
+    const nameEl = rowNs.querySelector('.opt-name');
+    if (nameEl && nameEl.textContent !== undefined) {
+      let label = 'SIG Energy Gateway (Umschaltbox / Notstrom)';
+      if (brand === 'fronius') label = 'Fronius Umschaltbox (Notstrom / Backup)';
+      else if (brand === 'fronius_symo' || brand === 'huawei') label = 'Notstrom / Backup (falls verfügbar)';
+      nameEl.textContent = label;
+      nameEl.title = label;
+    }
+  }
+  const rowUp = document.querySelector('#opts .optrow[data-key="speicher_upgrade"]');
+  if (rowUp) rowUp.style.display = hasStorage ? '' : 'none';
+  refreshStorageUpgradeSelect();
+  refreshExistingUpgradePrice();
+}
+
+function currentKwpPackage() {
+  return Number($('f-kwp').value) || (resolvePackageClient($('f-brand').value, Number($('f-modules').value)) || {}).kwpPackage;
+}
+
+function storageUpgradeDiffClient(brand, fromKwh, toKwh, kwp) {
+  const from = Number(fromKwh);
+  const to = Number(toKwh);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || !(to > from)) return null;
+  const table = ((CATALOG.pricelist || {})[brand] || {})[kwp] || {};
+  // Schlüssel ggf. als String in der Preisliste – fuzzy match wie Server
+  const priceAt = (kwh) => {
+    const keys = Object.keys(table).map(Number);
+    const hit = keys.find((t) => Math.abs(t - Number(kwh)) < 0.05);
+    return hit == null ? null : table[hit];
+  };
+  const fromP = priceAt(from);
+  const toP = priceAt(to);
+  if (fromP == null || toP == null) return null;
+  const diff = toP - fromP;
+  return diff > 0 ? diff : null;
+}
+
+function refreshStorageUpgradeSelect() {
+  const sel = $('su-target');
+  if (!sel || !CATALOG) return;
   const brand = $('f-brand').value;
-  const row = document.querySelector('#opts .optrow[data-key="speichererweiterung"]');
-  if (row && row.querySelector('.opt-mode').value === 'off') {
-    row.querySelector('.opt-price').value = brand === 'fronius' ? 1320 : 3300;
+  const kwp = currentKwpPackage();
+  const from = Number($('f-speicher').value);
+  const table = ((CATALOG.pricelist || {})[brand] || {})[kwp] || {};
+  const tiers = Object.keys(table).map(Number).sort((a, b) => a - b);
+  const upgrades = tiers.filter((t) => t > from + 0.05).map((t) => {
+    const diff = storageUpgradeDiffClient(brand, from, t, kwp);
+    return { toKwh: t, priceDiff: diff, fromKwh: from };
+  }).filter((u) => u.priceDiff > 0);
+  if (!upgrades.length) {
+    sel.innerHTML = '<option value="">Kein größeres Paket verfügbar</option>';
+    sel.disabled = true;
+    if ($('btn-add-upgrade')) $('btn-add-upgrade').disabled = true;
+    if ($('su-hint')) $('su-hint').textContent = 'Für diese Basisgröße gibt es in der Preisliste kein größeres Speicherpaket – nutze ggf. Speicherblöcke darunter.';
+    return;
+  }
+  sel.disabled = false;
+  if ($('btn-add-upgrade')) $('btn-add-upgrade').disabled = false;
+  sel.innerHTML = upgrades.map((u) =>
+    `<option value="${u.toKwh}" data-diff="${u.priceDiff}" data-from="${u.fromKwh}">${String(u.fromKwh).replace('.', ',')} -> ${String(u.toKwh).replace('.', ',')} kWh (+${u.priceDiff.toLocaleString('de-DE')} €)</option>`
+  ).join('');
+  if ($('su-hint')) {
+    $('su-hint').textContent = brand === 'fronius'
+      ? 'Upgrade = Preisdifferenz der Fronius-Paketstufen (je +3,2 kWh = 1.320 €). Weitere Reserva-Elemente über Speicherblöcke (max. 3 Tower à 5 Module).'
+      : 'Upgrade = Preisdifferenz der Sigenergy-Paketpreise (kleine Anlagen z. B. 6->9 = 1.500 €, größere Pakete 6->9 = 600 €). Zusätzliche BAT-Blöcke weiterhin stapelbar darunter.';
   }
 }
 
-function refreshKwpSelect() {
+function refreshExistingUpgradePrice() {
+  const row = document.querySelector('#opts .optrow[data-key="speicher_upgrade"]');
+  if (!row || !CATALOG) return;
   const brand = $('f-brand').value;
-  const tiers = Object.keys(CATALOG.pricelist[brand] || {}).map(Number).sort((a, b) => a - b);
-  const cur = Number($('f-kwp').value);
-  $('f-kwp').innerHTML = tiers.map((t) => `<option value="${t}">${String(t).replace('.', ',')} kWp (${CATALOG.modulesPerKwp[t] || '?'} Module)</option>`).join('');
-  if (tiers.includes(cur)) $('f-kwp').value = String(cur);
-  refreshSpeicherSelect();
+  const kwp = currentKwpPackage();
+  const from = Number(row.dataset.upgradeFrom || $('f-speicher').value);
+  const to = Number(row.dataset.upgradeTo);
+  if (!to || !kwp) return;
+  const diff = storageUpgradeDiffClient(brand, from, to, kwp);
+  if (!(diff > 0)) return;
+  row.querySelector('.opt-price').value = diff;
+  const nameEl = row.querySelector('.opt-name');
+  const label = `Upgrade Speicher ${String(from).replace('.', ',')} -> ${String(to).replace('.', ',')} kWh (Preisdifferenz)`;
+  if (nameEl) {
+    if (nameEl.value !== undefined) nameEl.value = label;
+    else { nameEl.textContent = label; nameEl.title = label; }
+  }
+  row.dataset.upgradeFrom = String(from);
+  const hintEl = row.querySelector('.opt-hint');
+  if (hintEl && !hintEl.dataset.locked) {
+    hintEl.value = `Optional statt ${String(from).replace('.', ',')} kWh: Upgrade auf ${String(to).replace('.', ',')} kWh.`;
+  }
+}
+
+function addStorageUpgradeOption() {
+  const sel = $('su-target');
+  if (!sel) return;
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) { toast('Kein Upgrade verfügbar.', 'error'); return; }
+  const toKwh = Number(opt.value);
+  const fromKwh = Number(opt.dataset.from || $('f-speicher').value);
+  const diff = Number(opt.dataset.diff);
+  if (!(diff > 0)) { toast('Keine positive Preisdifferenz.', 'error'); return; }
+  const label = `Upgrade Speicher ${String(fromKwh).replace('.', ',')} -> ${String(toKwh).replace('.', ',')} kWh (Preisdifferenz)`;
+  const hint = `Optional statt ${String(fromKwh).replace('.', ',')} kWh: Upgrade auf ${String(toKwh).replace('.', ',')} kWh. Aufpreis = Differenz der Paketpreise.`;
+
+  let row = document.querySelector('#opts .optrow[data-key="speicher_upgrade"]');
+  if (row) {
+    row.querySelector('.opt-mode').value = 'optional';
+    row.querySelector('.opt-mode').setAttribute('data-mode', 'optional');
+    row.querySelector('.opt-price').value = diff;
+    const nameEl = row.querySelector('.opt-name');
+    if (nameEl) {
+      if (nameEl.value !== undefined) nameEl.value = label;
+      else { nameEl.textContent = label; nameEl.title = label; }
+    }
+    const hintEl = row.querySelector('.opt-hint');
+    if (hintEl) hintEl.value = hint;
+    row.dataset.upgradeFrom = String(fromKwh);
+    row.dataset.upgradeTo = String(toKwh);
+  } else {
+    row = createOptionRow({
+      key: 'speicher_upgrade',
+      label,
+      price: diff,
+      mode: 'optional',
+      manual: true,
+      hint,
+    });
+    row.dataset.key = 'speicher_upgrade';
+    row.dataset.upgradeFrom = String(fromKwh);
+    row.dataset.upgradeTo = String(toKwh);
+    $('opts').appendChild(row);
+  }
+  compute();
+  toast('Speicher-Upgrade als optionale Komponente hinzugefügt.', 'ok');
+}
+
+function brandHasStorageClient(brand) {
+  const b = (CATALOG && CATALOG.brands || []).find((x) => x.id === brand);
+  if (b && typeof b.hasStorage === 'boolean') return b.hasStorage;
+  return brand === 'sigenergy' || brand === 'fronius';
+}
+
+function currentBrandId() {
+  return ($('f-brand') && $('f-brand').value) || 'sigenergy';
+}
+
+function syncStorageUiForBrand() {
+  const has = brandHasStorageClient(currentBrandId());
+  const addBtn = $('btn-add-speicher');
+  const upg = $('btn-add-upgrade');
+  const list = $('speicher-list');
+  if ($('f-speicher')) $('f-speicher').disabled = !has;
+  if (addBtn) addBtn.style.display = has ? '' : 'none';
+  if (upg) upg.style.display = has ? '' : 'none';
+  if (list && !has) list.innerHTML = '';
+  const hint = $('speicher-comp-hint');
+  if (hint && !has) {
+    hint.textContent = 'Diese Variante ist ohne Speicher (Huawei SUN2000 oder Fronius Symo).';
+  }
+}
+
+function refreshInverterSelect(preferredKw) {
+  const sel = $('f-inverter');
+  if (!sel) return;
+  const brand = currentBrandId();
+  const list = ((CATALOG.inverters || {})[brand]) || [];
+  const prev = preferredKw != null ? Number(preferredKw) : Number(sel.value);
+  sel.innerHTML = '<option value="">Automatisch (kleinstes Modell · Max. PV ≥ Modul-kWp)</option>'
+    + list.map((i) => {
+      const maxKwp = (i.maxPvW / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+      return `<option value="${i.acKw}">${i.label} · max. ${maxKwp} kWp</option>`;
+    }).join('');
+  if (Number.isFinite(prev) && list.some((i) => Math.abs(i.acKw - prev) < 0.05)) {
+    sel.value = String(list.find((i) => Math.abs(i.acKw - prev) < 0.05).acKw);
+  } else {
+    sel.value = '';
+  }
+  updateInverterMetaHint();
+}
+
+function updateInverterMetaHint() {
+  const el = $('f-inverter-meta');
+  if (!el) return;
+  const brand = currentBrandId();
+  const list = ((CATALOG.inverters || {})[brand]) || [];
+  const kw = Number($('f-inverter').value);
+  if (Number.isFinite(kw) && kw > 0) {
+    const inv = list.find((i) => Math.abs(i.acKw - kw) < 0.05);
+    if (inv) {
+      el.textContent = `Gewählt: ${inv.label} — Max. PV ${(inv.maxPvW / 1000).toLocaleString('de-DE')} kWp · ${inv.mppt} MPPT · Imax ${inv.imaxMppt} A/MPPT`;
+      return;
+    }
+  }
+  el.textContent = 'Automatisch: kleinstes Modell mit Max.-PV ≥ Modul-kWp (je Anlagenvariante).';
 }
 
 function refreshSpeicherSelect() {
-  const brand = $('f-brand').value;
-  const kwp = Number($('f-kwp').value);
-  const st = (CATALOG.pricelist[brand] || {})[kwp] || {};
-  const tiers = Object.keys(st).map(Number).sort((a, b) => a - b);
+  const brand = currentBrandId();
+  const pkg = resolvePackageClient(brand, Number($('f-modules').value));
+  const kwpPkg = pkg ? pkg.kwpPackage : Number($('f-kwp').value);
+  const st = (CATALOG.pricelist[brand] || {})[kwpPkg] || {};
+  let tiers = Object.keys(st).map(Number).sort((a, b) => a - b);
+  if (!brandHasStorageClient(brand)) tiers = [0];
   const cur = Number($('f-speicher').value);
-  $('f-speicher').innerHTML = tiers.map((t) => `<option value="${t}">${String(t).replace('.', ',')} kWh</option>`).join('');
+  const labelFor = (t) => {
+    if (t === 0 || !Number.isFinite(t)) return 'Kein Speicher';
+    const s = String(t).replace('.', ',');
+    if (brand === 'sigenergy' && Math.abs(t - 12) < 0.05) return `${s} kWh (2×6)`;
+    if (brand === 'fronius') {
+      const map = [[6.4, 2], [9.5, 3], [12.6, 4], [15.8, 5]];
+      const hit = map.find(([k]) => Math.abs(k - t) < 0.05);
+      if (hit) return `${s} kWh (${hit[1]}×3,2)`;
+    }
+    return `${s} kWh`;
+  };
+  $('f-speicher').innerHTML = tiers.map((t) => `<option value="${t}">${labelFor(t)}</option>`).join('');
   if (tiers.includes(cur)) $('f-speicher').value = String(cur);
+  else if (tiers.length) $('f-speicher').value = String(tiers[0]);
+  refreshStorageUpgradeSelect();
+  refreshExistingUpgradePrice();
+  updateSpeicherCompositionHint();
+  syncStorageUiForBrand();
+}
+
+/** Kurzhinweis: physische Module je Marke (Sigenergy 6/9 · Fronius 3,2). */
+function updateSpeicherCompositionHint() {
+  const el = $('speicher-comp-hint');
+  if (!el) return;
+  const brand = $('f-brand').value;
+  const base = Number($('f-speicher').value) || 0;
+  const blocks = readSpeicherZusatz();
+  const extra = blocks.reduce((s, b) => s + (Number(b.kwh) || 0), 0);
+  const total = Math.round((base + extra) * 10) / 10;
+  const fmt = (n) => String(n).replace('.', ',');
+
+  if (brand === 'fronius') {
+    const towerMap = [[6.4, 2], [9.5, 3], [12.6, 4], [15.8, 5]];
+    const hit = towerMap.find(([k]) => Math.abs(k - base) < 0.05);
+    let mods = hit ? hit[1] : Math.round(base / 3.2);
+    blocks.forEach((b) => {
+      const k = Number(b.kwh) || 0;
+      if (Math.abs(k - 3.2) < 0.15) mods += 1;
+      else mods += Math.round(k / 3.2);
+    });
+    const towers = Math.max(1, Math.ceil(mods / 5));
+    el.textContent = mods > 0
+      ? `Fronius Reserva: ${mods}×3,2 kWh (= ${fmt(total)} kWh)${towers > 1 ? ` in ${towers} Tower` : ''} · max. 5 Module/Tower, max. 3 Tower. Zusatz je +3,2 = 1.320 €.`
+      : 'Fronius Reserva: Module à 3,2 kWh (Tower 6,4 / 9,5 / 12,6 / 15,8). Bis zu 3 Tower kombinierbar.';
+    return;
+  }
+
+  if (!brandHasStorageClient(brand)) {
+    el.textContent = 'Ohne Speicher – Preisliste Huawei / Fronius Symo (Netto).';
+    return;
+  }
+
+  if (brand !== 'sigenergy') {
+    el.textContent = extra > 0
+      ? `Gesamt ${fmt(total)} kWh (Basis ${fmt(base)} + ${fmt(extra)} Zusatz).`
+      : '';
+    return;
+  }
+  const counts = {};
+  const add = (k, n) => { const key = String(k); counts[key] = (counts[key] || 0) + n; };
+  if (Math.abs(base - 12) < 0.05) add(6, 2);
+  else if (base > 0) add(base, 1);
+  blocks.forEach((b) => {
+    const k = Number(b.kwh) || 0;
+    if (Math.abs(k - 12) < 0.05) add(6, 2);
+    else if (k > 0) add(k, 1);
+  });
+  const parts = Object.keys(counts).map(Number).sort((a, b) => b - a).map((k) => {
+    const q = counts[String(k)];
+    const ks = fmt(k);
+    return q > 1 ? `${q}×${ks}` : ks;
+  });
+  if (!parts.length) { el.textContent = 'Sigenergy: Module nur 6 oder 9 kWh – kombinierbar über Zusatzblöcke.'; return; }
+  if (parts.length === 1 && !String(parts[0]).includes('×') && extra <= 0) {
+    el.textContent = `Sigenergy BAT ${parts[0]} kWh (physisches Modul). Weitere 6-/9-Blöcke unten stapelbar.`;
+  } else {
+    el.textContent = `Gesamt ${fmt(total)} kWh aus BAT-Modulen: ${parts.join(' + ')} kWh.`;
+  }
 }
 
 /** Wählt im Select die Option mit dem numerisch nächstgelegenen Wert. */
@@ -486,7 +1406,41 @@ function snapSelectToValue(selectEl, target) {
   selectEl.value = String(best);
 }
 
-/** Modulanzahl → nächstgelegene kWp-Stufe der Marke. */
+/** Wp des gewählten Modultyps. */
+function currentModuleWp() {
+  const id = $('f-module').value || 'das';
+  if (CATALOG.moduleWpByType && CATALOG.moduleWpByType[id]) return CATALOG.moduleWpByType[id];
+  const mt = (CATALOG.moduleTypes || []).find((m) => m.id === id);
+  if (mt && mt.label) {
+    const m = mt.label.match(/(\d+)\s*Wp/i);
+    if (m) return Number(m[1]);
+  }
+  return id === 'aiko' ? 490 : 455;
+}
+
+/** Floor-Preispaket für Modulanzahl (Client-Spiegel von resolvePackageForModules). */
+function resolvePackageClient(brand, modules) {
+  const m = Number(modules);
+  const tiers = Object.keys(CATALOG.pricelist[brand] || {}).map(Number).sort((a, b) => a - b);
+  if (!tiers.length) return null;
+  if (!isFinite(m) || m <= 0) {
+    const t = tiers[0];
+    return { kwpPackage: t, packageModules: CATALOG.modulesPerKwp[t] || 0 };
+  }
+  let floor = null;
+  for (const t of tiers) {
+    const mc = CATALOG.modulesPerKwp[t];
+    if (mc == null) continue;
+    if (mc <= m && (!floor || mc > floor.packageModules)) {
+      floor = { kwpPackage: t, packageModules: mc };
+    }
+  }
+  if (floor) return floor;
+  const t = tiers[0];
+  return { kwpPackage: t, packageModules: CATALOG.modulesPerKwp[t] || 0 };
+}
+
+/** Modulanzahl → nächstgelegene kWp-Stufe (KI-Hilfe). */
 function kwpFromModules(brand, modules) {
   const m = Number(modules);
   if (!isFinite(m)) return null;
@@ -501,62 +1455,528 @@ function kwpFromModules(brand, modules) {
   return best;
 }
 
+/** Module aus gewünschtem kWp (Paket-Module). */
+function modulesFromKwp(brand, kwp) {
+  const tiers = Object.keys(CATALOG.pricelist[brand] || {}).map(Number);
+  let best = null; let bd = Infinity;
+  const target = Number(kwp);
+  for (const t of tiers) {
+    const d = Math.abs(t - target);
+    if (d < bd) { bd = d; best = t; }
+  }
+  if (best == null) return null;
+  return CATALOG.modulesPerKwp[best] || null;
+}
+
+/** Live-Anzeige: berechnetes kWp + Preis-Hinweis + Speicher-Stufen. */
+function syncModuleDerivedUi() {
+  if (!CATALOG) return;
+  const mods = Math.max(1, Math.round(Number($('f-modules').value) || 0));
+  if (String(mods) !== $('f-modules').value) $('f-modules').value = String(mods);
+  const wp = currentModuleWp();
+  const kwpCalc = Math.round((mods * wp) / 10) / 100;
+  $('f-kwp-live').textContent = `${String(kwpCalc).replace('.', ',')} kWp`;
+  const pkg = resolvePackageClient($('f-brand').value, mods);
+  if (pkg) {
+    $('f-kwp').value = String(pkg.kwpPackage);
+    const extra = Math.max(0, mods - pkg.packageModules);
+    const netto = CATALOG.extraModulePriceNetto != null ? CATALOG.extraModulePriceNetto : (CATALOG.extraModulePrice || 200);
+    const pkgLabel = `${String(pkg.kwpPackage).replace('.', ',')} kWp-Paket (${pkg.packageModules} Mod.)`;
+    if (extra > 0) {
+      $('price-hint').innerHTML = `Preisanlage: <b>${pkgLabel}</b> + <b>${extra}</b> Zusatzmodul${extra === 1 ? '' : 'e'} à <b>${netto} € netto</b> (= ${(netto * 1.2).toFixed(0)} € brutto).`;
+    } else {
+      $('price-hint').innerHTML = `Preisanlage: <b>${pkgLabel}</b> – keine Zusatzmodule.`;
+    }
+  }
+  refreshSpeicherSelect();
+}
+
+function syncPvKlimaVisibility() {
+  const pvOn = $('f-include-pv').checked;
+  const klimaOn = $('f-klima-enabled').checked;
+  $('pv-config-block').style.display = pvOn ? '' : 'none';
+  $('klima-config-block').style.display = klimaOn ? '' : 'none';
+  syncVollmachtUi();
+}
+
+/** Vollmacht nur bei PV/Kombi – bei reinem Klima nie. */
+function shouldAttachVollmacht() {
+  return !!$('f-include-pv').checked;
+}
+
+function syncVollmachtUi() {
+  const on = shouldAttachVollmacht();
+  const cb = $('f-vollmacht');
+  if (cb) {
+    cb.checked = on;
+    cb.disabled = true;
+  }
+  const hint = $('vollmacht-hint');
+  if (hint) {
+    hint.textContent = on
+      ? 'PV-/Kombi-Angebot: Vollmacht wird automatisch ans PDF angehängt. E-Mail-Text per KI (editierbar), Angebot 30 Tage gültig.'
+      : 'Reines Klima-Angebot: keine Vollmacht. E-Mail-Text per KI (editierbar), Angebot 30 Tage gültig.';
+  }
+}
+
+function selectedKlimaPackageId() {
+  const active = document.querySelector('#klima-pkg-list .klima-pkg.active');
+  return active ? active.dataset.id : null;
+}
+
+function renderKlimaPackages(selectedId) {
+  const box = $('klima-pkg-list');
+  if (!box || !CATALOG) return;
+  const pkgs = CATALOG.klimaPackages || CATALOG.klimaCatalog || [];
+  const sel = selectedId || selectedKlimaPackageId() || (pkgs[0] && pkgs[0].id);
+  box.innerHTML = pkgs.map((p) => {
+    const indoor = (p.indoor || []).map((i) => `${i.qty}× ${String(i.kw).replace('.', ',')} kW`).join(' + ');
+    const active = p.id === sel ? ' active' : '';
+    return `<div class="klima-pkg${active}" data-id="${p.id}">
+      <input type="radio" name="klima-pkg" ${p.id === sel ? 'checked' : ''} />
+      <div>
+        <div class="pkg-title">${p.label}</div>
+        <div class="pkg-meta">Außen ${String(p.outdoorKw).replace('.', ',')} kW · Innen ${indoor}</div>
+      </div>
+      <div class="pkg-price">${Number(p.priceBrutto).toLocaleString('de-DE')} €</div>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.klima-pkg').forEach((el) => {
+    el.addEventListener('click', () => {
+      box.querySelectorAll('.klima-pkg').forEach((x) => x.classList.remove('active'));
+      el.classList.add('active');
+      const radio = el.querySelector('input');
+      if (radio) radio.checked = true;
+      compute();
+    });
+  });
+}
+
+function readKlimaConfig() {
+  if (!$('f-klima-enabled').checked) return [];
+  const packageId = selectedKlimaPackageId();
+  if (!packageId) return [];
+  return [{
+    enabled: true,
+    packageId,
+    mode: $('f-klima-mode').value === 'optional' ? 'optional' : 'fix',
+    qty: 1,
+    extraPipingMeters: Math.max(0, Number($('f-klima-piping').value) || 0),
+    condensatePump: !!$('f-klima-pump').checked,
+  }];
+}
+
+function applyKlimaConfig(klima) {
+  const list = Array.isArray(klima) ? klima : (klima && klima.packageId ? [klima] : []);
+  const first = list.find((k) => k && (k.packageId || k.id)) || null;
+  if (!first) {
+    $('f-klima-enabled').checked = false;
+    syncPvKlimaVisibility();
+    return;
+  }
+  $('f-klima-enabled').checked = true;
+  $('f-klima-mode').value = first.mode === 'optional' ? 'optional' : 'fix';
+  $('f-klima-piping').value = String(Math.max(0, Number(first.extraPipingMeters) || 0));
+  $('f-klima-pump').checked = !!first.condensatePump;
+  renderKlimaPackages(first.packageId || first.id);
+  syncPvKlimaVisibility();
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Markiert Nachträge im Befehlsfeld, damit Antworten austauschbar sind. */
+function clarifyMarker(id) {
+  return `⟦${String(id || 'antwort').replace(/[^\w\-]+/g, '_')}⟧`;
+}
+
+function appendClarifyAnswer(questionId, text) {
+  const ta = $('command');
+  const add = String(text || '').trim();
+  if (!add || !ta) return;
+  const marker = clarifyMarker(questionId);
+  const line = `${marker} ${add}`;
+  const lines = ta.value.split(/\n/);
+  const filtered = lines.filter((ln) => !ln.trim().startsWith(marker));
+  // Leerzeilen am Ende entfernen, dann Nachtrag anhängen
+  while (filtered.length && !filtered[filtered.length - 1].trim()) filtered.pop();
+  filtered.push(line);
+  ta.value = filtered.join('\n');
+  ta.focus();
+  ta.scrollTop = ta.scrollHeight;
+}
+
+function showClarifications(items) {
+  const box = $('clarify-box');
+  const list = $('clarify-list');
+  const reparseBtn = $('btn-clarify-reparse');
+  const raw = (items || []).filter(Boolean);
+  if (!raw.length) {
+    box.classList.remove('show');
+    list.innerHTML = '';
+    if (reparseBtn) reparseBtn.style.display = 'none';
+    return;
+  }
+  const qs = raw.map((item, idx) => {
+    if (typeof item === 'string') {
+      return { id: `q${idx}`, question: item, answers: [] };
+    }
+    return {
+      id: String(item.id || `q${idx}`),
+      question: String(item.question || item.q || item.text || '').trim(),
+      answers: (Array.isArray(item.answers) ? item.answers : []).map((a) => {
+        if (typeof a === 'string') return { label: a, text: a };
+        return {
+          label: String(a.label || a.text || 'Antwort').trim(),
+          text: String(a.text || a.label || '').trim(),
+        };
+      }).filter((a) => a.text),
+    };
+  }).filter((q) => q.question).map((q) => {
+    // Fallback, falls Server/KI keine Buttons geliefert hat
+    if (!q.answers.length) {
+      q.answers = [
+        { label: 'Ja', text: 'Ja, bestätigen' },
+        { label: 'Nein', text: 'Nein' },
+        { label: 'Optional', text: 'optional anbieten' },
+        { label: 'Fix', text: 'fix im Angebotspreis' },
+        { label: 'Manuell', text: 'werde ich manuell setzen' },
+      ];
+    }
+    return q;
+  });
+
+  list.innerHTML = qs.map((q, qi) => {
+    const buttons = (q.answers || []).map((a, ai) =>
+      `<button type="button" class="clarify-ans" data-qi="${qi}" data-ai="${ai}">${escHtml(a.label)}</button>`
+    ).join('');
+    return `<div class="clarify-item" data-qi="${qi}" data-qid="${escHtml(q.id)}">
+      <p class="clarify-q">${escHtml(q.question)}</p>
+      <div class="clarify-answers">${buttons}</div>
+    </div>`;
+  }).join('');
+
+  const updateReparseVisibility = () => {
+    if (!reparseBtn) return;
+    const anyPicked = !!list.querySelector('.clarify-ans.picked');
+    reparseBtn.style.display = anyPicked ? '' : 'none';
+    const allDone = qs.length > 0 && [...list.querySelectorAll('.clarify-item')].every((el) => el.classList.contains('done'));
+    reparseBtn.textContent = allDone
+      ? 'Alle Antworten übernehmen & erneut analysieren'
+      : 'Bisherige Antworten übernehmen & erneut analysieren';
+  };
+
+  list.querySelectorAll('.clarify-ans').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const qi = Number(btn.getAttribute('data-qi'));
+      const ai = Number(btn.getAttribute('data-ai'));
+      const q = qs[qi];
+      const ans = q && q.answers[ai];
+      if (!ans) return;
+      appendClarifyAnswer(q.id, ans.text);
+      const item = btn.closest('.clarify-item');
+      if (item) {
+        item.classList.add('done');
+        item.querySelectorAll('.clarify-ans').forEach((b) => b.classList.remove('picked'));
+        btn.classList.add('picked');
+      }
+      updateReparseVisibility();
+      const allDone = [...list.querySelectorAll('.clarify-item')].every((el) => el.classList.contains('done'));
+      if (allDone) {
+        toast('Alle Rückfragen beantwortet – analysiere erneut…', 'ok');
+        setTimeout(() => parseCommand(), 400);
+      } else {
+        toast('Antwort übernommen – weitere Rückfragen oder „erneut analysieren“.', 'ok');
+      }
+    });
+  });
+
+  if (reparseBtn) {
+    reparseBtn.onclick = () => parseCommand();
+    updateReparseVisibility();
+  }
+  box.classList.add('show');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 /** KI-Dachtext auf eine gültige Listen-Option abbilden (z. B. "Eternit" → "Schindel-Eternit"). */
 function mapDachLabel(raw) {
-  const s = String(raw || '').toLowerCase();
-  if (!s) return 'Ziegel';
+  const s0 = String(raw || '').trim();
+  if (!s0) return 'Ziegel';
+  if (s0 === 'Flachdach Süd') return 'Flachdach Südaufständerung';
+  const s = s0.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue');
+  const labels = dachLabelsForUi();
+  const exact = labels.find((l) => l.toLowerCase() === s0.toLowerCase());
+  if (exact) return exact;
+  const ostWest = /ost\s*-?\s*west|ostwest|suedost|southeast/.test(s);
+  const sued = (/suedaufst|suedaufstell|aufstaender|suedausricht/.test(s) || (/sued/.test(s) && !/suedost/.test(s)));
+  if (/freiflaeche|freiland/.test(s)) {
+    return ostWest ? 'Freifläche Ost-West' : 'Freifläche Süd';
+  }
   if (s.includes('welleternit')) return 'Welleternit';
   if (s.includes('eternit')) return 'Schindel-Eternit';
   if (s.includes('rhombus')) return 'Rhombus';
   if (s.includes('biber')) return 'Biberschwanz';
   if (s.includes('wiener') || s.includes('tasche')) return 'Wiener Tasche';
   if (s.includes('prefa')) return 'Prefa';
+  if (s.includes('flach')) {
+    if (ostWest) return 'Flachdach Ost-West';
+    if (sued) return 'Flachdach Südaufständerung';
+    return 'Flachdach';
+  }
+  if (s.includes('trapez')) return 'Trapezblech';
+  if (s.includes('falz')) return 'Falzblech';
+  if (s.includes('ziegel')) return 'Ziegel';
+  return 'Ziegel';
+}
+
+/** Orientierung aus Kontext (Südaufständerung / Ost-West). Südost → Ost-West. */
+function detectDachOrientation(context) {
+  const t = String(context || '').toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue');
+  if (/ost\s*-?\s*west|ostwest|\bo\s*\/\s*w\b|east\s*-?\s*west|suedost|southeast/.test(t)) {
+    return 'ost-west';
+  }
+  if (/suedaufst|sued\s*aufst|aufstaender|suedausricht|ausrichtung\s*sued|(?:^|[^a-z])sued(?:[^a-z]|$)|sued\s*flach|\bsouth\b/.test(t)) {
+    return 'sued';
+  }
+  return null;
+}
+
+function baseDachFromMatch(raw) {
+  const s = String(raw || '').toLowerCase().replace(/ä/g, 'ae').replace(/ü/g, 'ue');
+  if (/freiflaeche|freiland/.test(s)) return 'Freifläche';
+  if (s.includes('falz')) return 'Falzblech';
   if (s.includes('flach')) return 'Flachdach';
   if (s.includes('trapez')) return 'Trapezblech';
+  if (s.includes('welleternit')) return 'Welleternit';
+  if (s.includes('eternit')) return 'Schindel-Eternit';
+  if (s.includes('rhombus')) return 'Rhombus';
+  if (s.includes('biberschwanz')) return 'Biberschwanz';
+  if (s.includes('wiener') || s.includes('tasche')) return 'Wiener Tasche';
+  if (s.includes('prefa')) return 'Prefa';
   if (s.includes('ziegel')) return 'Ziegel';
-  const exact = (CATALOG.dachLabels || []).find((l) => l.toLowerCase() === s);
-  return exact || 'Ziegel';
+  return null;
+}
+
+function dachLabelWithOrientation(base, orient) {
+  if (base === 'Flachdach') {
+    if (orient === 'ost-west') return 'Flachdach Ost-West';
+    if (orient === 'sued') return 'Flachdach Südaufständerung';
+  }
+  if (base === 'Freifläche') {
+    if (orient === 'ost-west') return 'Freifläche Ost-West';
+    if (orient === 'sued') return 'Freifläche Süd';
+  }
+  return base;
+}
+
+function pushDachMatch(raw, modules, base, orient) {
+  if (!base || !Number.isFinite(modules) || modules <= 0) return;
+  raw.push({ dach: dachLabelWithOrientation(base, orient), modules });
+}
+
+/** Familie für Doppelzählungs-Abgleich. */
+function dachFamilyKey(label) {
+  const s = String(label || '').toLowerCase();
+  if (s.startsWith('flachdach')) return 'flachdach';
+  if (s.startsWith('freifläche') || s.startsWith('freiflaeche')) return 'freifläche';
+  return s;
+}
+
+/**
+ * Verhindert Doppelzählung: Gesamt + Aufschlüsselung derselben Dachfamilie.
+ */
+function reconcileDachSegmente(rawSegs) {
+  const list = (Array.isArray(rawSegs) ? rawSegs : [])
+    .map((s) => {
+      if (!s) return null;
+      const label = mapDachLabel(s.dach || s.label || '');
+      const modules = Math.max(0, Math.round(Number(s.modules) || 0));
+      const generic = label === 'Flachdach';
+      return { label, modules, generic };
+    })
+    .filter((s) => s && (s.modules > 0 || s.label));
+
+  const byFam = new Map();
+  for (const s of list) {
+    const f = dachFamilyKey(s.label);
+    if (!byFam.has(f)) byFam.set(f, []);
+    byFam.get(f).push(s);
+  }
+
+  const out = [];
+  for (const items of byFam.values()) {
+    const generics = items.filter((i) => i.generic);
+    const specifics = items.filter((i) => !i.generic);
+    let keep = items;
+    if (generics.length && specifics.length) {
+      const specSum = specifics.reduce((a, i) => a + i.modules, 0);
+      const genSum = generics.reduce((a, i) => a + i.modules, 0);
+      if (specSum > 0 && (specSum === genSum || generics.some((g) => g.modules === specSum))) {
+        keep = specifics;
+      } else if (specSum > 0 && genSum > 0 && genSum + specSum > Math.max(genSum, specSum)) {
+        keep = (specSum >= Math.min(...generics.map((g) => g.modules)) * 0.5) ? specifics : generics;
+      }
+    }
+    const merged = new Map();
+    for (const s of keep) {
+      const prev = merged.get(s.label);
+      if (prev) prev.modules += s.modules;
+      else merged.set(s.label, { dach: s.label, modules: s.modules });
+    }
+    out.push(...merged.values());
+  }
+  return out;
+}
+
+/** Mehrere Dachflächen aus Sprachbefehl. */
+function extractDachSegmenteFromText(sourceText) {
+  const text = String(sourceText || '');
+  if (!text.trim()) return [];
+  const typeRe = '(freifl[aä]che|falzblech(?:dach)?|flachdach|trapezblech|welleternit|schindel[-\\s]?eternit|eternit|rhombus|biberschwanz|wiener\\s*tasche|prefa|ziegel)';
+  const raw = [];
+  let m;
+
+  const reNumFirst = new RegExp(
+    `(\\d+)\\s*(?:module|paneele|stk\\.?)?([^\\d\\n]{0,55}?)(?:auf(?:\\s+dem|\\s+der|\\s+den)?|für)?\\s*(${typeRe})`,
+    'gi'
+  );
+  while ((m = reNumFirst.exec(text)) !== null) {
+    const modules = Number(m[1]);
+    const between = m[2] || '';
+    const typeRaw = m[3];
+    const base = baseDachFromMatch(typeRaw);
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40);
+    const orient = detectDachOrientation(`${between} ${typeRaw} ${after}`);
+    pushDachMatch(raw, modules, base, orient);
+  }
+
+  const reTypeFirst = new RegExp(
+    `(${typeRe})\\s+(\\d+)\\s*(?:module|paneele|stk\\.?)?([^\\d\\n]{0,45})`,
+    'gi'
+  );
+  while ((m = reTypeFirst.exec(text)) !== null) {
+    const base = baseDachFromMatch(m[1]);
+    const modules = Number(m[2]);
+    const after = m[3] || '';
+    const orient = detectDachOrientation(`${m[1]} ${after}`);
+    const already = raw.some((r) => r.modules === modules && baseDachFromMatch(r.dach) === base);
+    if (already && !orient) continue;
+    if (already && orient) {
+      const idx = raw.findIndex((r) => r.modules === modules && baseDachFromMatch(r.dach) === base && r.dach === base);
+      if (idx >= 0) {
+        raw[idx] = { dach: dachLabelWithOrientation(base, orient), modules };
+        continue;
+      }
+      if (raw.some((r) => r.modules === modules && r.dach === dachLabelWithOrientation(base, orient))) continue;
+    }
+    pushDachMatch(raw, modules, base, orient);
+  }
+
+  const reOrientOnly = /(\d+)\s*(?:module|paneele|stk\.?)([^\d\n]{0,55}?(?:s[üu]dost|ost\s*-?\s*west|s[üu]d)[^\d\n]{0,30}?(?:ausricht|aufstell|aufst(?:a|ä)end)?)/gi;
+  while ((m = reOrientOnly.exec(text)) !== null) {
+    const modules = Number(m[1]);
+    const ctx = m[2] || '';
+    if (new RegExp(typeRe, 'i').test(ctx)) continue;
+    if (/wechselrichter|inverter|\bk\s*[wv]\b|speicher|euro|€/i.test(ctx)) continue;
+    const orient = detectDachOrientation(ctx);
+    if (!orient) continue;
+    if (raw.some((r) => r.modules === modules)) continue;
+    pushDachMatch(raw, modules, 'Flachdach', orient);
+  }
+
+  return reconcileDachSegmente(raw);
+}
+
+function resolveDachSegmenteFromAi(r, cmdText) {
+  const fromAi = (Array.isArray(r.dachSegmente) && r.dachSegmente.length)
+    ? r.dachSegmente.map((s) => ({
+      dach: mapDachLabel(s.dach || r.dach || 'Ziegel'),
+      modules: s.modules != null ? Number(s.modules) : null,
+    }))
+    : [];
+  const fromText = extractDachSegmenteFromText(cmdText);
+  const textHasOrient = /südost|suedost|ost\s*-?\s*west|südaufst|suedaufst|südaufstell|südausricht|suedausricht|ost\/west/i.test(String(cmdText || ''));
+  let segs;
+  if (fromText.length >= 2 || (textHasOrient && fromText.length >= 1)) segs = fromText;
+  else if (fromAi.length >= 2) segs = fromAi;
+  else if (fromText.length) segs = fromText;
+  else if (fromAi.length) segs = fromAi;
+  else segs = [{ dach: mapDachLabel(r.dach || 'Ziegel'), modules: r.module_count || '' }];
+  return reconcileDachSegmente(segs);
 }
 
 // ── Formular <-> Variant ────────────────────────────────────────────────────
 function readForm() {
-  const modulesRaw = $('f-modules').value.trim();
+  const includePv = $('f-include-pv').checked;
+  const modules = Math.max(1, Math.round(Number($('f-modules').value) || 0));
+  const pkg = resolvePackageClient($('f-brand').value, modules);
   return {
+    includePv,
     brand: $('f-brand').value,
-    kwp: Number($('f-kwp').value),
-    speicher: Number($('f-speicher').value),
-    speicherGesamt: Number($('f-speicher').value) + readSpeicherZusatz().reduce((s, b) => s + (Number(b.kwh) || 0), 0),
-    speicherZusatz: readSpeicherZusatz(),
-    dachSegmente: readDachSegments(),
+    kwp: includePv && pkg ? pkg.kwpPackage : null,
+    speicher: includePv ? Number($('f-speicher').value) : null,
+    speicherGesamt: includePv
+      ? Number($('f-speicher').value) + readSpeicherZusatz().reduce((s, b) => s + (Number(b.kwh) || 0), 0)
+      : null,
+    speicherZusatz: includePv ? readSpeicherZusatz() : [],
+    dachSegmente: includePv ? readDachSegments() : [],
     moduleType: $('f-module').value,
-    moduleCount: modulesRaw === '' ? null : Number(modulesRaw),
-    inverterModel: $('f-inverter').value.trim(),
+    moduleCount: includePv ? modules : 0,
+    inverterKw: includePv && $('f-inverter').value !== '' ? Number($('f-inverter').value) : null,
+    inverterModel: '',
     bruttoOverride: $('f-brutto').value.trim() === '' ? null : Number($('f-brutto').value),
-    optionen: readOptionRows(),
+    optionen: includePv ? readOptionRows() : [],
+    klima: readKlimaConfig(),
+    offerNotes: ($('f-offer-notes').value || '').split('\n').map((s) => s.trim()).filter(Boolean),
+    layoutPlanId: currentLayoutId != null ? Number(currentLayoutId) : null,
   };
 }
 
 function writeForm(cfg) {
   if (!cfg) return;
+  const includePv = cfg.includePv !== false && !(cfg.includePv === false);
+  // Wenn nur Klima: includePv false
+  const hasKlima = Array.isArray(cfg.klima) ? cfg.klima.some((k) => k && (k.packageId || k.enabled)) : !!(cfg.klima && cfg.klima.packageId);
+  $('f-include-pv').checked = cfg.includePv == null ? (cfg.moduleCount > 0 || cfg.kwp || !hasKlima) : !!includePv;
   $('f-brand').value = cfg.brand || 'sigenergy';
   refreshStorageExtSelect();
-  refreshKwpSelect();
-  // kWp aus expliziter Angabe oder aus Modulanzahl ableiten, dann auf nächste Stufe snappen
-  let kwpTarget = cfg.kwp;
-  if (!kwpTarget && cfg.moduleCount) kwpTarget = kwpFromModules($('f-brand').value, cfg.moduleCount);
-  if (kwpTarget) snapSelectToValue($('f-kwp'), kwpTarget);
+  refreshInverterSelect(cfg.inverterKw != null ? cfg.inverterKw : null);
+  $('f-module').value = cfg.moduleType || 'das';
+
+  let modules = cfg.moduleCount;
+  if (!(Number.isFinite(Number(modules)) && Number(modules) > 0)) {
+    if (cfg.kwp) modules = modulesFromKwp($('f-brand').value, cfg.kwp);
+  }
+  $('f-modules').value = String(Math.max(1, Math.round(Number(modules) || 22)));
+  syncModuleDerivedUi();
+
   refreshSpeicherSelect();
-  if (cfg.moduleCount) $('f-modules').value = cfg.moduleCount;
-  else $('f-modules').value = '';
+  if (cfg.speicher) snapSelectToValue($('f-speicher'), cfg.speicher);
+
   const segs = (cfg.dachSegmente && cfg.dachSegmente.length)
     ? cfg.dachSegmente
-    : (cfg.dach ? [{ dach: cfg.dach, modules: cfg.moduleCount || '' }] : null);
+    : (cfg.dach ? [{ dach: cfg.dach, modules: cfg.moduleCount || $('f-modules').value }] : null);
   applyDachSegments(segs);
   applySpeicherZusatz(cfg.speicherZusatz || []);
-  $('f-module').value = cfg.moduleType || 'das';
-  $('f-inverter').value = cfg.inverterModel || '';
+  if (cfg.inverterKw != null && Number(cfg.inverterKw) > 0) {
+    refreshInverterSelect(cfg.inverterKw);
+  } else if (cfg.inverterModel) {
+    const brand = currentBrandId();
+    const list = ((CATALOG.inverters || {})[brand]) || [];
+    const hit = list.find((i) => i.label === cfg.inverterModel)
+      || list.find((i) => String(cfg.inverterModel).includes(String(i.acKw)));
+    refreshInverterSelect(hit ? hit.acKw : null);
+  } else {
+    refreshInverterSelect(null);
+  }
   $('f-brutto').value = cfg.bruttoOverride == null ? '' : cfg.bruttoOverride;
   applyOptionsToRows(cfg.optionen || []);
+  applyKlimaConfig(cfg.klima);
+  $('f-offer-notes').value = Array.isArray(cfg.offerNotes) ? cfg.offerNotes.join('\n') : (cfg.offerNotes || '');
+  syncPvKlimaVisibility();
 }
 
 /** Gewünschte Gesamt-Speichergröße → Basis-Stufe + stapelbare Blöcke (Sigenergy 9/6). */
@@ -567,21 +1987,121 @@ async function applySpeicherTarget(totalKwh, skipIfManualBlocks) {
     snapSelectToValue($('f-speicher'), t);
     return;
   }
-  try {
-    const res = await api('/api/offer/plan-storage', {
-      method: 'POST',
-      body: JSON.stringify({
-        brand: $('f-brand').value,
-        kwp: Number($('f-kwp').value),
-        speicherGesamt: t,
-      }),
-    });
+    try {
+      const res = await api('/api/offer/plan-storage', {
+        method: 'POST',
+        body: JSON.stringify({
+          brand: $('f-brand').value,
+          kwp: Number($('f-kwp').value) || (resolvePackageClient($('f-brand').value, Number($('f-modules').value)) || {}).kwpPackage,
+          speicherGesamt: t,
+        }),
+      });
     const plan = await res.json();
     if (plan.baseKwh != null) snapSelectToValue($('f-speicher'), plan.baseKwh);
     applySpeicherZusatz(plan.blocks || []);
   } catch (_) {
     snapSelectToValue($('f-speicher'), t);
   }
+}
+
+function deepCloneJson(obj) {
+  try { return JSON.parse(JSON.stringify(obj)); } catch (_) { return obj; }
+}
+
+/** Standard-Variante ohne Belegungsplan (Formular-Defaults). */
+function emptyVariantConfig() {
+  return {
+    includePv: true,
+    brand: 'sigenergy',
+    kwp: 10.01,
+    speicher: 9,
+    speicherGesamt: 9,
+    speicherZusatz: [],
+    dachSegmente: [{ dach: 'Ziegel', modules: 22 }],
+    moduleType: 'das',
+    moduleCount: 22,
+    inverterKw: null,
+    inverterModel: '',
+    bruttoOverride: null,
+    optionen: [],
+    klima: { enabled: false },
+    offerNotes: [],
+    layoutPlanId: null,
+  };
+}
+
+function bindLayoutToActiveVariant(layoutId) {
+  const id = layoutId != null && Number.isFinite(Number(layoutId)) ? Number(layoutId) : null;
+  currentLayoutId = id;
+  if (variants[activeVariant]) variants[activeVariant].layoutPlanId = id;
+}
+
+async function loadLayoutForVariant(layoutPlanId) {
+  const id = layoutPlanId != null ? Number(layoutPlanId) : null;
+  if (!Number.isFinite(id)) {
+    currentLayoutId = null;
+    currentLayout = null;
+    updateLayoutPanelUi();
+    return;
+  }
+  try {
+    const lr = await api('/api/layouts/' + encodeURIComponent(id));
+    const lj = await lr.json();
+    if (lj.layout) {
+      currentLayout = lj.layout;
+      currentLayoutId = lj.layout.id;
+      if (variants[activeVariant]) variants[activeVariant].layoutPlanId = lj.layout.id;
+      updateLayoutPanelUi();
+      refreshLayoutSnapshotThumb();
+      return;
+    }
+  } catch (_) { /* ignore */ }
+  currentLayoutId = null;
+  currentLayout = null;
+  updateLayoutPanelUi();
+}
+
+/** Belegungsplan als neuen DB-Eintrag klonen (unabhängige Kopie). */
+async function cloneLayoutPlan(sourceId) {
+  const id = Number(sourceId);
+  if (!Number.isFinite(id)) return null;
+  const lr = await api('/api/layouts/' + encodeURIComponent(id));
+  const lj = await lr.json();
+  if (!lj.layout || !lj.layout.plan) return null;
+  const src = lj.layout;
+  const cust = customerPayload();
+  const cr = await api('/api/layouts', {
+    method: 'POST',
+    body: JSON.stringify({
+      plan: deepCloneJson(src.plan),
+      customerEmail: cust.email || src.customerEmail || '',
+      leadId: currentLeadId || src.leadId || null,
+      title: ((src.title || 'Belegungsplan') + ' (Kopie)').slice(0, 120),
+      addressText: src.addressText || '',
+      lat: src.lat,
+      lng: src.lng,
+      basemapProvider: src.basemapProvider || 'basemap_at',
+      moduleCount: src.moduleCount || 0,
+      moduleWp: src.moduleWp || 455,
+    }),
+  });
+  const cj = await cr.json();
+  if (!cr.ok || !cj.layout) throw new Error(cj.error || 'Layout-Kopie fehlgeschlagen');
+  return cj.layout;
+}
+
+function openVariantModal() {
+  const m = $('variant-modal');
+  if (!m) return;
+  m.hidden = false;
+  m.setAttribute('aria-hidden', 'false');
+}
+
+function closeVariantModal() {
+  const m = $('variant-modal');
+  if (!m) return;
+  m.hidden = true;
+  m.setAttribute('aria-hidden', 'true');
 }
 
 function saveActiveVariant() { variants[activeVariant] = readForm(); }
@@ -598,21 +2118,55 @@ function renderTabs() {
   });
 }
 
-function switchVariant(i) {
+async function switchVariant(i) {
+  if (i === activeVariant) return;
   saveActiveVariant();
   activeVariant = i;
   writeForm(variants[i]);
   renderTabs();
+  await loadLayoutForVariant(variants[i] && variants[i].layoutPlanId);
   compute();
 }
 
-function addVariant() {
+async function addVariantDuplicate() {
+  closeVariantModal();
   saveActiveVariant();
-  variants.push(Object.assign({}, readForm()));
+  const copy = deepCloneJson(readForm());
+  const srcLayoutId = copy.layoutPlanId != null ? copy.layoutPlanId : currentLayoutId;
+  copy.layoutPlanId = null;
+  if (srcLayoutId) {
+    try {
+      const cloned = await cloneLayoutPlan(srcLayoutId);
+      if (cloned) copy.layoutPlanId = cloned.id;
+    } catch (e) {
+      toast('Variante kopiert, Belegungsplan-Kopie fehlgeschlagen: ' + (e.message || e), 'error');
+    }
+  }
+  variants.push(copy);
   activeVariant = variants.length - 1;
+  writeForm(copy);
   renderTabs();
+  await loadLayoutForVariant(copy.layoutPlanId);
   compute();
-  toast('Variante hinzugefügt – passe jetzt z. B. Marke oder Modultyp an.', 'ok');
+  toast('Variante dupliziert' + (copy.layoutPlanId ? ' (inkl. Belegungsplan-Kopie).' : '.'), 'ok');
+}
+
+async function addVariantEmpty() {
+  closeVariantModal();
+  saveActiveVariant();
+  const empty = emptyVariantConfig();
+  variants.push(empty);
+  activeVariant = variants.length - 1;
+  writeForm(empty);
+  renderTabs();
+  clearLayoutLink();
+  empty.layoutPlanId = null;
+  compute();
+  toast('Leere Standardvariante angelegt (ohne Belegungsplan).', 'ok');
+}
+
+function addVariant() {
+  openVariantModal();
 }
 
 function deleteVariant(i) {
@@ -621,20 +2175,29 @@ function deleteVariant(i) {
   activeVariant = Math.max(0, activeVariant - (i <= activeVariant ? 1 : 0));
   writeForm(variants[activeVariant]);
   renderTabs();
+  loadLayoutForVariant(variants[activeVariant] && variants[activeVariant].layoutPlanId);
   compute();
 }
 
 // ── Payload ────────────────────────────────────────────────────────────────
 function customerPayload() {
+  const vorname = $('c-vorname').value.trim();
+  const nachname = $('c-nachname').value.trim();
   return {
-    name: $('c-name').value.trim(), street: $('c-street').value.trim(),
-    zip: $('c-zip').value.trim(), city: $('c-city').value.trim(),
-    email: $('c-email').value.trim(), phone: $('c-phone').value.trim(),
+    vorname,
+    nachname,
+    name: [vorname, nachname].filter(Boolean).join(' '),
+    street: $('c-street').value.trim(),
+    zip: $('c-zip').value.trim(),
+    city: $('c-city').value.trim(),
+    email: $('c-email').value.trim(),
+    phone: $('c-phone').value.trim(),
   };
 }
 
 function basePayload() {
   saveActiveVariant();
+  syncVollmachtUi();
   return {
     config: variants[activeVariant],
     customer: customerPayload(),
@@ -645,15 +2208,281 @@ function basePayload() {
     },
     angebotsnummer: $('f-nummer').value.trim(),
     datum: $('f-datum').value.trim(),
-    contactType: document.querySelector('input[name="contact"]:checked').value,
     extraText: $('f-extra').value.trim(),
-    useAI: $('f-useai').checked,
-    appendVollmacht: $('f-vollmacht').checked,
+    command: $('command').value.trim(),
+    useAI: true,
+    appendVollmacht: shouldAttachVollmacht(),
+    leadId: currentLeadId,
+    layoutPlanId: currentLayoutId,
+    salutationOverride: customerSalutationOverride,
+    subject: ($('m-subject') && $('m-subject').value.trim()) || '',
+    body: ($('m-body') && $('m-body').value.trim()) || '',
+    variants,
+    allocateNewNumber: !!(allocateNewNumberOnFinalize && loadedVersionId),
   };
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function refreshOfferHistory() {
+  const el = $('offer-history-list');
+  if (!el) return;
+  const email = ($('c-email') && $('c-email').value.trim()) || '';
+  const qs = currentLeadId
+    ? ('leadId=' + encodeURIComponent(currentLeadId))
+    : (email ? ('email=' + encodeURIComponent(email)) : '');
+  if (!qs) {
+    el.textContent = 'Lead oder E-Mail nötig, um Versionen zu laden.';
+    return;
+  }
+  try {
+    const res = await api('/api/offer/versions?' + qs);
+    const j = await res.json();
+    const offers = j.offers || [];
+    if (!offers.length) {
+      el.textContent = 'Noch keine gespeicherten Versionen.';
+      return;
+    }
+    el.innerHTML = offers.map((o) => {
+      const label = o.label || o.filenameBase || ((o.angebotsnummer || ('#' + o.id)) + '-V' + (o.customerVersion || 1));
+      const st = o.status === 'sent' ? 'gesendet' : 'Entwurf';
+      const when = (o.sentAt || o.createdAt || '').slice(0, 16).replace('T', ' ');
+      const pdf = o.pdfUrl
+        ? ` · <a href="${escHtml(o.pdfUrl)}" target="_blank" rel="noopener">PDF</a>`
+        : '';
+      return `<div style="margin:0.25rem 0;line-height:1.35">`
+        + `<a href="#" data-offer-id="${escHtml(o.id)}" class="offer-hist-open">${escHtml(label)}</a>`
+        + ` · ${escHtml(st)} · ${escHtml(when)}${pdf}</div>`;
+    }).join('');
+  } catch (e) {
+    el.textContent = 'Versionen konnten nicht geladen werden.';
+  }
+}
+
+async function applyOfferVersion(version) {
+  if (!version) return;
+  loadedVersionId = version.id;
+  allocateNewNumberOnFinalize = true;
+  if (version.leadId) currentLeadId = Number(version.leadId);
+
+  const cfg = version.config || {};
+  const vars = Array.isArray(version.variants) && version.variants.length
+    ? version.variants.slice()
+    : [cfg];
+  variants = vars.map((v) => {
+    const o = (v && typeof v === 'object') ? { ...v } : {};
+    if (o.layoutPlanId != null) o.layoutPlanId = Number(o.layoutPlanId);
+    return o;
+  });
+  activeVariant = 0;
+  // Legacy: ein layout_plan_id auf der Version → Variante 0, falls dort noch keiner
+  if (version.layoutPlanId && (variants[0].layoutPlanId == null || !Number.isFinite(Number(variants[0].layoutPlanId)))) {
+    variants[0].layoutPlanId = Number(version.layoutPlanId);
+  }
+  writeForm(variants[0]);
+  renderTabs();
+
+  if (version.angebotsnummer) $('f-nummer').value = version.angebotsnummer;
+  if (version.emailSubject && $('m-subject')) $('m-subject').value = version.emailSubject;
+  if (version.emailBody && $('m-body')) $('m-body').value = version.emailBody;
+
+  // Kundendaten aus Config-Meta fehlen oft – Lead/E-Mail nachladen
+  if (version.customerEmail && !$('c-email').value) {
+    $('c-email').value = version.customerEmail;
+  }
+  if (version.customerEmail) {
+    try {
+      const res = await api('/api/offer/lead?email=' + encodeURIComponent(version.customerEmail));
+      const j = await res.json();
+      const c = j.customer || {};
+      if (c.vorname) $('c-vorname').value = c.vorname;
+      if (c.nachname) $('c-nachname').value = c.nachname;
+      if (c.street) $('c-street').value = c.street;
+      if (c.zip) $('c-zip').value = c.zip;
+      if (c.city) $('c-city').value = c.city;
+      if (c.email) $('c-email').value = c.email;
+      if (c.phone) $('c-phone').value = c.phone;
+      if (j.leadId) currentLeadId = Number(j.leadId);
+    } catch (_) { /* ignore */ }
+  }
+
+  await loadLayoutForVariant(variants[0] && variants[0].layoutPlanId);
+
+  syncVollmachtUi();
+  compute();
+  await refreshOfferHistory();
+  toast('Angebot ' + (version.label || version.filenameBase || ('V' + version.customerVersion)) + ' geladen. Beim nächsten Fertigstellen neue Nummer.', 'ok');
+}
+
+async function loadOfferVersionById(id) {
+  const res = await api('/api/offer/versions/' + encodeURIComponent(id));
+  const j = await res.json();
+  await applyOfferVersion(j.version);
+}
+
+function markFinalizeDone(headers) {
+  const num = headers && headers.get && headers.get('X-Angebotsnummer');
+  if (num && $('f-nummer')) $('f-nummer').value = num;
+  loadedVersionId = null;
+  allocateNewNumberOnFinalize = false;
+  refreshOfferHistory();
+}
+
+function updateLayoutPanelUi() {
+  const status = $('layout-status');
+  const thumb = $('layout-thumb');
+  const body = $('layout-panel-body');
+  const btnApply = $('btn-layout-apply');
+  const btnClear = $('btn-layout-clear');
+  if (!currentLayout) {
+    if (status) status.textContent = 'Kein Belegungsplan – Angebot kann auch ohne Plan erstellt werden.';
+    if (thumb) thumb.removeAttribute('src');
+    if (body) body.classList.remove('has-preview');
+    if (btnApply) btnApply.style.display = 'none';
+    if (btnClear) btnClear.style.display = 'none';
+    return;
+  }
+  const n = currentLayout.moduleCount || 0;
+  if (status) {
+    status.textContent = `Plan #${currentLayout.id} · ${n} Module`
+      + (currentLayout.addressText ? ` · ${currentLayout.addressText}` : '');
+  }
+  if (thumb && body) {
+    if (currentLayout.snapshotUrl) {
+      thumb.src = currentLayout.snapshotUrl + '?t=' + Date.now();
+      body.classList.add('has-preview');
+    } else {
+      thumb.removeAttribute('src');
+      body.classList.remove('has-preview');
+    }
+  }
+  if (btnApply) btnApply.style.display = n > 0 ? '' : 'none';
+  if (btnClear) btnClear.style.display = '';
+}
+
+/** Ortho-Snapshot neu rendern (weiterer Ausschnitt) und Vorschau aktualisieren. */
+async function refreshLayoutSnapshotThumb() {
+  if (!currentLayoutId) return;
+  try {
+    const r = await api('/api/layouts/' + encodeURIComponent(currentLayoutId) + '/snapshot', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.layout) {
+      currentLayout = j.layout;
+      currentLayoutId = j.layout.id;
+      updateLayoutPanelUi();
+    } else if (r.ok && j.snapshotUrl && currentLayout) {
+      currentLayout.snapshotUrl = j.snapshotUrl;
+      currentLayout.snapshotPath = j.snapshotPath || currentLayout.snapshotPath;
+      updateLayoutPanelUi();
+    }
+  } catch (e) {
+    console.warn('Snapshot-Refresh:', e);
+  }
+}
+
+function clearLayoutLink() {
+  currentLayoutId = null;
+  currentLayout = null;
+  if (variants[activeVariant]) variants[activeVariant].layoutPlanId = null;
+  updateLayoutPanelUi();
+}
+
+function applyLayoutToOffer(count, moduleType) {
+  if (count > 0) {
+    $('f-modules').value = String(count);
+  }
+  if (moduleType) {
+    const sel = $('f-module');
+    const opt = Array.from(sel.options || []).find((o) => o.value === moduleType);
+    if (opt) sel.value = moduleType;
+  }
+  syncModuleDerivedUi();
+  compute();
+  const parts = [];
+  if (count > 0) parts.push(`${count} Module`);
+  if (moduleType) {
+    const mt = (CATALOG.moduleTypes || []).find((m) => m.id === moduleType);
+    parts.push(mt ? mt.label : moduleType);
+  }
+  toast((parts.length ? parts.join(' · ') : 'Belegungsplan') + ' übernommen.', 'ok');
+}
+
+/** @deprecated use applyLayoutToOffer */
+function applyLayoutModuleCount(count) {
+  applyLayoutToOffer(count, null);
+}
+
+function moduleTypeFromLayout(layout) {
+  if (!layout) return null;
+  const meta = layout.plan && layout.plan.meta;
+  if (meta && meta.moduleType) return String(meta.moduleType);
+  if (layout.moduleType) return String(layout.moduleType);
+  // Fallback: Wp → Typ
+  const wp = Number(layout.moduleWp);
+  if (Number.isFinite(wp) && wp > 0 && CATALOG.moduleWpByType) {
+    const hit = Object.keys(CATALOG.moduleWpByType).find((k) => Number(CATALOG.moduleWpByType[k]) === wp);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function populateLayoutModuleSelect() {
+  const sel = $('layout-module-type');
+  if (!sel || !(CATALOG.moduleTypes || []).length) return;
+  const cur = sel.value || $('f-module').value || 'das';
+  sel.innerHTML = CATALOG.moduleTypes.map((m) => {
+    const short = String(m.label || m.id).replace(/\s*\(.*$/, '');
+    return `<option value="${m.id}">${short}</option>`;
+  }).join('');
+  if (Array.from(sel.options).some((o) => o.value === cur)) sel.value = cur;
+}
+
+function openLayoutEditor() {
+  if (!layoutEditor) {
+    toast('Belegungsplan-Editor noch nicht geladen.', 'error');
+    return;
+  }
+  populateLayoutModuleSelect();
+  const mt = $('f-module').value || 'das';
+  const mtSel = $('layout-module-type');
+  if (mtSel) mtSel.value = mt;
+  if (layoutEditor.setModuleType) layoutEditor.setModuleType(mt);
+  layoutEditor.open({
+    leadId: currentLeadId,
+    customerEmail: $('c-email').value.trim(),
+    street: $('c-street').value.trim(),
+    zip: $('c-zip').value.trim(),
+    city: $('c-city').value.trim(),
+    layoutId: currentLayoutId,
+    layout: currentLayout,
+    moduleType: mt,
+    title: 'Belegungsplan ' + ([($('c-vorname') && $('c-vorname').value.trim()) || '', ($('c-nachname') && $('c-nachname').value.trim()) || ''].filter(Boolean).join(' ') || ''),
+  });
 }
 
 // ── Aktionen ────────────────────────────────────────────────────────────────
 let computeTimer = null;
+let previewTimer = null;
+let previewObjectUrl = null;
+let previewInFlight = false;
+let previewQueued = false;
+
+function setPreviewStatus(msg, isError) {
+  const el = $('pdf-preview-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
 function compute() {
   clearTimeout(computeTimer);
   computeTimer = setTimeout(async () => {
@@ -661,25 +2490,91 @@ function compute() {
       const res = await api('/api/offer/compute', { method: 'POST', body: JSON.stringify(basePayload()) });
       const j = await res.json();
       const o = j.offer;
-      $('s-config').textContent = `${o.config.brandLabel} · ${o.config.kwpLabel} (${o.config.moduleCount} Mod.) · ${o.config.speicherLabel} · ${o.config.dach}`;
+      const kind = (o.meta && o.meta.offerKind) || 'pv';
+      const klimaLbl = ((o.klima && o.klima.fix) || []).filter((k) => k.packageId).map((k) => k.label).join(', ');
+      if (kind === 'klima') {
+        $('s-config').textContent = klimaLbl || 'Klimapaket';
+        $('s-package').textContent = `Klima ${o.preis.klimaSumme ? o.preis.klimaSumme.toLocaleString('de-DE') + ' €' : ''}`;
+      } else {
+        const dachTxt = o.config.dach || '—';
+        const bomOpts = ((o.sections || []).find((s) => /Zusätzliche/i.test(s.title || '')) || { items: [] })
+          .items.map((it) => it.name).filter(Boolean);
+        const inklNames = ((o.preis && o.preis.inkludiert) || []).map((it) => it.label || it.key).filter(Boolean);
+        const extraBits = (bomOpts.length ? bomOpts : inklNames).slice(0, 4);
+        const extraTxt = extraBits.length ? ` · ${extraBits.join(', ')}` : '';
+        $('s-config').textContent = `${o.config.brandLabel} · ${o.config.moduleModel || o.config.moduleType || ''} · ${o.config.kwpLabel} (${o.config.moduleCount} Mod.) · ${o.config.speicherLabel} · ${dachTxt}${extraTxt}${klimaLbl ? ' + ' + klimaLbl : ''}`;
+        const extra = o.config.extraModules || 0;
+        const pkgMods = o.config.moduleCountPackage;
+        $('s-package').textContent = (extra > 0
+          ? `Paket ${pkgMods} Mod. + ${extra} Extra`
+          : `Paket ${pkgMods} Module`) + (o.preis.klimaSumme ? ` · Klima ${Number(o.preis.klimaSumme).toLocaleString('de-DE')} €` : '');
+      }
       $('s-netto').textContent = o.preis.nettoFmt;
       $('s-mwst').textContent = o.preis.mwstFmt;
       $('s-mwst-lbl').textContent = `MwSt. (${(o.preis.mwstRate * 100).toFixed(1).replace('.', ',')} %)`;
       $('s-brutto').textContent = o.preis.bruttoFmt;
       if (j.angebotsnummer && !$('f-nummer').value.trim()) $('f-nummer').value = j.angebotsnummer;
+      schedulePreviewRefresh();
     } catch (e) { /* still tippen */ }
   }, 300);
 }
 
-async function refreshPreview() {
+function schedulePreviewRefresh() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    refreshPreview({ silent: true }).catch(() => {});
+  }, 900);
+}
+
+async function refreshPreview(opts) {
+  const silent = !!(opts && opts.silent);
+  if (previewInFlight) {
+    previewQueued = true;
+    return;
+  }
+  previewInFlight = true;
   const btn = $('btn-preview');
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Erzeuge…';
+  if (!silent && btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> Erzeuge…';
+  }
+  if (!silent) setPreviewStatus('PDF wird erzeugt…');
   try {
     const res = await api('/api/offer/pdf', { method: 'POST', body: JSON.stringify(basePayload()) });
-    const blob = await res.blob();
-    $('pdf-frame').src = URL.createObjectURL(blob);
-  } catch (e) { toast('PDF-Fehler: ' + e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'PDF-Vorschau aktualisieren'; }
+    const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+    const buf = await res.arrayBuffer();
+    const head = new TextDecoder('latin1').decode(new Uint8Array(buf).slice(0, 5));
+    if (buf.byteLength < 100 || head !== '%PDF-') {
+      throw new Error(ct.includes('json') ? 'Server lieferte kein PDF' : 'Ungültige PDF-Antwort');
+    }
+    if (previewObjectUrl) {
+      try { URL.revokeObjectURL(previewObjectUrl); } catch (_) {}
+    }
+    // MIME explizit setzen – sonst bleibt die iframe-Vorschau in manchen Browsern weiß
+    const blob = new Blob([buf], { type: 'application/pdf' });
+    previewObjectUrl = URL.createObjectURL(blob);
+    const frame = $('pdf-frame');
+    frame.removeAttribute('src');
+    frame.src = previewObjectUrl + '#view=FitH';
+    setPreviewStatus(`Vorschau aktualisiert (${Math.round(buf.byteLength / 1024)} KB)`);
+    if (!silent) toast('PDF-Vorschau aktualisiert.', 'ok');
+    // PDF-Route schreibt neuen Ortho-Snapshot → App-Vorschau mitziehen
+    if (currentLayoutId) updateLayoutPanelUi();
+  } catch (e) {
+    setPreviewStatus('PDF-Fehler: ' + e.message, true);
+    if (!silent) toast('PDF-Fehler: ' + e.message, 'error');
+    if (!silent) throw e;
+  } finally {
+    previewInFlight = false;
+    if (!silent && btn) {
+      btn.disabled = false;
+      btn.textContent = 'PDF-Vorschau aktualisieren';
+    }
+    if (previewQueued) {
+      previewQueued = false;
+      schedulePreviewRefresh();
+    }
+  }
 }
 
 async function downloadBlob(path, payload, filenameFallback) {
@@ -691,10 +2586,14 @@ async function downloadBlob(path, payload, filenameFallback) {
   a.href = URL.createObjectURL(blob);
   a.download = m ? m[1] : filenameFallback;
   document.body.appendChild(a); a.click(); a.remove();
+  return res;
 }
 
 async function parseCommand() {
-  const cmd = $('command').value.trim();
+  const cmdRaw = $('command').value.trim();
+  if (!cmdRaw) { toast('Bitte zuerst einen Text/Sprachbefehl eingeben.', 'error'); return; }
+  // Marker ⟦id⟧ nur für austauschbare Button-Antworten im Textfeld – KI bekommt Klartext
+  const cmd = cmdRaw.replace(/⟦[^⟧]*⟧\s*/g, '').trim();
   if (!cmd) { toast('Bitte zuerst einen Text/Sprachbefehl eingeben.', 'error'); return; }
   const btn = $('btn-parse');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Analysiere…';
@@ -702,79 +2601,299 @@ async function parseCommand() {
     const res = await api('/api/offer/parse', { method: 'POST', body: JSON.stringify({ command: cmd }) });
     const j = await res.json();
     const c = j.customer || {};
-    if (c.name) $('c-name').value = c.name;
+    if (c.vorname) $('c-vorname').value = c.vorname;
+    if (c.nachname) $('c-nachname').value = c.nachname;
+    if (!c.vorname && !c.nachname && c.name) {
+      const parts = String(c.name).trim().split(/\s+/).filter(Boolean);
+      if (parts.length === 1) $('c-nachname').value = parts[0];
+      else if (parts.length >= 2) {
+        // KI liefert oft „Vorname Nachname“
+        $('c-vorname').value = parts.slice(0, -1).join(' ');
+        $('c-nachname').value = parts[parts.length - 1];
+      }
+    }
     if (c.street) $('c-street').value = c.street;
     if (c.zip) $('c-zip').value = c.zip;
     if (c.city) $('c-city').value = c.city;
     if (c.email) $('c-email').value = c.email;
     if (c.phone) $('c-phone').value = c.phone;
     const r = j.requirements || {};
+    showClarifications(j.clarifications || []);
+    if (j.needsClarification) {
+      toast('KI braucht noch Angaben – bitte Rückfragen klären.', 'error');
+      // Kundendaten trotzdem übernehmen, Konfiguration nur soweit klar
+    }
     const aiOpt = r.optionen || {};
-    const optionen = Object.keys(aiOpt).filter((k) => aiOpt[k]).map((k) => {
-      const cat = (CATALOG.options || []).find((o) => o.key === k);
-      return { key: k, label: cat ? cat.label : k, price: cat ? cat.price : 0, mode: 'optional' };
+    let optionen = Array.isArray(r.optionenList) ? r.optionenList.slice() : [];
+    if (!optionen.length) {
+      optionen = Object.keys(aiOpt).filter((k) => aiOpt[k]).map((k) => {
+        const cat = (CATALOG.options || []).find((o) => o.key === k);
+        return { key: k, label: cat ? cat.label : k, price: cat ? cat.price : 0, mode: 'optional', hint: null };
+      });
+    }
+    // Markenlabel für Notstrom/Gateway nachziehen
+    optionen = optionen.map((o) => {
+      if (o.key !== 'notstrom') return o;
+      const brand = r.brand || 'sigenergy';
+      return Object.assign({}, o, {
+        label: brand === 'fronius'
+          ? 'Fronius Umschaltbox (Notstrom / Backup)'
+          : 'SIG Energy Gateway (Umschaltbox / Notstrom)',
+      });
     });
+    const klimaReq = r.klima || {};
+    let klima = [];
+    if (klimaReq.wanted && klimaReq.packageId) {
+      klima = [{
+        enabled: true,
+        packageId: klimaReq.packageId,
+        mode: klimaReq.mode === 'optional' ? 'optional' : 'fix',
+        extraPipingMeters: klimaReq.extraPipingMeters || 0,
+        condensatePump: !!klimaReq.condensatePump,
+        qty: 1,
+      }];
+    } else if (klimaReq.wanted && !klimaReq.packageId && !j.needsClarification) {
+      $('f-klima-enabled').checked = true;
+      syncPvKlimaVisibility();
+    }
     const cfg = {
+      includePv: r.includePv !== false,
       brand: r.brand || 'sigenergy',
       kwp: r.kwp || null,
       moduleCount: r.module_count || null,
       speicher: r.speicher || null,
       speicherZusatz: [],
-      dachSegmente: [{ dach: r.dach || 'Ziegel', modules: r.module_count || '' }],
+      dachSegmente: resolveDachSegmenteFromAi(r, cmd),
       moduleType: r.moduleType || 'das',
+      inverterKw: r.inverter_kw != null ? Number(r.inverter_kw) : null,
       inverterModel: '',
       bruttoOverride: r.brutto_preis || null,
       optionen,
+      klima,
+      offerNotes: Array.isArray(r.offerNotes) ? r.offerNotes : [],
     };
-    writeForm(cfg);
-    if (cfg.speicher) await applySpeicherTarget(cfg.speicher);
+    if (r.includePv === false) cfg.includePv = false;
+    // Nur kWp genannt → Modulanzahl aus Preispaket ableiten
+    if (!cfg.moduleCount && cfg.kwp) {
+      cfg.moduleCount = modulesFromKwp(cfg.brand, cfg.kwp);
+    }
+    // Summe aus Dachsegmenten hat Vorrang
+    if (cfg.dachSegmente.length > 1 || (cfg.dachSegmente[0] && cfg.dachSegmente[0].modules)) {
+      const sum = cfg.dachSegmente.reduce((a, s) => a + (Number(s.modules) || 0), 0);
+      if (sum > 0) cfg.moduleCount = sum;
+    } else if (cfg.moduleCount && cfg.dachSegmente[0]) {
+      cfg.dachSegmente[0].modules = cfg.moduleCount;
+    }
+    // Optimierer: Preis 50 € × Module vorbelegen (editierbar)
+    const mc = Number(cfg.moduleCount) || 0;
+    cfg.optionen = (cfg.optionen || []).map((o) => {
+      if (o.key !== 'optimierer' && !/optimier/i.test(o.label || '')) return o;
+      const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
+      const price = (Number(o.price) > 0) ? Number(o.price) : (mc > 0 ? unit * mc : 0);
+      return Object.assign({}, o, {
+        key: 'optimierer',
+        mode: o.mode === 'optional' ? 'optional' : 'fix',
+        price,
+        hint: o.hint || 'Ein Optimierer pro Modul für optimale Leistung.',
+      });
+    });
+    // Bei offenen Klima-Rückfragen ohne packageId: PV ggf. trotzdem setzen, Klima manuell
+    if (j.needsClarification && klimaReq.wanted && !klimaReq.packageId) {
+      cfg.klima = [];
+      writeForm(cfg);
+      $('f-klima-enabled').checked = true;
+      syncPvKlimaVisibility();
+    } else {
+      writeForm(cfg);
+    }
+    if (cfg.includePv !== false && cfg.speicher) await applySpeicherTarget(cfg.speicher);
     saveActiveVariant();
-    if (j.contactType === 'telefonisch') $('ct-tel').checked = true;
-    else if (j.contactType === 'schriftlich') $('ct-schrift').checked = true;
     compute();
-    toast('KI-Analyse übernommen. Bitte Werte prüfen.', 'ok');
-    // E-Mail-Text gleich miterzeugen, damit Betreff/Nachricht gefüllt sind
-    genEmailText().catch(() => {});
+    if (!j.needsClarification) {
+      toast('KI-Analyse übernommen. Bitte Werte prüfen.', 'ok');
+      genEmailText().catch(() => {});
+    }
   } catch (e) { toast('KI-Fehler: ' + e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Mit KI analysieren'; }
 }
 
-async function genEmailText() {
+async function genEmailText(opts) {
+  const silent = !!(opts && opts.silent);
   const btn = $('btn-emailtext');
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
+  if (!silent) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …'; }
   try {
-    const res = await api('/api/offer/email-text', { method: 'POST', body: JSON.stringify(basePayload()) });
+    const payload = basePayload();
+    payload.useAI = true;
+    const res = await api('/api/offer/email-text', { method: 'POST', body: JSON.stringify(payload) });
     const j = await res.json();
     $('m-subject').value = j.subject || '';
     $('m-body').value = j.body || '';
-    toast('E-Mail-Text erzeugt (' + (j.source === 'ai' ? 'KI' : 'Vorlage') + ').', 'ok');
-  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'E-Mail-Text erzeugen'; }
+
+    if (j.needsClarification && Array.isArray(j.clarifications) && j.clarifications.length) {
+      showEmailSalutationClarifications(j.clarifications);
+      if (!silent) toast('Bitte Anrede (Herr/Frau) wählen – dann wird der Text finalisiert.', 'ok');
+    } else if (!silent) {
+      toast('E-Mail-Text per KI erzeugt – du kannst ihn noch anpassen.', 'ok');
+    }
+    return j;
+  } catch (e) {
+    if (!silent) toast('Fehler: ' + e.message, 'error');
+    throw e;
+  } finally {
+    if (!silent) { btn.disabled = false; btn.textContent = 'E-Mail-Text neu erzeugen (KI)'; }
+  }
 }
 
-async function downloadEml() {
+/** Rückfrage Herr/Frau für die Angebots-E-Mail. */
+function showEmailSalutationClarifications(items) {
+  const box = $('clarify-box');
+  const list = $('clarify-list');
+  const reparseBtn = $('btn-clarify-reparse');
+  if (!box || !list) return;
+  if (reparseBtn) reparseBtn.style.display = 'none';
+
+  const qs = (items || []).map((item, idx) => ({
+    id: String(item.id || `anrede_${idx}`),
+    question: String(item.question || 'Anrede – Herr oder Frau?').trim(),
+    answers: (Array.isArray(item.answers) ? item.answers : [
+      { label: 'Herr', text: 'Anrede: Herr' },
+      { label: 'Frau', text: 'Anrede: Frau' },
+    ]).map((a) => (typeof a === 'string'
+      ? { label: a, text: a }
+      : { label: String(a.label || a.text || '').trim(), text: String(a.text || a.label || '').trim() }
+    )).filter((a) => a.text),
+  })).filter((q) => q.question);
+
+  if (!qs.length) {
+    box.classList.remove('show');
+    return;
+  }
+
+  list.innerHTML = qs.map((q, qi) => {
+    const buttons = (q.answers || []).map((a, ai) =>
+      `<button type="button" class="clarify-ans" data-qi="${qi}" data-ai="${ai}">${escHtml(a.label)}</button>`
+    ).join('');
+    return `<div class="clarify-item" data-qi="${qi}">
+      <p class="clarify-q">${escHtml(q.question)}</p>
+      <div class="clarify-answers">${buttons}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.clarify-ans').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const qi = Number(btn.getAttribute('data-qi'));
+      const ai = Number(btn.getAttribute('data-ai'));
+      const q = qs[qi];
+      const ans = q && q.answers[ai];
+      if (!ans) return;
+      const t = String(ans.text || ans.label || '');
+      if (/frau/i.test(t)) customerSalutationOverride = 'frau';
+      else if (/herr/i.test(t)) customerSalutationOverride = 'herr';
+      const item = btn.closest('.clarify-item');
+      if (item) {
+        item.classList.add('done');
+        item.querySelectorAll('.clarify-ans').forEach((b) => b.classList.remove('picked'));
+        btn.classList.add('picked');
+      }
+      toast('Anrede übernommen – E-Mail-Text wird aktualisiert…', 'ok');
+      try {
+        await genEmailText({ silent: true });
+        box.classList.remove('show');
+        list.innerHTML = '';
+        toast('E-Mail-Text mit korrekter Anrede erzeugt.', 'ok');
+      } catch (_) { /* toast bereits in genEmailText */ }
+    });
+  });
+
+  box.classList.add('show');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function openMailtoDraft(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** Aktuellen (ggf. nachbearbeiteten) E-Mail-Text + PDF → Outlook. */
+async function openOutlookDraft() {
   if (!$('c-email').value.trim()) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
   const btn = $('btn-eml');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
   try {
     const payload = basePayload();
+    payload.useAI = true;
     payload.subject = $('m-subject').value.trim();
     payload.body = $('m-body').value.trim();
-    await downloadBlob('/api/offer/eml', payload, 'angebot.eml');
-    toast('Outlook-Entwurf (.eml) heruntergeladen. Doppelklick öffnet die Nachricht.', 'ok');
+    // Wenn noch kein Text: zuerst KI erzeugen (editierbar vor erneutem Klick)
+    if (!payload.subject || !payload.body) {
+      await genEmailText({ silent: true });
+      payload.subject = $('m-subject').value.trim();
+      payload.body = $('m-body').value.trim();
+    }
+    const res = await api('/api/offer/outlook-draft', { method: 'POST', body: JSON.stringify(payload) });
+    const j = await res.json();
+    if (j.angebotsnummer && payload.allocateNewNumber) $('f-nummer').value = j.angebotsnummer;
+    const pdfRes = await downloadBlob('/api/offer/pdf', Object.assign({}, payload, { finalize: true }), j.attachmentFilename || 'angebot.pdf');
+    markFinalizeDone(pdfRes.headers);
+    openMailtoDraft(j.mailtoUrl);
+    toast('Outlook-Draft geöffnet. PDF wurde heruntergeladen – bitte anhängen.', 'ok');
   } catch (e) { toast('Fehler: ' + e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'Outlook-Entwurf (.eml)'; }
+  finally { btn.disabled = false; btn.textContent = 'Outlook öffnen (aktueller Text)'; }
+}
+
+/** Fertigstellen: frischer KI-Text + PDF + Outlook-Draft. */
+async function finishOfferOpenOutlook() {
+  if (!$('c-email').value.trim()) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
+  const btn = $('btn-finish-outlook');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Fertigstellen…';
+  try {
+    await genEmailText({ silent: true });
+    const payload = basePayload();
+    payload.useAI = true;
+    payload.subject = $('m-subject').value.trim();
+    payload.body = $('m-body').value.trim();
+    const res = await api('/api/offer/outlook-draft', { method: 'POST', body: JSON.stringify(payload) });
+    const j = await res.json();
+    if (j.angebotsnummer && payload.allocateNewNumber) $('f-nummer').value = j.angebotsnummer;
+    const pdfRes = await downloadBlob('/api/offer/pdf', Object.assign({}, payload, { finalize: true }), j.attachmentFilename || 'angebot.pdf');
+    markFinalizeDone(pdfRes.headers);
+    openMailtoDraft(j.mailtoUrl);
+    toast('Angebot fertig: KI-Mail + PDF bereit, Outlook-Draft geöffnet.', 'ok');
+  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Angebot fertigstellen → Outlook-Draft'; }
 }
 
 async function downloadPdf() {
   const btn = $('btn-download');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
   try {
-    const payload = basePayload(); payload.finalize = true;
-    await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
-    toast('PDF heruntergeladen.', 'ok');
+    const payload = basePayload();
+    payload.finalize = true;
+    const pdfRes = await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
+    markFinalizeDone(pdfRes.headers);
+    toast(shouldAttachVollmacht() ? 'PDF heruntergeladen (inkl. Vollmacht).' : 'PDF heruntergeladen (ohne Vollmacht).', 'ok');
   } catch (e) { toast('Fehler: ' + e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'PDF herunterladen'; }
+}
+
+async function saveOfferVersionManual() {
+  const btn = $('btn-save-version');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Speichern…';
+  try {
+    const payload = Object.assign({}, basePayload(), { saveVersion: true, finalize: false, allocateNewNumber: false });
+    const res = await api('/api/offer/pdf', { method: 'POST', body: JSON.stringify(payload) });
+    await res.arrayBuffer();
+    const ver = res.headers.get('X-Customer-Version');
+    const base = res.headers.get('X-Filename-Base');
+    await refreshOfferHistory();
+    toast(base ? ('Version gespeichert: ' + base) : ('Version V' + (ver || '') + ' gespeichert.'), 'ok');
+  } catch (e) { toast('Speichern fehlgeschlagen: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Version speichern'; }
 }
 
 // ── Spracheingabe (Diktieren) ───────────────────────────────────────────────
@@ -807,9 +2926,21 @@ async function prefillFromLead() {
     const res = await api('/api/offer/lead?email=' + encodeURIComponent(email));
     const j = await res.json();
     const c = j.customer || {};
-    $('c-name').value = c.name || ''; $('c-street').value = c.street || '';
+    $('c-vorname').value = c.vorname || '';
+    $('c-nachname').value = c.nachname || '';
+    if (!c.vorname && !c.nachname && c.name) {
+      // Lead-API liefert i. d. R. schon gesplittet; Fallback Nachname Vorname
+      const parts = String(c.name).trim().split(/\s+/).filter(Boolean);
+      if (parts.length === 1) $('c-nachname').value = parts[0];
+      else if (parts.length >= 2) {
+        $('c-nachname').value = parts[0];
+        $('c-vorname').value = parts.slice(1).join(' ');
+      }
+    }
+    $('c-street').value = c.street || '';
     $('c-zip').value = c.zip || ''; $('c-city').value = c.city || '';
     $('c-email').value = c.email || ''; $('c-phone').value = c.phone || '';
+    if (j.leadId) currentLeadId = Number(j.leadId);
     if (j.info) $('command').value = j.info;
     toast('Kundendaten aus Lead übernommen.', 'ok');
   } catch (e) { /* still ohne Prefill */ }
@@ -828,14 +2959,69 @@ async function init() {
   $('f-datum').value = new Date().toLocaleDateString('de-DE');
   await prefillFromLead();
 
-  $('f-brand').addEventListener('change', () => { refreshKwpSelect(); refreshStorageExtSelect(); updateBrandDependentOptionDefaults(); compute(); });
-  $('f-kwp').addEventListener('change', () => { refreshSpeicherSelect(); compute(); });
-  ['f-speicher', 'f-module', 'f-inverter', 'f-brutto', 'f-modules'].forEach((id) => {
+  const offerIdQ = new URLSearchParams(location.search).get('offerId');
+  if (offerIdQ) {
+    try {
+      await loadOfferVersionById(offerIdQ);
+    } catch (e) {
+      toast('Gespeichertes Angebot konnte nicht geladen werden: ' + e.message, 'error');
+    }
+  }
+
+  if ($('c-vorname')) {
+    $('c-vorname').addEventListener('change', () => { customerSalutationOverride = null; });
+  }
+  if ($('c-nachname')) {
+    $('c-nachname').addEventListener('change', () => { customerSalutationOverride = null; });
+  }
+
+  $('f-brand').addEventListener('change', () => {
+    refreshStorageExtSelect();
+    refreshInverterSelect(null);
+    updateBrandDependentOptionDefaults();
+    syncModuleDerivedUi();
+    syncStorageUiForBrand();
+    compute();
+  });
+  if ($('f-inverter')) {
+    $('f-inverter').addEventListener('change', () => { updateInverterMetaHint(); compute(); });
+  }
+  $('f-module').addEventListener('change', () => { syncModuleDerivedUi(); compute(); });
+  $('f-modules').addEventListener('input', () => { syncModuleDerivedUi(); compute(); });
+  $('f-modules').addEventListener('change', () => { syncModuleDerivedUi(); compute(); });
+  $('btn-mod-minus').addEventListener('click', () => {
+    const n = Math.max(1, (Math.round(Number($('f-modules').value) || 1) - 1));
+    $('f-modules').value = String(n);
+    syncModuleDerivedUi();
+    compute();
+  });
+  $('btn-mod-plus').addEventListener('click', () => {
+    const n = Math.max(1, (Math.round(Number($('f-modules').value) || 0) + 1));
+    $('f-modules').value = String(n);
+    syncModuleDerivedUi();
+    compute();
+  });
+  $('f-include-pv').addEventListener('change', () => { syncPvKlimaVisibility(); compute(); });
+  $('f-klima-enabled').addEventListener('change', () => {
+    if ($('f-klima-enabled').checked && !selectedKlimaPackageId()) renderKlimaPackages();
+    syncPvKlimaVisibility();
+    compute();
+  });
+  ['f-klima-mode', 'f-klima-piping', 'f-klima-pump'].forEach((id) => {
     $(id).addEventListener('change', compute);
     $(id).addEventListener('input', compute);
   });
-  // Preisänderungen in Optionen-Zeilen live übernehmen
-  $('opts').addEventListener('input', (e) => { if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name')) compute(); });
+  ['f-speicher', 'f-inverter', 'f-brutto', 'f-offer-notes'].forEach((id) => {
+    $(id).addEventListener('change', () => {
+      if (id === 'f-speicher') updateSpeicherCompositionHint();
+      compute();
+    });
+    $(id).addEventListener('input', compute);
+  });
+  // Preis-/Hinweisänderungen in Optionen-Zeilen live übernehmen
+  $('opts').addEventListener('input', (e) => {
+    if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint')) compute();
+  });
   $('btn-add-option').addEventListener('click', () => {
     $('opts').appendChild(createOptionRow({ label: '', price: 0, mode: 'fix', manual: true }));
   });
@@ -849,20 +3035,113 @@ async function init() {
     const e = exts[Number($('se-size').value) || 0] || exts[0];
     if (!e) { toast('Für diese Marke ist keine Speichererweiterung hinterlegt.', 'error'); return; }
     $('speicher-list').appendChild(createSpeicherRow({ label: e.label, kwh: e.kwh, price: e.price }));
+    updateSpeicherCompositionHint();
     compute();
   });
+  $('btn-add-upgrade').addEventListener('click', addStorageUpgradeOption);
 
   $('btn-parse').addEventListener('click', parseCommand);
   $('btn-clear').addEventListener('click', () => {
-    ['c-name','c-street','c-zip','c-city','c-email','c-phone','command','f-extra'].forEach((id) => $(id).value = '');
+    ['c-vorname','c-nachname','c-street','c-zip','c-city','c-email','c-phone','command','f-extra'].forEach((id) => $(id).value = '');
   });
   $('btn-add-variant').addEventListener('click', addVariant);
+  if ($('variant-btn-dup')) $('variant-btn-dup').addEventListener('click', () => { addVariantDuplicate(); });
+  if ($('variant-btn-empty')) $('variant-btn-empty').addEventListener('click', () => { addVariantEmpty(); });
+  if ($('variant-btn-cancel')) $('variant-btn-cancel').addEventListener('click', closeVariantModal);
+  if ($('variant-modal')) {
+    $('variant-modal').addEventListener('click', (e) => {
+      if (e.target === $('variant-modal')) closeVariantModal();
+    });
+  }
   $('btn-preview').addEventListener('click', refreshPreview);
   $('btn-download').addEventListener('click', downloadPdf);
-  $('btn-emailtext').addEventListener('click', genEmailText);
-  $('btn-eml').addEventListener('click', downloadEml);
+  $('btn-save-version').addEventListener('click', saveOfferVersionManual);
+  $('btn-emailtext').addEventListener('click', () => genEmailText());
+  $('btn-eml').addEventListener('click', openOutlookDraft);
+  $('btn-finish-outlook').addEventListener('click', finishOfferOpenOutlook);
+
+  if ($('offer-history-list')) {
+    $('offer-history-list').addEventListener('click', async (e) => {
+      const a = e.target.closest('a.offer-hist-open');
+      if (!a) return;
+      e.preventDefault();
+      const id = a.getAttribute('data-offer-id');
+      if (!id) return;
+      try { await loadOfferVersionById(id); } catch (err) { toast('Laden fehlgeschlagen: ' + err.message, 'error'); }
+    });
+  }
+
+  try {
+    layoutEditor = window.LayoutEditor.create({
+      providers: (CATALOG && CATALOG.mapProviders) || [],
+      moduleDimensions: (CATALOG && CATALOG.moduleDimensions) || {},
+      onSaved: (layout) => {
+        currentLayout = layout;
+        currentLayoutId = layout && layout.id;
+        bindLayoutToActiveVariant(currentLayoutId);
+        updateLayoutPanelUi();
+        refreshLayoutSnapshotThumb();
+        const mt = moduleTypeFromLayout(layout);
+        const n = layout && layout.moduleCount;
+        if (n > 0 || mt) applyLayoutToOffer(n || 0, mt);
+        else toast('Belegungsplan gespeichert.', 'ok');
+      },
+      onApplyModuleCount: (n, info) => {
+        const mt = (info && info.moduleType) || null;
+        applyLayoutToOffer(n, mt);
+      },
+    });
+  } catch (e) {
+    console.warn('LayoutEditor:', e);
+  }
+  if ($('btn-layout-open')) $('btn-layout-open').addEventListener('click', openLayoutEditor);
+  if ($('btn-layout-clear')) $('btn-layout-clear').addEventListener('click', () => {
+    clearLayoutLink();
+    toast('Belegungsplan vom Angebot getrennt.', 'ok');
+  });
+  if ($('btn-layout-apply')) $('btn-layout-apply').addEventListener('click', () => {
+    if (currentLayout) {
+      applyLayoutToOffer(currentLayout.moduleCount, moduleTypeFromLayout(currentLayout));
+    }
+  });
+  populateLayoutModuleSelect();
+  updateLayoutPanelUi();
+
+  const leadIdQ = new URLSearchParams(location.search).get('leadId');
+  if (leadIdQ && !currentLeadId) currentLeadId = Number(leadIdQ);
+  const layoutIdQ = new URLSearchParams(location.search).get('layoutId');
+  // Bei geladener Angebotsversion Layout nicht überschreiben
+  if (!loadedVersionId && layoutIdQ) {
+    try {
+      const lr = await api('/api/layouts/' + encodeURIComponent(layoutIdQ));
+      const lj = await lr.json();
+      if (lj.layout) {
+        currentLayout = lj.layout;
+        currentLayoutId = lj.layout.id;
+        bindLayoutToActiveVariant(currentLayoutId);
+        updateLayoutPanelUi();
+        refreshLayoutSnapshotThumb();
+      }
+    } catch (_) { /* ignore */ }
+  } else if (!loadedVersionId && currentLeadId) {
+    // Neueste Belegung zum Lead automatisch verknüpfen
+    try {
+      const lr = await api('/api/leads/' + encodeURIComponent(currentLeadId) + '/layouts');
+      const lj = await lr.json();
+      if (lj.layouts && lj.layouts[0]) {
+        currentLayout = lj.layouts[0];
+        currentLayoutId = currentLayout.id;
+        bindLayoutToActiveVariant(currentLayoutId);
+        updateLayoutPanelUi();
+        refreshLayoutSnapshotThumb();
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   setupMic();
+  syncVollmachtUi();
   compute();
+  await refreshOfferHistory();
 }
 init();
 </script>

@@ -55,6 +55,7 @@ const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-t
 const { resolveBetreuerContact } = require('./sales-contact');
 const { upsertProfile, ensureSqliteUserStub, getProfile } = require('./user-profile');
 const { mountOfferRoutes } = require('./offer/routes');
+const { mountLayoutOfferPersistRoutes } = require('./offer/layout-routes');
 const { getDashboardStats } = require('./stats');
 const { transferLeadToReonicById } = require('./reonic-sync');
 const { reonicV2OffersConfigured, testReonicRestV2Connection } = require('./integrations/reonic');
@@ -261,7 +262,7 @@ function requireWebSession(req, res, next) {
   return res.redirect(302, `/login.html${q}`);
 }
 
-app.use(express.json({ limit: '512kb' }));
+app.use(express.json({ limit: '25mb' }));
 
 /** n8n → SQLite (API-Key, kein Session-Login). */
 app.post('/api/webhook/n8n-lead', async (req, res) => {
@@ -715,6 +716,67 @@ function mountLeadsStorageDebugRoutes() {
 
 mountLeadsStorageDebugRoutes();
 
+// Öffentliche Produktdatenblätter (ohne Login – Links im Kunden-PDF)
+const fsSync = require('fs');
+const datasheets = require('./offer/datasheets');
+
+/** HTML-Zwischenseite: öffnet das PDF gezielt in einem neuen Tab. */
+app.get('/datenblaetter/open/:file', (req, res) => {
+  const abs = datasheets.datasheetAbsPath(req.params.file);
+  if (!abs || !fsSync.existsSync(abs)) {
+    return res.status(404).type('text/plain').send('Datenblatt nicht gefunden');
+  }
+  const base = (process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  const pdfUrl = `${base}/datenblaetter/${path.basename(abs)}`;
+  const label = path.basename(abs);
+  res.type('html').send(`<!doctype html>
+<html lang="de"><head>
+<meta charset="utf-8">
+<title>Datenblatt öffnen – ${label}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{font-family:system-ui,sans-serif;max-width:520px;margin:3rem auto;padding:0 1.2rem;color:#1d1d1f;line-height:1.45}
+  a.btn{display:inline-block;margin-top:1rem;padding:0.65rem 1.1rem;background:#e7a13a;color:#1d1d1f;text-decoration:none;border-radius:6px;font-weight:600}
+  .hint{color:#666;font-size:0.92rem;margin-top:1rem}
+</style>
+</head><body>
+<h1>Datenblatt</h1>
+<p>Das PDF wird in einem <strong>neuen Tab</strong> geöffnet.</p>
+<p><a class="btn" id="open" href="${pdfUrl}" target="_blank" rel="noopener noreferrer">PDF jetzt öffnen</a></p>
+<p class="hint">Falls kein neuer Tab erscheint, bitte den Button oben nutzen.</p>
+<script>
+(function () {
+  var url = ${JSON.stringify(pdfUrl)};
+  var w = window.open(url, '_blank', 'noopener,noreferrer');
+  if (w) {
+    try { w.opener = null; } catch (e) {}
+  }
+})();
+</script>
+</body></html>`);
+});
+
+app.get('/datenblaetter/:file', (req, res) => {
+  const abs = datasheets.datasheetAbsPath(req.params.file);
+  if (!abs || !fsSync.existsSync(abs)) {
+    return res.status(404).type('text/plain').send('Datenblatt nicht gefunden');
+  }
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${path.basename(abs)}"`);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  return res.sendFile(abs);
+});
+app.get('/datenblaetter', (req, res) => {
+  const list = datasheets.listDatasheetCatalog().filter((e) => e.available);
+  const base = (process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.type('html').send(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>NOORTEC Datenblätter</title>
+<style>body{font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;color:#1d1d1f}
+a{color:#b5862f} li{margin:0.5rem 0}</style></head><body>
+<h1>NOORTEC – Produktdatenblätter</h1>
+<ul>${list.map((e) => `<li><a href="${base}/datenblaetter/open/${e.slug}" target="_blank" rel="noopener noreferrer">${e.label}</a></li>`).join('') || '<li>Noch keine Dateien hochgeladen.</li>'}
+</ul></body></html>`);
+});
+
 // Geschützte API + HTML (nur Session-Login; öffentliche Auth-Routen ausgenommen)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
@@ -733,6 +795,7 @@ app.use((req, res, next) => {
     return requireApiSession(req, res, next);
   }
   if (req.path === '/login.html' || req.path === '/login') return next();
+  if (req.path === '/datenblaetter' || req.path.startsWith('/datenblaetter/')) return next();
   return requireWebSession(req, res, next);
 });
 
@@ -1305,6 +1368,7 @@ app.get(['/admin/users', '/admin/users/'], (req, res) => {
 });
 
 mountOfferRoutes(app, { getProfile, getLeadByEmail });
+mountLayoutOfferPersistRoutes(app);
 
 app.use(express.static(path.join(__dirname, '../public'), {
   setHeaders(res, filePath) {

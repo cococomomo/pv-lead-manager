@@ -129,6 +129,30 @@
       background: rgba(255, 255, 255, 0.28);
       border-color: rgba(255, 255, 255, 0.7);
     }
+    .header-offer-btn {
+      flex-shrink: 0;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.24rem 0.6rem;
+      border-radius: 7px;
+      border: 1px solid rgba(231, 161, 58, 0.85);
+      background: #e7a13a;
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1.2;
+      text-decoration: none;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .header-offer-btn:hover {
+      background: #d4922f;
+      border-color: #d4922f;
+      color: #fff;
+    }
+    .header-offer-btn:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.85);
+      outline-offset: 2px;
+    }
     header h1 {
       font-size: 1.05rem;
       font-weight: 600;
@@ -1486,6 +1510,7 @@
     <div class="header-title-block">
       <h1>NOORTEC Vertriebs-Dashboard</h1>
       <button type="button" class="header-stats-toggle" id="pvl-stats-toggle" aria-pressed="false" aria-expanded="false" title="Statistiken einblenden" aria-label="Statistiken ein- oder ausblenden">Statistiken</button>
+      <a href="/offer" class="header-offer-btn" id="btn-header-offer" target="_blank" rel="noopener noreferrer" title="Angebots-App in neuem Tab öffnen">Angebot erstellen</a>
     </div>
   </div>
   <div class="header-actions">
@@ -1684,9 +1709,14 @@
             </div>
           </div>
         </div>
+        <div class="field-group" id="sd-offers-wrap" style="margin-top:0.65rem">
+          <span class="sd-hint-muted" style="display:block;font-size:0.68rem;margin-bottom:0.25rem">Angebote &amp; Belegungspläne</span>
+          <div id="sd-offers-list" class="hint" style="font-size:0.78rem;color:var(--pvl-muted)">—</div>
+          <div id="sd-layouts-list" class="hint" style="font-size:0.78rem;color:var(--pvl-muted);margin-top:0.35rem">—</div>
+        </div>
         <div class="detail-actions" style="flex-wrap:wrap;align-items:center;gap:0.5rem">
           <button type="button" class="btn btn-mini btn-mini-save" id="btn-detail-save" title="Notizen, Kontakt und Terminfelder speichern">Speichern</button>
-          <button type="button" class="btn btn-cal" id="btn-cal-appointment" style="display:none">Termin in Kalender eintragen</button>
+          <button type="button" class="btn btn-cal" id="btn-cal-appointment" style="display:none" onclick="openCalendarAppointment()">Termin in Kalender eintragen</button>
           <button type="button" class="btn" id="btn-create-offer" style="background:#e7a13a;color:#fff" title="PV-Angebot für diesen Kunden erstellen" onclick="openOfferForActiveLead()">Angebot senden</button>
           <button type="button" class="btn btn-save" id="btn-restore-archive" style="display:none;background:#15803d" onclick="restoreLeadFromArchive()">Wiederherstellen</button>
           <span class="save-hint" id="save-hint">Gespeichert!</span>
@@ -2242,6 +2272,7 @@
   /** Neu-Leads nach Erstellungsdatum: gelber Karten-Marker (Grenze ≈ ein Monat). */
   const PVL_MAP_NEW_LEAD_MAX_DAYS = 30;
   const PVL_MAP_NEW_LEAD_COLOR = '#EAB308';
+  const PVL_MAP_NACHFASSEN_COLOR = '#16a34a';
 
   function pvlPinLegendSvg(stroke, fill) {
     return (
@@ -2260,7 +2291,10 @@
       + '<details class="pvl-ml-details">'
       + '<summary>Kartenlegende</summary>'
       + '<div class="pvl-ml-body">'
-      + '<div class="pvl-ml-sub">Gelb = neu (erstellt innerhalb von ' + PVL_MAP_NEW_LEAD_MAX_DAYS + ' Tagen) · Rot-Töne = älter (Erstelldatum)</div>'
+      + '<div class="pvl-ml-sub">Gelb = neu (erstellt innerhalb von ' + PVL_MAP_NEW_LEAD_MAX_DAYS + ' Tagen) · Grün = Nachfassen · Orange = Angebot gesendet (dunkler = Nachfass fällig, 14 Tage)</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:' + PVL_MAP_NACHFASSEN_COLOR + '"></span>Nachfassen</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#e7a13a"></span>Angebot gesendet</div>'
+      + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#d97706"></span>Angebot · Nachfass fällig</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:' + PVL_MAP_NEW_LEAD_COLOR + '"></span>&lt; 1 Monat (neu)</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#D60000"></span>1–3 Monate</div>'
       + '<div class="pvl-ml-row"><span class="pvl-ml-swatch" style="background:#FF5C5C"></span>3–6 Monate</div>'
@@ -2519,9 +2553,25 @@
     }
     const stDisp = normalizeStatusDisplay(listStatusLabel(lead));
     const stPin = String(stDisp).trim().toLowerCase();
+    const leadId = lead && (lead.pvlDbId != null ? Number(lead.pvlDbId) : Number(lead.id));
+    const hasOffer = Number.isFinite(leadId) && pvlSentOfferLeadIds.has(leadId);
+    const offerOverdue = isAngebotNachfassFaellig(lead);
+    if (stPin === 'angebot gesendet' || hasOffer) {
+      // Fällig nach 14 Tagen: kräftigeres Orange; sonst Standard-Orange
+      return {
+        color: offerOverdue ? '#d97706' : '#e7a13a',
+        opacity: 1,
+        done: false,
+        offerSent: true,
+        offerOverdue,
+      };
+    }
     /* In-Arbeit vor „≤21 Tage gelb“, sonst wirkt jeder frische Lead trotz „Nicht erreicht“ gelb. */
-    if (stPin === 'nicht erreicht' || stPin === 'angerufen' || stPin === 'nachfassen') {
+    if (stPin === 'nicht erreicht' || stPin === 'angerufen') {
       return { color: '#1a56db', opacity: 1, done: false };
+    }
+    if (stPin === 'nachfassen') {
+      return { color: PVL_MAP_NACHFASSEN_COLOR, opacity: 1, done: false };
     }
     const ageDays = leadAgeDaysFromCreation(lead);
     if (ageDays != null && ageDays >= 0 && ageDays <= 21) {
@@ -2539,7 +2589,13 @@
   }
 
   function getMarkerColorForLead(lead) {
-    if (isLeadCreatedWithinLastMonth(lead)) return PVL_MAP_NEW_LEAD_COLOR;
+    const stPin = String(normalizeStatusDisplay(listStatusLabel(lead))).trim().toLowerCase();
+    const leadId = lead && (lead.pvlDbId != null ? Number(lead.pvlDbId) : Number(lead.id));
+    const hasOffer = Number.isFinite(leadId) && pvlSentOfferLeadIds.has(leadId);
+    // Angebot gesendet / Nachfassen / In-Arbeit haben Vorrang vor „neu = gelb“
+    if (stPin === 'angebot gesendet' || hasOffer) return getPinVisualForLead(lead).color;
+    const statusPinColor = stPin === 'nachfassen' || stPin === 'nicht erreicht' || stPin === 'angerufen';
+    if (!statusPinColor && isLeadCreatedWithinLastMonth(lead)) return PVL_MAP_NEW_LEAD_COLOR;
     return getPinVisualForLead(lead).color;
   }
 
@@ -2606,14 +2662,86 @@
   let activeIsLegacy = false;
   let activeLeadKeyStr = null;
 
-  /** Öffnet den Angebotsgenerator (neuer Tab) und befüllt ihn mit dem aktiven Lead. */
   function openOfferForActiveLead() {
     const lead = activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null;
     const email = lead ? String(lead['E-Mail'] || '').trim() : '';
-    const url = '/offer' + (email ? ('?email=' + encodeURIComponent(email)) : '');
+    const leadId = lead && (lead.pvlDbId != null ? lead.pvlDbId : lead.id);
+    const qs = new URLSearchParams();
+    if (email) qs.set('email', email);
+    if (leadId) qs.set('leadId', String(leadId));
+    const url = '/offer' + (qs.toString() ? ('?' + qs.toString()) : '');
     window.open(url, '_blank', 'noopener');
   }
   window.openOfferForActiveLead = openOfferForActiveLead;
+
+  let pvlSentOfferLeadIds = new Set();
+
+  async function refreshSentOfferLeadIds() {
+    try {
+      const res = await fetch('/api/offer/sent-lead-ids', { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const j = await res.json();
+      pvlSentOfferLeadIds = new Set((j.leadIds || []).map(Number));
+      if (Number(j.synced) > 0 && typeof loadLeads === 'function') {
+        try { await loadLeads({ silent: true }); } catch (_) { /* ignore */ }
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  async function loadLeadOffersAndLayouts(lead) {
+    const listO = document.getElementById('sd-offers-list');
+    const listL = document.getElementById('sd-layouts-list');
+    if (!listO || !listL) return;
+    const leadId = lead && (lead.pvlDbId != null ? lead.pvlDbId : lead.id);
+    if (!leadId) {
+      listO.textContent = 'Kein Lead verknüpft.';
+      listL.textContent = '';
+      return;
+    }
+    listO.textContent = 'Lade Angebote…';
+    listL.textContent = 'Lade Pläne…';
+    try {
+      const [ro, rl] = await Promise.all([
+        fetch('/api/leads/' + leadId + '/offers', { credentials: 'same-origin' }).then((r) => r.json()),
+        fetch('/api/leads/' + leadId + '/layouts', { credentials: 'same-origin' }).then((r) => r.json()),
+      ]);
+      const offers = (ro && ro.offers) || [];
+      const layouts = (rl && rl.layouts) || [];
+      if (!offers.length) {
+        listO.textContent = 'Noch keine gespeicherten Angebote.';
+      } else {
+        listO.innerHTML = offers.map((o) => {
+          const st = o.status === 'sent' ? 'gesendet' : 'Entwurf';
+          const when = (o.sentAt || o.createdAt || '').slice(0, 10);
+          const label = o.label || o.filenameBase || ((o.angebotsnummer || ('#' + o.id)) + '-V' + (o.customerVersion || 1));
+          const openUrl = '/offer?offerId=' + encodeURIComponent(o.id)
+            + '&email=' + encodeURIComponent(o.customerEmail || '')
+            + '&leadId=' + encodeURIComponent(leadId)
+            + (o.layoutPlanId ? '&layoutId=' + encodeURIComponent(o.layoutPlanId) : '');
+          const pdf = o.pdfUrl
+            ? ` · <a href="${esc(o.pdfUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">PDF</a>`
+            : '';
+          return `<div style="margin:0.2rem 0"><a href="${openUrl}" target="_blank" rel="noopener">${esc(label)}</a> · ${esc(st)} · ${esc(when)}${pdf}</div>`;
+        }).join('');
+      }
+      if (!layouts.length) {
+        listL.textContent = 'Keine Belegungspläne.';
+      } else {
+        listL.innerHTML = layouts.map((l) => {
+          const openUrl = '/offer?email=' + encodeURIComponent(l.customerEmail || '')
+            + '&leadId=' + encodeURIComponent(leadId)
+            + '&layoutId=' + encodeURIComponent(l.id);
+          const thumb = l.snapshotUrl
+            ? `<img src="${esc(l.snapshotUrl)}" alt="" style="width:48px;height:36px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:0.35rem" />`
+            : '';
+          return `<div style="margin:0.25rem 0">${thumb}<a href="${openUrl}" target="_blank" rel="noopener">${esc(l.title || ('Plan #' + l.id))}</a> · ${l.moduleCount || 0} Mod.</div>`;
+        }).join('');
+      }
+    } catch (e) {
+      listO.textContent = 'Angebote konnten nicht geladen werden.';
+      listL.textContent = '';
+    }
+  }
   let markerMap   = {}; // leadKey → leaflet marker
   /** Nur Leads ohne gültige DB-Koordinaten (entspricht Header-Warnung). */
   let filterMissingMapCoordsOnly = false;
@@ -2683,6 +2811,27 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  function isAngebotGesendetLead(lead) {
+    const st = normalizeStatusDisplay(lead && lead[COL.status] != null ? lead[COL.status] : '');
+    if (st === 'Angebot gesendet') return true;
+    const leadId = lead && (lead.pvlDbId != null ? Number(lead.pvlDbId) : Number(lead.id));
+    return Number.isFinite(leadId) && pvlSentOfferLeadIds.has(leadId);
+  }
+
+  /**
+   * Angebot gesendet und „Nachfass bis“ erreicht/überschritten (typisch 14 Tage nach Versand).
+   * Diese Leads sollen wieder aktiv nachgefasst werden (Orange auf der Karte).
+   */
+  function isAngebotNachfassFaellig(lead) {
+    if (!lead || isCrmArchived(lead)) return false;
+    const st = normalizeStatusDisplay(lead[COL.status] || '');
+    if (st === 'Lead verloren' || st === 'Termin vereinbart' || st === 'Archivieren') return false;
+    if (!isAngebotGesendetLead(lead)) return false;
+    const bis = pvlNachfassBisYmd(lead);
+    if (!bis) return false;
+    return bis <= pvlTodayLocalYmd();
+  }
+
   /**
    * Status „Nachfassen“ mit Datum in der Zukunft: nur unter „Nachfassen“, nicht in „Aktive Leads“.
    * Ohne gültiges Datum: bleibt in der aktiven Liste (sofort bearbeitbar).
@@ -2701,22 +2850,23 @@
     return isNachfassSnoozed(lead);
   }
 
-  /** Aktive Sidebar: nur Neu + Pipeline „In Arbeit“. */
+  /** Aktive Sidebar: Neu + Pipeline „In Arbeit“ + fällige Angebots-Nachfassungen. */
   function passesActiveList(lead) {
     if (isCrmArchived(lead)) return false;
     if (isHiddenStatus(lead)) return false;
+    if (isAngebotNachfassFaellig(lead)) return true;
     const st = normalizeStatusDisplay(lead[COL.status] || '');
     if (st === 'Nachfassen' && isNachfassSnoozed(lead)) return false;
     return st === 'Neu' || st === 'Nicht erreicht' || st === 'Angerufen' || st === 'Nachfassen';
   }
 
   /**
-   * Sidebar „Abgearbeitet / Archiv“: Termin, Verlust, CRM-Archiv, Status „Archivieren“
-   * (nicht mehr in der aktiven Liste — Wechsel sofort nach `applyStatus` via renderList).
+   * Sidebar „Abgearbeitet / Archiv“: Termin, Angebot gesendet (noch nicht fällig), Verlust, CRM-Archiv
    */
   function passesDoneList(lead) {
     const st = normalizeStatusDisplay(lead[COL.status] || '');
-    if (st === 'Termin vereinbart' || st === 'Lead verloren') return true;
+    if (st === 'Angebot gesendet' && isAngebotNachfassFaellig(lead)) return false;
+    if (st === 'Termin vereinbart' || st === 'Angebot gesendet' || st === 'Lead verloren') return true;
     if (isCrmArchived(lead)) return true;
     if (st === 'Archivieren') return true;
     return false;
@@ -2814,7 +2964,7 @@
   }
 
   /* Wie src/sheets.js / ältere index.html — alle CRM-Status inkl. Angerufen & Archivieren */
-  const STATUS_OPTIONS = ['Neu', 'Nicht erreicht', 'Nachfassen', 'Termin vereinbart', 'Lead verloren', 'Archivieren'];
+  const STATUS_OPTIONS = ['Neu', 'Nicht erreicht', 'Nachfassen', 'Termin vereinbart', 'Angebot gesendet', 'Lead verloren', 'Archivieren'];
   const STATUS_BAR_VERSION = 'v8';
   let detailCurrentStatus = '';
   let userCalendarPreference = 'google';
@@ -3359,12 +3509,14 @@
       if (pref === 'apple' && j.icsContent) {
         const blob = new Blob([j.icsContent], { type: 'text/calendar;charset=utf-8' });
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        const objectUrl = URL.createObjectURL(blob);
+        a.href = objectUrl;
         a.download = j.icsFilename || 'termin.ics';
         a.rel = 'noopener noreferrer';
-        a.target = '_blank';
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(a.href);
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
         showToast('Kalendereintrag (.ics) heruntergeladen.', 'ok');
         return;
       }
@@ -3377,6 +3529,7 @@
       showToast(e.message || String(e), 'err');
     }
   }
+  window.openCalendarAppointment = openCalendarAppointment;
 
   async function restoreLeadFromArchive() {
     const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
@@ -4602,6 +4755,7 @@
       if (sdet) sdet.style.setProperty('pointer-events', 'auto', 'important');
     } catch (_) { /* ignore */ }
     pvlInvalidateMap();
+    loadLeadOffersAndLayouts(lead);
   }
 
   function closeSidebarDetail(opts) {
@@ -5288,6 +5442,13 @@
       await loadLeads();
     } catch (e) {
       console.error('loadLeads (Boot):', e);
+    }
+    try {
+      await refreshSentOfferLeadIds();
+      /* Marker-Farben ggf. nachziehen */
+      if (typeof renderMarkers === 'function') renderMarkers();
+    } catch (e) {
+      console.error('refreshSentOfferLeadIds:', e);
     }
     try {
       await refreshSessionUi();

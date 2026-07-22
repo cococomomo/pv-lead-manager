@@ -23,16 +23,14 @@ function trim(s) {
   return String(s ?? '').trim();
 }
 
+const { splitNachnameVorname: splitLeadName } = require('../offer/names');
+
 function splitNachnameVorname(namen) {
-  const raw = trim(namen);
-  if (!raw) return { firstName: '-', lastName: '-' };
-  if (raw.includes(',')) {
-    const [a, b] = raw.split(',').map((x) => trim(x));
-    return { lastName: a || '-', firstName: b || '-' };
-  }
-  const parts = raw.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { firstName: '-', lastName: parts[0] };
-  return { lastName: parts[0], firstName: parts.slice(1).join(' ') };
+  const { vorname, nachname } = splitLeadName(namen);
+  return {
+    firstName: vorname || '-',
+    lastName: nachname || '-',
+  };
 }
 
 function splitStrasseUndHausnummer(strasse) {

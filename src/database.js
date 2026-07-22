@@ -175,6 +175,62 @@ function migrateLeadsTable(db) {
   db.prepare(`UPDATE leads SET status = 'Neu' WHERE status IS NULL OR trim(status) = ''`).run();
 }
 
+const OFFER_LAYOUT_DDL = `
+CREATE TABLE IF NOT EXISTS layout_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER,
+  customer_email TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  address_text TEXT NOT NULL DEFAULT '',
+  lat REAL,
+  lng REAL,
+  basemap_provider TEXT NOT NULL DEFAULT 'basemap_at',
+  plan_json TEXT NOT NULL DEFAULT '{}',
+  snapshot_path TEXT NOT NULL DEFAULT '',
+  module_count INTEGER NOT NULL DEFAULT 0,
+  module_wp INTEGER NOT NULL DEFAULT 455,
+  created_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_layout_plans_lead ON layout_plans(lead_id);
+CREATE INDEX IF NOT EXISTS idx_layout_plans_email ON layout_plans(lower(trim(customer_email)));
+
+CREATE TABLE IF NOT EXISTS offer_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER,
+  customer_email TEXT NOT NULL DEFAULT '',
+  angebotsnummer TEXT NOT NULL DEFAULT '',
+  customer_version INTEGER NOT NULL DEFAULT 1,
+  filename_base TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft',
+  config_json TEXT NOT NULL DEFAULT '{}',
+  variants_json TEXT NOT NULL DEFAULT '[]',
+  email_subject TEXT NOT NULL DEFAULT '',
+  email_body TEXT NOT NULL DEFAULT '',
+  layout_plan_id INTEGER,
+  pdf_path TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  sent_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_offer_versions_lead ON offer_versions(lead_id);
+CREATE INDEX IF NOT EXISTS idx_offer_versions_email ON offer_versions(lower(trim(customer_email)));
+CREATE INDEX IF NOT EXISTS idx_offer_versions_status ON offer_versions(status);
+`;
+
+function migrateOfferLayoutTables(db) {
+  db.exec(OFFER_LAYOUT_DDL);
+  const cols = db.prepare('PRAGMA table_info(offer_versions)').all();
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has('customer_version')) {
+    db.exec(`ALTER TABLE offer_versions ADD COLUMN customer_version INTEGER NOT NULL DEFAULT 1`);
+  }
+  if (!names.has('filename_base')) {
+    db.exec(`ALTER TABLE offer_versions ADD COLUMN filename_base TEXT NOT NULL DEFAULT ''`);
+  }
+}
+
 /** Indizes auf Spalten, die per ALTER nachgerüstet werden — erst nach migrateLeadsTable. */
 function ensureLeadsSecondaryIndexes(db) {
   const cols = db.prepare('PRAGMA table_info(leads)').all();
@@ -202,6 +258,7 @@ function getDb() {
   migrateLeadsTable(_db);
   ensureLeadsSecondaryIndexes(_db);
   migrateUsersTable(_db);
+  migrateOfferLayoutTables(_db);
   return _db;
 }
 

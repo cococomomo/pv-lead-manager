@@ -8,7 +8,12 @@ const catalog = require('./catalog');
 const { getLlmPublic, saveLlmSettings, getLlmConfig } = require('../app-settings');
 const { parseOfferCommand, chatCompletionJson } = require('./ai-offer');
 const { generateOfferPdf, appendVollmacht } = require('./pdf');
-const { buildEmailText, buildEmailTextAI, buildEml, safeFileBase, buildSummaryTitle } = require('./email');
+const { buildEmailText, buildEmailTextAI, buildMailtoUrl, safeFileBase, buildSummaryTitle, buildOfferFilenameBase } = require('./email');
+const { resolveCustomerNames } = require('./names');
+const klimaLeads = require('../klima-leads');
+const persist = require('./persist');
+const mapProviders = require('./map-providers');
+const { renderLayoutOrthoPng } = require('./layout-ortho-render');
 
 const PUBLIC_DIR = path.join(__dirname, '../../public');
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -63,6 +68,7 @@ function buildOfferFromBody(req, getProfile, body) {
   const cfg = body.config && typeof body.config === 'object' ? body.config : {};
   const config = {
     brand: cfg.brand,
+    includePv: cfg.includePv,
     kwp: cfg.kwp,
     speicher: cfg.speicher,
     speicherZusatz: Array.isArray(cfg.speicherZusatz) ? cfg.speicherZusatz : undefined,
@@ -76,6 +82,10 @@ function buildOfferFromBody(req, getProfile, body) {
     standardOptionen: cfg.standardOptionen,
     bruttoOverride: cfg.bruttoOverride,
     inverterModel: cfg.inverterModel,
+    inverterKw: cfg.inverterKw != null ? Number(cfg.inverterKw) : undefined,
+    klima: cfg.klima,
+    offerNotes: Array.isArray(cfg.offerNotes) ? cfg.offerNotes : undefined,
+    offerNote: cfg.offerNote,
     angebotsnummer,
     datum,
     vertrieb,
@@ -86,9 +96,20 @@ function buildOfferFromBody(req, getProfile, body) {
 function customerFromBody(body) {
   const c = body.customer && typeof body.customer === 'object' ? body.customer : {};
   const s = (v) => (v == null ? '' : String(v).trim());
+  const names = resolveCustomerNames({
+    vorname: s(c.vorname),
+    nachname: s(c.nachname),
+    name: s(c.name),
+  });
   return {
-    name: s(c.name), street: s(c.street), zip: s(c.zip),
-    city: s(c.city), email: s(c.email), phone: s(c.phone),
+    vorname: names.vorname,
+    nachname: names.nachname,
+    name: names.displayName || s(c.name),
+    street: s(c.street),
+    zip: s(c.zip),
+    city: s(c.city),
+    email: s(c.email),
+    phone: s(c.phone),
   };
 }
 
@@ -172,26 +193,61 @@ function mountOfferRoutes(app, deps) {
   // Katalog/Stammdaten für die Eingabemaske
   app.get('/api/offer/catalog', (req, res) => {
     res.json({
-      brands: [
-        { id: 'sigenergy', label: 'Sigenergy' },
-        { id: 'fronius', label: 'Fronius' },
-      ],
+      brands: catalog.listBrands(),
       pricelist: catalog.PRICELIST,
+      pvOnlyNetto: catalog.PV_ONLY_NETTO,
       modulesPerKwp: catalog.MODULES_PER_KWP,
       dachOptions: Object.keys(catalog.DACH_AUFSCHLAG).map((k) => ({
         key: k, aufschlag: catalog.DACH_AUFSCHLAG[k],
       })),
-      dachLabels: ['Ziegel', 'Welleternit', 'Trapezblech', 'Schindel-Eternit', 'Rhombus', 'Biberschwanz', 'Wiener Tasche', 'Prefa', 'Flachdach'],
+      dachLabels: catalog.DACH_LABELS,
+      inverters: {
+        sigenergy: catalog.listInverters('sigenergy'),
+        fronius: catalog.listInverters('fronius'),
+        huawei: catalog.listInverters('huawei'),
+        fronius_symo: catalog.listInverters('fronius_symo'),
+      },
       storageExtensions: catalog.STORAGE_EXTENSIONS,
+      speicherBlock: catalog.SPEICHERBLOCK,
       extraModulePrice: catalog.EXTRA_MODULE_PRICE,
+      extraModulePriceNetto: catalog.EXTRA_MODULE_PRICE,
+      mwstRate: catalog.MWST_RATE,
+      klimaCatalog: catalog.KLIMA_CATALOG,
+      klimaExtras: catalog.KLIMA_EXTRAS,
+      klimaPackages: catalog.KLIMA_PACKAGES,
+      moduleWpByType: Object.fromEntries(
+        Object.keys(catalog.MODULE_TYPES).map((k) => [k, catalog.MODULE_TYPES[k].wp])
+      ),
       options: Object.keys(catalog.OPTIONS).map((k) => ({
         key: k, label: catalog.OPTIONS[k].label, price: catalog.OPTIONS[k].price,
         alwaysIncluded: !!catalog.OPTIONS[k].alwaysIncluded,
+        perModule: !!catalog.OPTIONS[k].perModule,
       })),
+      optimiererUnitPrice: catalog.OPTIMIERER_UNIT_PRICE,
       moduleTypes: Object.keys(catalog.MODULE_TYPES).map((k) => ({
         id: k, label: `${catalog.MODULE_TYPES[k].model} (${catalog.MODULE_TYPES[k].wp} Wp)`,
       })),
+      moduleDimensions: mapProviders.MODULE_DIMENSIONS,
+      mapProviders: mapProviders.listMapProviders(),
     });
+  });
+
+  /** Preisdifferenz-Upgrades für aktuelle Marke/kWp/Basis-Speicher. */
+  app.get('/api/offer/storage-upgrades', (req, res) => {
+    try {
+      const brand = catalog.normalizeBrand(req.query.brand);
+      const kwp = catalog.snapKwp(brand, req.query.kwp);
+      const from = Number(String(req.query.from || '').replace(',', '.'));
+      const upgrades = catalog.brandHasStorage(brand)
+        ? catalog.listStorageUpgrades(brand, kwp, from)
+        : [];
+      const extensions = catalog.brandHasStorage(brand)
+        ? catalog.listStorageExtensionOptions(brand)
+        : [];
+      res.json({ ok: true, brand, kwp, fromKwh: from, upgrades, extensions, hasStorage: catalog.brandHasStorage(brand) });
+    } catch (err) {
+      res.status(400).json({ error: err.message || String(err) });
+    }
   });
 
   app.get('/api/offer/next-number', (req, res) => {
@@ -207,14 +263,21 @@ function mountOfferRoutes(app, deps) {
       if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
       const info = [lead.Info, lead.Notizen].filter(Boolean).join(' \n').trim();
       res.json({
-        customer: {
-          name: String(lead['Nachname + Vorname'] || '').trim(),
-          street: String(lead['Straße'] || '').trim(),
-          zip: String(lead.PLZ || '').trim(),
-          city: String(lead.Ort || '').trim(),
-          email: String(lead['E-Mail'] || '').trim(),
-          phone: String(lead.Telefon || '').trim(),
-        },
+        customer: (() => {
+          const raw = String(lead['Nachname + Vorname'] || '').trim();
+          const names = resolveCustomerNames({ name: raw });
+          return {
+            vorname: names.vorname,
+            nachname: names.nachname,
+            name: names.displayName || raw,
+            street: String(lead['Straße'] || '').trim(),
+            zip: String(lead.PLZ || '').trim(),
+            city: String(lead.Ort || '').trim(),
+            email: String(lead['E-Mail'] || '').trim(),
+            phone: String(lead.Telefon || '').trim(),
+          };
+        })(),
+        leadId: lead.pvlDbId != null ? Number(lead.pvlDbId) : (lead.id != null ? Number(lead.id) : null),
         info,
       });
     } catch (err) {
@@ -222,7 +285,7 @@ function mountOfferRoutes(app, deps) {
     }
   });
 
-  // KI: Freitext → Kundendaten + Anforderungen
+  // KI: Freitext → Kundendaten + Anforderungen (+ optionale Rückfragen)
   app.post('/api/offer/parse', async (req, res) => {
     try {
       const parsed = await parseOfferCommand(String((req.body || {}).command || ''));
@@ -233,11 +296,33 @@ function mountOfferRoutes(app, deps) {
     }
   });
 
+  /** Schema-Vorschau für künftigen Klimalead-Import (noch ohne Persistenz). */
+  app.get('/api/klima/lead-schema', (req, res) => {
+    res.json({
+      ok: true,
+      interestTypes: klimaLeads.LEAD_INTEREST_TYPES,
+      fields: klimaLeads.KLIMA_LEAD_FIELDS,
+      packages: catalog.KLIMA_PACKAGES.map((p) => ({
+        id: p.id, label: p.label, outdoorKw: p.outdoorKw, priceBrutto: p.priceBrutto,
+      })),
+      note: 'Import-Endpunkt folgt – diese Struktur ist die Basis für CSV/Webhook.',
+    });
+  });
+
+  app.post('/api/klima/normalize-lead', (req, res) => {
+    try {
+      const normalized = klimaLeads.normalizeKlimaLeadRow(req.body || {});
+      res.json({ ok: true, lead: normalized });
+    } catch (err) {
+      res.status(400).json({ error: err.message || String(err) });
+    }
+  });
+
   // Live-Berechnung (Vorschau-Zahlen)
   app.post('/api/offer/plan-storage', (req, res) => {
     try {
       const b = req.body || {};
-      const brand = (b.brand === 'fronius') ? 'fronius' : 'sigenergy';
+      const brand = catalog.normalizeBrand(b.brand);
       const kwp = catalog.snapKwp(brand, b.kwp);
       const plan = catalog.planStorage(brand, kwp, b.speicherGesamt);
       res.json({ ok: true, ...plan });
@@ -257,17 +342,109 @@ function mountOfferRoutes(app, deps) {
   });
 
   // PDF (Vorschau & Download)
+  // Vollmacht: immer bei PV/Kombi, nie bei reinem Klima (Server erzwingt das).
   app.post('/api/offer/pdf', async (req, res) => {
     try {
       const body = req.body || {};
+      // Nach Wiederöffnen: beim nächsten Finalize neue Nummer aus dem Zähler
+      if (body.finalize && body.allocateNewNumber) {
+        body.angebotsnummer = formatOfferNumber(readCounter());
+      }
       const { offer, angebotsnummer } = buildOfferFromBody(req, getProfile, body);
       const customer = customerFromBody(body);
-      let pdf = await generateOfferPdf(offer, customer, body.texts || {});
-      if (body.appendVollmacht !== false) pdf = await appendVollmacht(pdf);
+      const leadIdNum = body.leadId != null ? Number(body.leadId) : null;
+      const customerVersion = persist.peekNextCustomerVersion(
+        Number.isFinite(leadIdNum) ? leadIdNum : null,
+        customer.email,
+      );
+      const fileBase = safeFileBase(customer, angebotsnummer, customerVersion);
+
+      // Optional: Belegungsplan-Snapshot / Plan-JSON fürs PDF
+      let layoutSnapshotAbs = null;
+      let layoutPlan = null;
+      let layoutPlanId = body.layoutPlanId != null ? Number(body.layoutPlanId) : null;
+      if (!Number.isFinite(layoutPlanId) && body.leadId != null) {
+        // Fallback: neuestes Layout zum Lead
+        try {
+          const list = persist.listLayoutsForLead(Number(body.leadId));
+          if (list && list[0]) layoutPlanId = Number(list[0].id);
+        } catch (_) { /* ignore */ }
+      }
+      if (Number.isFinite(layoutPlanId)) {
+        layoutSnapshotAbs = persist.getLayoutSnapshotAbsPath(layoutPlanId);
+        if (layoutSnapshotAbs && !fs.existsSync(layoutSnapshotAbs)) layoutSnapshotAbs = null;
+        const layoutRow = persist.getLayout(layoutPlanId);
+        if (layoutRow && layoutRow.plan) layoutPlan = layoutRow.plan;
+
+        // Orthofoto-Render serverseitig (Haus + Satellit + Module) – unabhängig vom Browser-Snapshot
+        if (layoutPlan && (
+          (Array.isArray(layoutPlan.modules) && layoutPlan.modules.length)
+          || (Array.isArray(layoutPlan.roofs) && layoutPlan.roofs.length)
+          || (Array.isArray(layoutPlan.roof) && layoutPlan.roof.length)
+        )) {
+          try {
+            const png = await renderLayoutOrthoPng(layoutPlan, {
+              basemapProvider: (layoutRow && layoutRow.basemapProvider) || 'basemap_at',
+            });
+            if (png && png.length > 100) {
+              persist.saveLayoutSnapshotBuffer(layoutPlanId, png);
+              layoutSnapshotAbs = persist.getLayoutSnapshotAbsPath(layoutPlanId);
+              if (layoutSnapshotAbs && !fs.existsSync(layoutSnapshotAbs)) layoutSnapshotAbs = null;
+            }
+          } catch (e) {
+            console.warn('[NOORTEC] Ortho-Belegungsplan:', e.message);
+          }
+        }
+      }
+
+      let pdf = await generateOfferPdf(offer, customer, body.texts || {}, {
+        layoutSnapshotPath: layoutSnapshotAbs,
+        layoutPlan,
+        baseUrl: process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`,
+      });
+      const kind = (offer.meta && offer.meta.offerKind) || 'pv';
+      const isPvOffer = kind === 'pv' || kind === 'combo'
+        || (offer.config && offer.config.includePv !== false && Number(offer.config.moduleCount) > 0);
+      const attachVollmacht = isPvOffer && body.appendVollmacht !== false;
+      if (attachVollmacht) pdf = await appendVollmacht(pdf);
       if (body.finalize) maybeBumpCounter(angebotsnummer);
-      const fileBase = safeFileBase(customer, angebotsnummer);
+
+      let savedVersion = null;
+      // Persistenz: Angebotsversion speichern (finalize = sent, sonst optional draft)
+      if (body.finalize || body.saveVersion) {
+        try {
+          const createdBy = (req.session && req.session.user && req.session.user.username) || '';
+          savedVersion = persist.saveOfferVersion({
+            leadId: Number.isFinite(leadIdNum) ? leadIdNum : null,
+            customerEmail: customer.email,
+            angebotsnummer,
+            customerVersion,
+            filenameBase: fileBase,
+            status: body.finalize ? 'sent' : 'draft',
+            config: body.config || {},
+            variants: body.variants || [],
+            emailSubject: body.subject || '',
+            emailBody: body.body || '',
+            layoutPlanId: Number.isFinite(layoutPlanId) ? layoutPlanId : null,
+          }, createdBy);
+          if (savedVersion) {
+            try { persist.saveOfferPdfFile(savedVersion.id, pdf); } catch (e) {
+              console.warn('[NOORTEC] PDF speichern:', e.message);
+            }
+          }
+        } catch (e) {
+          console.warn('[NOORTEC] Angebotsversion speichern:', e.message);
+        }
+      }
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${fileBase}.pdf"`);
+      res.setHeader('X-Angebotsnummer', angebotsnummer);
+      res.setHeader('X-Customer-Version', String(customerVersion));
+      res.setHeader('X-Filename-Base', fileBase);
+      if (savedVersion) res.setHeader('X-Offer-Version-Id', String(savedVersion.id));
+      // CORS-ähnliche Exposure für Frontend-Header-Lesen (same-origin reicht meist)
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Angebotsnummer, X-Customer-Version, X-Filename-Base, X-Offer-Version-Id');
       res.send(pdf);
     } catch (err) {
       console.error('[NOORTEC] /api/offer/pdf:', err.message);
@@ -275,58 +452,102 @@ function mountOfferRoutes(app, deps) {
     }
   });
 
-  // E-Mail-Text (Template oder KI)
+  // E-Mail-Text – standardmäßig immer per KI (Fallback: Vorlage)
   app.post('/api/offer/email-text', async (req, res) => {
     try {
       const body = req.body || {};
       const { offer } = buildOfferFromBody(req, getProfile, body);
       const customer = customerFromBody(body);
+      const salutationOverride = (() => {
+        const s = String(body.salutationOverride || body.anrede || '').toLowerCase().trim();
+        if (s === 'herr' || s === 'frau') return s;
+        // aus Klartext "Anrede: Herr" im Command
+        const cmd = String(body.command || '');
+        if (/\bAnrede:\s*Herr\b/i.test(cmd) || /\bHerr\b/i.test(String(body.salutationHint || ''))) {
+          if (/\bAnrede:\s*Herr\b/i.test(cmd)) return 'herr';
+        }
+        if (/\bAnrede:\s*Frau\b/i.test(cmd)) return 'frau';
+        return null;
+      })();
       const params = {
-        customer, offer,
-        contactType: body.contactType || null,
+        customer,
+        offer,
         extraText: body.extraText || '',
+        command: body.command || '',
+        salutationOverride,
       };
-      const out = body.useAI ? await buildEmailTextAI(params) : { ...buildEmailText(params), source: 'template' };
-      res.json({ ok: true, ...out, summaryTitle: buildSummaryTitle(customer, offer.meta.angebotsnummer) });
+      const useAI = body.useAI !== false;
+      const out = useAI ? await buildEmailTextAI(params) : { ...buildEmailText(params), source: 'template' };
+      const nextV = persist.peekNextCustomerVersion(
+        body.leadId != null ? Number(body.leadId) : null,
+        customer.email,
+      );
+      res.json({
+        ok: true,
+        ...out,
+        summaryTitle: buildSummaryTitle(customer, offer.meta.angebotsnummer, nextV),
+        filenameBase: buildOfferFilenameBase(customer, offer.meta.angebotsnummer, nextV),
+        customerVersion: nextV,
+      });
     } catch (err) {
       console.error('[NOORTEC] /api/offer/email-text:', err.message);
       res.status(400).json({ error: err.message || String(err) });
     }
   });
 
-  // .eml-Entwurf (Outlook) mit PDF-Anhang
-  app.post('/api/offer/eml', async (req, res) => {
+  // Outlook-Compose-Link; PDF wird separat heruntergeladen.
+  app.post('/api/offer/outlook-draft', async (req, res) => {
     try {
       const body = req.body || {};
+      if (body.allocateNewNumber) {
+        body.angebotsnummer = formatOfferNumber(readCounter());
+      }
       const { offer, angebotsnummer } = buildOfferFromBody(req, getProfile, body);
       const customer = customerFromBody(body);
-      let pdf = await generateOfferPdf(offer, customer, body.texts || {});
-      if (body.appendVollmacht !== false) pdf = await appendVollmacht(pdf);
-
       let subject = String(body.subject || '').trim();
       let mailBody = String(body.body || '').trim();
       if (!subject || !mailBody) {
-        const params = { customer, offer, contactType: body.contactType || null, extraText: body.extraText || '' };
-        const txt = body.useAI ? await buildEmailTextAI(params) : buildEmailText(params);
+        const salutationOverride = (() => {
+          const s = String(body.salutationOverride || body.anrede || '').toLowerCase().trim();
+          if (s === 'herr' || s === 'frau') return s;
+          if (/\bAnrede:\s*Herr\b/i.test(String(body.command || ''))) return 'herr';
+          if (/\bAnrede:\s*Frau\b/i.test(String(body.command || ''))) return 'frau';
+          return null;
+        })();
+        const params = {
+          customer,
+          offer,
+          extraText: body.extraText || '',
+          command: body.command || '',
+          salutationOverride,
+        };
+        const useAI = body.useAI !== false;
+        const txt = useAI ? await buildEmailTextAI(params) : buildEmailText(params);
         subject = subject || txt.subject;
         mailBody = mailBody || txt.body;
       }
 
-      const vertrieb = resolveVertrieb(req, getProfile, body.vertrieb || {});
-      const fileBase = safeFileBase(customer, angebotsnummer);
-      const eml = buildEml({
-        to: customer.email,
-        from: vertrieb.email,
-        subject,
-        body: mailBody,
-        attachments: [{ filename: `${fileBase}.pdf`, content: pdf, contentType: 'application/pdf' }],
+      const nextV = persist.peekNextCustomerVersion(
+        body.leadId != null ? Number(body.leadId) : null,
+        customer.email,
+      );
+      const fileBase = safeFileBase(customer, angebotsnummer, nextV);
+      res.json({
+        ok: true,
+        mailtoUrl: buildMailtoUrl({
+          to: customer.email,
+          subject,
+          body: mailBody,
+        }),
+        attachmentFilename: `${fileBase}.pdf`,
+        angebotsnummer,
+        customerVersion: nextV,
+        filenameBase: fileBase,
+        offerKind: (offer.meta && offer.meta.offerKind) || 'pv',
+        appendVollmacht: ((offer.meta && offer.meta.offerKind) || 'pv') !== 'klima',
       });
-      maybeBumpCounter(angebotsnummer);
-      res.setHeader('Content-Type', 'message/rfc822');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.eml"`);
-      res.send(eml);
     } catch (err) {
-      console.error('[NOORTEC] /api/offer/eml:', err.message);
+      console.error('[NOORTEC] /api/offer/outlook-draft:', err.message);
       res.status(400).json({ error: err.message || String(err) });
     }
   });

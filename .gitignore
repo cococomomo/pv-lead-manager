@@ -5,11 +5,29 @@ node_modules/
 .env.txt
 auth/*.json
 auth/*.key
+
+# Runtime / secrets / local DBs (nicht für andere Rechner pushen)
 data/users.json
 data/leads.db
 data/leads.db-shm
 data/leads.db-wal
+data/leads.db.*
+data/pvl.db
+data/pvl.db-*
 data/sessions/
+data/layouts/
+data/offers/
+data/app-settings.json
+data/offer-counter.json
+data/vertriebler.json
+data/*.backup*
+data/*.safety*
+
+# Temp / junk
+401
+*.bak
+*.bak-*
+scripts/_tmp-*
 .DS_Store
 *.log
 .claude/
