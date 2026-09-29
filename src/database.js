@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
   smtp_host TEXT NOT NULL DEFAULT '',
   smtp_port TEXT NOT NULL DEFAULT '587',
   smtp_user TEXT NOT NULL DEFAULT '',
-  smtp_pass TEXT NOT NULL DEFAULT ''
+  smtp_pass TEXT NOT NULL DEFAULT '',
+  photo_path TEXT NOT NULL DEFAULT ''
 );
 `;
 
@@ -41,7 +42,8 @@ function migrateUsersAddNumericId(db) {
       smtp_host TEXT NOT NULL DEFAULT '',
       smtp_port TEXT NOT NULL DEFAULT '587',
       smtp_user TEXT NOT NULL DEFAULT '',
-      smtp_pass TEXT NOT NULL DEFAULT ''
+      smtp_pass TEXT NOT NULL DEFAULT '',
+      photo_path TEXT NOT NULL DEFAULT ''
     )
   `);
   db.exec(`
@@ -64,6 +66,7 @@ function migrateUsersTable(db) {
   if (!unames.has('smtp_port')) db.exec(`ALTER TABLE users ADD COLUMN smtp_port TEXT NOT NULL DEFAULT '587'`);
   if (!unames.has('smtp_user')) db.exec(`ALTER TABLE users ADD COLUMN smtp_user TEXT NOT NULL DEFAULT ''`);
   if (!unames.has('smtp_pass')) db.exec(`ALTER TABLE users ADD COLUMN smtp_pass TEXT NOT NULL DEFAULT ''`);
+  if (!unames.has('photo_path')) db.exec(`ALTER TABLE users ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''`);
 }
 
 const PROJECT_ROOT = path.join(__dirname, '..');

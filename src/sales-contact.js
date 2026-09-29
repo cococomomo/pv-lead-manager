@@ -25,6 +25,8 @@ async function resolveBetreuerContact(betreuerStr) {
           name: vn || un,
           tel: String(prof.telefon || '').trim(),
           email: String(prof.email_kontakt || '').trim(),
+          photoUrl: prof.photoUrl || null,
+          photoPath: prof.photoPath || null,
         };
       }
     }

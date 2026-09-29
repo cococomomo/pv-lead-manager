@@ -139,6 +139,8 @@ async function listUsersAdminDetail() {
       voller_name: String(prof.voller_name || '').trim(),
       telefon: String(prof.telefon || '').trim(),
       email_kontakt: String(prof.email_kontakt || '').trim(),
+      photoUrl: prof.photoUrl || null,
+      photoPath: prof.photoPath || null,
     });
   }
   out.sort((a, b) => a.username.localeCompare(b.username, 'de'));
@@ -231,6 +233,8 @@ async function getUserPublic(username) {
     email_kontakt,
     smtp_pass_configured: !!prof.smtp_pass_configured,
     profileComplete: isProfileComplete(u.username),
+    photoUrl: prof.photoUrl || null,
+    photoPath: prof.photoPath || null,
   };
 }
 

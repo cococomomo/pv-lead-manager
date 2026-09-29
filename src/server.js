@@ -56,6 +56,12 @@ const { sendAppointmentConfirmationEmail, buildLeadAddressLine, formatTerminDe, 
 const { canSendMail, verifySmtpInline, verifySavedUserSmtp } = require('./mail-transport');
 const { resolveBetreuerContact } = require('./sales-contact');
 const { upsertProfile, ensureSqliteUserStub, getProfile } = require('./user-profile');
+const {
+  saveSalesPhoto,
+  deleteSalesPhoto,
+  getSalesPhotoAbsPath,
+  detectImageKind,
+} = require('./sales-photo');
 const { mountOfferRoutes } = require('./offer/routes');
 const { mountLayoutOfferPersistRoutes } = require('./offer/layout-routes');
 const { getDashboardStats } = require('./stats');
@@ -574,6 +580,47 @@ app.patch('/api/auth/contact-profile', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+/** Eigenes Vertriebler-Foto hochladen / ersetzen (data-URL oder base64). */
+app.post('/api/auth/photo', async (req, res) => {
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
+  try {
+    ensureSqliteUserStub(req.session.user.username);
+    const out = saveSalesPhoto(req.session.user.username, (req.body || {}).image);
+    const user = await getUserPublic(req.session.user.username);
+    res.json({ ok: true, ...out, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/auth/photo', async (req, res) => {
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
+  try {
+    deleteSalesPhoto(req.session.user.username);
+    const user = await getUserPublic(req.session.user.username);
+    res.json({ ok: true, photoUrl: null, photoPath: null, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/** Foto eines Vertrieblers (Session erforderlich). */
+app.get('/api/sales-photos/:username', (req, res) => {
+  if (!req.session?.user) return res.status(401).json({ error: 'login_required' });
+  const username = decodeURIComponent(String(req.params.username || '').trim());
+  const abs = getSalesPhotoAbsPath(username);
+  if (!abs) return res.status(404).json({ error: 'Kein Foto hinterlegt' });
+  let mime = 'application/octet-stream';
+  try {
+    const buf = require('fs').readFileSync(abs);
+    const kind = detectImageKind(buf);
+    if (kind) mime = kind.mime;
+  } catch (_) { /* ignore */ }
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.type(mime);
+  res.sendFile(abs);
 });
 
 app.post('/api/auth/smtp-test', async (req, res) => {
@@ -1318,6 +1365,37 @@ app.post('/api/admin/users/delete', async (req, res) => {
   try {
     await deleteUser(username, actor);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/** Admin: Foto für einen Vertriebler hochladen / ersetzen. */
+app.post('/api/admin/users/photo', async (req, res) => {
+  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const b = req.body || {};
+  const username = String(b.username || '').trim();
+  if (!username) return res.status(400).json({ error: 'username erforderlich' });
+  try {
+    const role = await getUserRole(username);
+    if (!role) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    ensureSqliteUserStub(username);
+    const out = saveSalesPhoto(username, b.image);
+    res.json({ ok: true, username, ...out });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/users/photo', async (req, res) => {
+  if (!allowAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const username = String((req.body || {}).username || '').trim();
+  if (!username) return res.status(400).json({ error: 'username erforderlich' });
+  try {
+    const role = await getUserRole(username);
+    if (!role) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    deleteSalesPhoto(username);
+    res.json({ ok: true, username, photoUrl: null, photoPath: null });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
