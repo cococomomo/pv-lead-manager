@@ -23,6 +23,7 @@ const {
   orderedOverviewSections,
   classifyKind,
 } = require('./product-images');
+const { writeHouseDiagramTemp, resolveHouseDiagramSelection } = require('./house-diagram');
 
 const ASSETS = path.join(__dirname, 'assets');
 const ROOT = path.join(__dirname, '../..');
@@ -451,61 +452,77 @@ function drawLetterPage(doc, y, texts) {
 }
 
 function drawGlancePage(doc, y, offer, eco) {
-  doc.save().roundedRect(MARGIN, y, CONTENT_W, 460, 10).fill(COLORS.cardBg).restore();
-  const pad = 20;
-  let yy = y + pad;
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.text)
-    .text('Auf einen Blick', MARGIN + pad, yy);
-  yy = doc.y + 8;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
-    .text('Ihr Angebot auf einen Blick:  Mit Ihrer Photovoltaikanlage produzieren Sie CO2-neutral Strom. Mit Ihrem Stromspeicher erreichen Sie eine höhere Unabhängigkeit.', MARGIN + pad, yy, {
-      width: CONTENT_W - pad * 2,
-      lineGap: 2,
-    });
-  yy = doc.y + 12;
-  const house = productAbs('houseOverview');
+  const pad = 18;
   const maxW = CONTENT_W - pad * 2;
-  const maxH = 230;
-  if (house) {
-    try {
-      const img = doc.openImage(house);
+  // Systemdiagramm braucht mehr Höhe als die alte Haus-Skizze
+  const maxH = 300;
+  const cardH = 52 + 56 + maxH + 14 + (eco.hasStorage ? 70 : 40) + 16;
+  doc.save().roundedRect(MARGIN, y, CONTENT_W, cardH, 10).fill(COLORS.cardBg).restore();
+  let yy = y + pad;
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(COLORS.text)
+    .text('Auf einen Blick', MARGIN + pad, yy);
+  yy = doc.y + 6;
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
+    .text('Ihr Angebot auf einen Blick:  Mit Ihrer Photovoltaikanlage produzieren Sie CO2-neutral Strom. Mit Ihrem Stromspeicher erreichen Sie eine höhere Unabhängigkeit. Graue Komponenten sind nicht Bestandteil dieses Angebots.', MARGIN + pad, yy, {
+      width: CONTENT_W - pad * 2,
+      lineGap: 1.5,
+    });
+  yy = doc.y + 10;
+
+  doc.save().roundedRect(MARGIN + pad, yy, maxW, maxH, 6).fill('#ffffff').restore();
+  let housePath = null;
+  let houseTmp = null;
+  try {
+    houseTmp = writeHouseDiagramTemp(offer);
+    housePath = houseTmp || productAbs('houseSystemDiagram') || productAbs('houseOverview');
+    if (housePath && fs.existsSync(housePath)) {
+      const img = doc.openImage(housePath);
       let dw = maxW;
       let dh = dw * (img.height / Math.max(1, img.width));
       if (dh > maxH) {
         dh = maxH;
         dw = dh * (img.width / Math.max(1, img.height));
       }
-      // heller Bildrahmen – kein schwarzer Kasten
-      doc.save().roundedRect(MARGIN + pad, yy, maxW, maxH, 6).fill('#ffffff').restore();
       doc.image(img, MARGIN + pad + (maxW - dw) / 2, yy + (maxH - dh) / 2, { width: dw, height: dh });
-    } catch (_) { /* ignore */ }
+    }
+  } catch (_) { /* ignore */ }
+  finally {
+    if (houseTmp) {
+      try { fs.unlinkSync(houseTmp); } catch (__) { /* ignore */ }
+    }
   }
-  yy += maxH + 14;
-  const rows = [['Photovoltaikanlage', eco.labels.peak]];
-  if (eco.hasStorage) rows.push(['Stromspeicher', eco.labels.speicher]);
+  yy += maxH + 12;
+
+  const sel = resolveHouseDiagramSelection(offer);
+  const rows = [];
+  if (sel.flags.pv) rows.push(['Photovoltaikanlage', eco.labels.peak]);
+  if (sel.flags.battery) rows.push(['Stromspeicher', eco.labels.speicher]);
+  if (!rows.length) {
+    rows.push(['Ihr Energiesystem', 'individuell zusammengestellt']);
+  }
   rows.forEach(([label, val], i) => {
     if (i > 0) {
       doc.save().lineWidth(0.6).strokeColor('#d8d8d8')
         .moveTo(MARGIN + pad, yy).lineTo(PAGE.width - MARGIN - pad, yy).stroke().restore();
-      yy += 8;
+      yy += 6;
     }
-    doc.font('Helvetica').fontSize(12).fillColor(COLORS.text).text(label, MARGIN + pad, yy);
-    doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.text)
+    doc.font('Helvetica').fontSize(11).fillColor(COLORS.text).text(label, MARGIN + pad, yy);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
       .text(val, MARGIN + pad, yy, { width: CONTENT_W - pad * 2, align: 'right' });
-    yy += 26;
+    yy += 22;
   });
 
-  const boxY = Math.max(yy + 12, y + 480);
-  doc.save().roundedRect(MARGIN, boxY, CONTENT_W, 72, 10).fill(COLORS.cardBg).restore();
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.text)
-    .text('Sie finden Ihr Angebot auch Online.', MARGIN + 22, boxY + 18);
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
-    .text('Scannen Sie dazu einfach den nebenstehenden QR-Code.', MARGIN + 22, boxY + 38, { width: CONTENT_W - 120 });
+  const boxY = yy + 14;
+  doc.save().roundedRect(MARGIN, boxY, CONTENT_W, 64, 10).fill(COLORS.cardBg).restore();
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
+    .text('Sie finden Ihr Angebot auch Online.', MARGIN + 22, boxY + 14);
+  doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.text)
+    .text('Scannen Sie dazu einfach den nebenstehenden QR-Code.', MARGIN + 22, boxY + 34, { width: CONTENT_W - 120 });
   const qr = productAbs('qrPlaceholder');
   if (qr) {
-    try { doc.image(qr, PAGE.width - MARGIN - 64, boxY + 8, { width: 56, height: 56 }); } catch (_) { /* ignore */ }
+    try { doc.image(qr, PAGE.width - MARGIN - 58, boxY + 6, { width: 52, height: 52 }); } catch (_) { /* ignore */ }
   }
-  return boxY + 80;
+  return boxY + 72;
 }
 
 function drawPvIntroPage(doc, y, offer, eco, lp, isPrimary = true) {

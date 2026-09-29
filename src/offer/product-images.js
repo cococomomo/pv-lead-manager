@@ -14,6 +14,7 @@ const FILES = {
   coverHeroRaw: 'cover-hero.png',
   salesPortrait: 'sales-portrait.png',
   houseOverview: 'house-overview.png',
+  houseSystemDiagram: 'house-system-diagram.png',
   qrPlaceholder: 'qr-placeholder.png',
   chartMonthly: 'chart-monthly-yield.png',
   chartFlow: 'chart-energy-flow.png',
