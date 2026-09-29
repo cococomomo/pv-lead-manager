@@ -23,6 +23,17 @@
     .ok { color: #86efac; font-size: 0.82rem; margin-top: 0.5rem; }
     a { color: #93c5fd; }
     .hint { font-size: 0.72rem; color: #64748b; margin: -0.5rem 0 0.75rem; }
+    .photo-box { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap; }
+    .photo-preview {
+      width: 96px; height: 96px; border-radius: 12px; object-fit: cover;
+      background: #1e293b; border: 1px solid #334155; display: block;
+    }
+    .photo-preview.empty {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; color: #64748b; text-align: center; padding: 0.5rem;
+    }
+    .photo-actions { display: flex; flex-direction: column; gap: 0.45rem; }
+    .photo-actions input[type="file"] { font-size: 0.78rem; color: #94a3b8; margin: 0; }
   </style>
 </head>
 <body>
@@ -37,6 +48,17 @@
       <input id="telefon" name="telefon" type="tel" autocomplete="tel" required />
       <label for="email_kontakt">E-Mail-Adresse (Kontakt &amp; Postfach-Login)</label>
       <input id="email_kontakt" name="email_kontakt" type="email" autocomplete="email" required />
+
+      <h2>Foto für Angebote</h2>
+      <p class="hint">Erscheint oben rechts im Angebots-PDF (Kontakt). JPEG, PNG oder WebP, max. 5&nbsp;MB. Erneutes Hochladen ersetzt das aktuelle Foto.</p>
+      <div class="photo-box">
+        <div id="photo-preview" class="photo-preview empty" aria-label="Aktuelles Foto">Kein Foto</div>
+        <div class="photo-actions">
+          <input type="file" id="photo-file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
+          <button type="button" id="btn-photo-upload">Foto hochladen / ersetzen</button>
+          <button type="button" class="secondary" id="btn-photo-remove">Foto entfernen</button>
+        </div>
+      </div>
 
       <h2>E-Mail-Postfach (optional)</h2>
       <p class="hint">Passwort wird verschlüsselt gespeichert. Leer lassen = unverändert; zum Entfernen „Postfach entfernen“ nutzen.</p>
@@ -83,7 +105,95 @@
         ? '•••• hinterlegt — leer lassen oder neu eingeben'
         : 'nur bei Änderung ausfüllen';
       window._hadSmtpPass = !!j.user.smtp_pass_configured;
+      renderPhotoPreview(j.user.photoUrl || null);
     }
+
+    function renderPhotoPreview(photoUrl) {
+      const box = document.getElementById('photo-preview');
+      if (photoUrl) {
+        box.className = 'photo-preview';
+        box.innerHTML = '';
+        const img = document.createElement('img');
+        img.className = 'photo-preview';
+        img.alt = 'Aktuelles Vertriebler-Foto';
+        img.src = photoUrl + (photoUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+        box.replaceWith(img);
+        img.id = 'photo-preview';
+      } else {
+        if (box.tagName === 'IMG') {
+          const div = document.createElement('div');
+          div.id = 'photo-preview';
+          div.className = 'photo-preview empty';
+          div.setAttribute('aria-label', 'Aktuelles Foto');
+          div.textContent = 'Kein Foto';
+          box.replaceWith(div);
+        } else {
+          box.className = 'photo-preview empty';
+          box.textContent = 'Kein Foto';
+        }
+      }
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('btn-photo-upload').onclick = async () => {
+      document.getElementById('err').textContent = '';
+      document.getElementById('ok').textContent = '';
+      const file = document.getElementById('photo-file').files[0];
+      if (!file) {
+        document.getElementById('err').textContent = 'Bitte zuerst eine Bilddatei wählen.';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        document.getElementById('err').textContent = 'Bild zu groß (max. 5 MB).';
+        return;
+      }
+      const btn = document.getElementById('btn-photo-upload');
+      btn.disabled = true;
+      try {
+        const image = await readFileAsDataUrl(file);
+        const r = await fetch('/api/auth/photo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          document.getElementById('err').textContent = j.error || r.statusText;
+          return;
+        }
+        document.getElementById('photo-file').value = '';
+        document.getElementById('ok').textContent = 'Foto gespeichert.';
+        renderPhotoPreview(j.photoUrl || (j.user && j.user.photoUrl) || null);
+      } catch (e) {
+        document.getElementById('err').textContent = e.message || String(e);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('btn-photo-remove').onclick = async () => {
+      if (!confirm('Foto wirklich entfernen?')) return;
+      document.getElementById('err').textContent = '';
+      document.getElementById('ok').textContent = '';
+      const r = await fetch('/api/auth/photo', { method: 'DELETE', credentials: 'include' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        document.getElementById('err').textContent = j.error || r.statusText;
+        return;
+      }
+      document.getElementById('ok').textContent = 'Foto entfernt.';
+      renderPhotoPreview(null);
+    };
+
     load();
 
     async function postJson(url, body) {

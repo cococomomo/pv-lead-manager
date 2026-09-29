@@ -31,6 +31,16 @@
     @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
     #edit-panel { display: none; margin-top: 1rem; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
     #edit-panel.open { display: block; }
+    .photo-row { display: flex; gap: 0.85rem; align-items: flex-start; flex-wrap: wrap; margin: 0.5rem 0 0.75rem; }
+    .photo-thumb {
+      width: 72px; height: 72px; border-radius: 10px; object-fit: cover;
+      background: #e2e8f0; border: 1px solid #cbd5e1;
+    }
+    .photo-thumb-empty {
+      width: 72px; height: 72px; border-radius: 10px; background: #e2e8f0; border: 1px solid #cbd5e1;
+      display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: #64748b; text-align: center;
+    }
+    .user-photo-cell img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; vertical-align: middle; }
     @media (prefers-reduced-motion: reduce) {
       body { animation: none; }
       input, button.primary, button.secondary, button.danger { transition: none; }
@@ -114,6 +124,17 @@
           </select>
         </div>
       </div>
+      <label style="margin-top:0.35rem">Foto für Angebote (PDF-Kontakt)</label>
+      <div class="photo-row">
+        <div id="eu-photo-preview" class="photo-thumb-empty">Kein Foto</div>
+        <div>
+          <input type="file" id="eu-photo-file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
+          <p style="margin:0.4rem 0 0">
+            <button type="button" class="secondary" onclick="uploadEditPhoto()">Foto hochladen / ersetzen</button>
+            <button type="button" class="secondary" onclick="removeEditPhoto()">Foto entfernen</button>
+          </p>
+        </div>
+      </div>
       <p>
         <button type="button" class="primary" onclick="saveEditUser()">Änderungen speichern</button>
         <button type="button" class="secondary" onclick="closeEdit()">Abbrechen</button>
@@ -126,6 +147,7 @@
       <thead>
         <tr>
           <th>Id</th>
+          <th>Foto</th>
           <th>Login</th>
           <th>Voller Name</th>
           <th>Telefon</th>
@@ -207,19 +229,112 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    function renderEditPhoto(photoUrl) {
+      const box = document.getElementById('eu-photo-preview');
+      if (!box) return;
+      if (photoUrl) {
+        const img = document.createElement('img');
+        img.id = 'eu-photo-preview';
+        img.className = 'photo-thumb';
+        img.alt = 'Vertriebler-Foto';
+        img.src = photoUrl + (photoUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+        box.replaceWith(img);
+      } else {
+        if (box.tagName === 'IMG') {
+          const div = document.createElement('div');
+          div.id = 'eu-photo-preview';
+          div.className = 'photo-thumb-empty';
+          div.textContent = 'Kein Foto';
+          box.replaceWith(div);
+        } else {
+          box.className = 'photo-thumb-empty';
+          box.textContent = 'Kein Foto';
+        }
+      }
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadEditPhoto() {
+      const msg = document.getElementById('m-edit');
+      msg.textContent = '';
+      const username = document.getElementById('eu-user').value.trim();
+      const file = document.getElementById('eu-photo-file').files[0];
+      if (!file) {
+        msg.className = 'msg err';
+        msg.textContent = 'Bitte zuerst eine Bilddatei wählen.';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        msg.className = 'msg err';
+        msg.textContent = 'Bild zu groß (max. 5 MB).';
+        return;
+      }
+      try {
+        const image = await readFileAsDataUrl(file);
+        const r = await fetch('/api/admin/users/photo', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ username, image }),
+        });
+        const j = await r.json().catch(() => ({}));
+        msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+        msg.textContent = r.ok ? 'Foto gespeichert.' : (j.error || r.statusText);
+        if (r.ok) {
+          document.getElementById('eu-photo-file').value = '';
+          renderEditPhoto(j.photoUrl || null);
+          loadUsers();
+        }
+      } catch (e) {
+        msg.className = 'msg err';
+        msg.textContent = e.message || String(e);
+      }
+    }
+
+    async function removeEditPhoto() {
+      if (!confirm('Foto für diesen Benutzer entfernen?')) return;
+      const msg = document.getElementById('m-edit');
+      const username = document.getElementById('eu-user').value.trim();
+      const r = await fetch('/api/admin/users/photo', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ username }),
+      });
+      const j = await r.json().catch(() => ({}));
+      msg.className = 'msg ' + (r.ok ? 'ok' : 'err');
+      msg.textContent = r.ok ? 'Foto entfernt.' : (j.error || r.statusText);
+      if (r.ok) {
+        renderEditPhoto(null);
+        loadUsers();
+      }
+    }
+
     async function loadUsers() {
       const r = await fetch('/api/admin/users', { ...cred, headers: { ...authHeaders() } });
       const tb = document.getElementById('utb');
       tb.innerHTML = '';
       if (!r.ok) {
-        tb.innerHTML = '<tr><td colspan="7">Keine Berechtigung oder nicht angemeldet.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="8">Keine Berechtigung oder nicht angemeldet.</td></tr>';
         return;
       }
       const { users } = await r.json();
       for (const u of users) {
         const tr = document.createElement('tr');
+        const photoCell = u.photoUrl
+          ? '<span class="user-photo-cell"><img src="' + escapeHtml(u.photoUrl) + '?t=' + Date.now() + '" alt="" /></span>'
+          : '—';
         tr.innerHTML =
           '<td>' + escapeHtml(String(u.id != null ? u.id : '—')) + '</td>' +
+          '<td>' + photoCell + '</td>' +
           '<td>' + escapeHtml(u.username) + '</td>' +
           '<td>' + escapeHtml(u.voller_name || '') + '</td>' +
           '<td>' + escapeHtml(u.telefon || '') + '</td>' +
@@ -259,7 +374,9 @@
       document.getElementById('eu-tel').value = u.telefon || '';
       document.getElementById('eu-kc').value = u.email_kontakt || '';
       document.getElementById('eu-role').value = u.role === 'admin' ? 'admin' : (u.role === 'setter' ? 'setter' : 'sales');
+      document.getElementById('eu-photo-file').value = '';
       document.getElementById('m-edit').textContent = '';
+      renderEditPhoto(u.photoUrl || null);
       document.getElementById('edit-panel').classList.add('open');
       document.getElementById('edit-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }

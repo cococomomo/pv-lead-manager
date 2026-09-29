@@ -2,6 +2,7 @@
 
 const { getDb } = require('./database');
 const { encryptSecret, decryptSecret } = require('./secret-crypto');
+const { photoFieldsForProfile } = require('./sales-photo');
 
 function looksLikeEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
@@ -25,7 +26,7 @@ function getProfileRow(username) {
   const db = getDb();
   return db.prepare(`
     SELECT id, username, voller_name, telefon, email_kontakt,
-      smtp_host, smtp_port, smtp_user, smtp_pass
+      smtp_host, smtp_port, smtp_user, smtp_pass, photo_path
     FROM users WHERE lower(username) = lower(?)
   `).get(u) || null;
 }
@@ -41,6 +42,7 @@ function getProfile(username) {
   const passSet = !!(String(row.smtp_pass || '').trim()
     && looksLikeEmail(row.email_kontakt)
     && !!host);
+  const photos = photoFieldsForProfile(row.username, row.photo_path);
   return {
     id: row.id != null ? Number(row.id) : null,
     username: row.username,
@@ -48,6 +50,8 @@ function getProfile(username) {
     telefon: String(row.telefon ?? '').trim(),
     email_kontakt: String(row.email_kontakt ?? '').trim(),
     smtp_pass_configured: passSet,
+    photoUrl: photos.photoUrl,
+    photoPath: photos.photoPath,
   };
 }
 
@@ -157,6 +161,10 @@ function ensureSqliteUserStub(username) {
 function deleteSqliteUserByUsername(username) {
   const un = String(username || '').trim();
   if (!un) return;
+  try {
+    const { deleteSalesPhoto } = require('./sales-photo');
+    deleteSalesPhoto(un);
+  } catch (_) { /* ignore missing photo */ }
   const db = getDb();
   db.prepare('DELETE FROM users WHERE lower(username) = lower(?)').run(un);
 }

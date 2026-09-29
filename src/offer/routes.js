@@ -58,6 +58,10 @@ function resolveVertrieb(req, getProfile, override = {}) {
     name: (override.name || prof.voller_name || process.env.MY_NAME || 'Cosimo Lippe').trim(),
     email: (override.email || prof.email_kontakt || process.env.MY_EMAIL || 'vertrieb@noortec.at').trim(),
     phone: (override.phone || prof.telefon || process.env.MY_PHONE || '+43 676 707 55 25').trim(),
+    /** Stable HTTP path for UI; null if no uploaded photo. PDF sibling: prefer photoPath. */
+    photoUrl: override.photoUrl != null ? (override.photoUrl || null) : (prof.photoUrl || null),
+    /** Relative filesystem path from project root for pdfkit; null if none. */
+    photoPath: override.photoPath != null ? (override.photoPath || null) : (prof.photoPath || null),
   };
 }
 
