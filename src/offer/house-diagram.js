@@ -2,12 +2,14 @@
 
 /**
  * House system diagram for „Auf einen Blick“.
- * Base art: house-system-diagram.png (Useini-style reference).
+ * Base art: house-system-diagram.png (customer-supplied reference).
  *
- * Always full color (Noortec does not sell these / always present):
+ * Always full color (never B&W) — Noortec does not sell / always present:
  *   Öffentliches Netz, utility Smart Meter (Zähler), Haupt-Verteilerkasten,
  *   Allgemeine Hausverbraucher, house shell.
- * Offer products: color if in this quote, else grey.
+ *
+ * Sellable products: full color if in this offer; otherwise pale black-and-white
+ * so it is obvious they are not part of the quote.
  */
 
 const fs = require('fs');
@@ -17,28 +19,27 @@ const { PNG } = require('pngjs');
 const BASE = path.join(__dirname, 'assets', 'products', 'house-system-diagram.png');
 
 /**
- * Normalized regions [x0,y0,x1,y1] on the 1536×1024 reference.
- * Include nearby labels / local arrows so greying reads clearly.
+ * Normalized regions [x0,y0,x1,y1] on the 1536×1024 reference graphic.
+ * Boxes include nearby labels / local feed arrows.
  */
 const REGIONS = {
-  // Always-on context — never greyed (utility Smart Meter ≠ SigenStor product)
-  netz: [0.00, 0.28, 0.13, 0.72],
-  smartMeter: [0.11, 0.36, 0.29, 0.70],
-  verteiler: [0.52, 0.36, 0.68, 0.64],
-  hausverbraucher: [0.78, 0.72, 0.99, 0.99],
+  // Always-on context — never muted
+  netz: [0.01, 0.20, 0.14, 0.56],
+  smartMeter: [0.13, 0.26, 0.27, 0.56], // utility/grid Zähler (≠ SigenStor product)
+  verteiler: [0.52, 0.28, 0.69, 0.60],
+  hausverbraucher: [0.60, 0.66, 0.88, 0.96],
 
   // Offer-dependent sellable products
-  notstrom: [0.26, 0.32, 0.43, 0.64],
-  inverter: [0.37, 0.20, 0.56, 0.50],
-  battery: [0.35, 0.48, 0.56, 0.80],
-  pv: [0.40, 0.00, 0.74, 0.30],
-  // Include AC feed arrows from Verteiler so unused loads grey with their products
-  waermepumpe: [0.62, 0.14, 0.94, 0.50],
-  wallbox: [0.62, 0.44, 0.88, 0.76],
-  ev: [0.78, 0.38, 0.99, 0.82],
+  notstrom: [0.24, 0.18, 0.40, 0.54],
+  pv: [0.30, 0.00, 0.64, 0.30],
+  inverter: [0.35, 0.26, 0.54, 0.54],
+  battery: [0.34, 0.48, 0.56, 0.80],
+  waermepumpe: [0.68, 0.08, 0.94, 0.44],
+  wallbox: [0.66, 0.40, 0.86, 0.70],
+  ev: [0.80, 0.36, 0.99, 0.74],
 };
 
-/** Sellable product keys that may be greyed when not in the offer. */
+/** Sellable product keys muted when not in the offer. */
 const PRODUCT_KEYS = [
   'pv',
   'inverter',
@@ -74,7 +75,6 @@ function includedOptionKeys(offer) {
   if (Array.isArray(cfg.inkludierteOptionen)) {
     cfg.inkludierteOptionen.forEach((k) => keys.add(String(k).toLowerCase()));
   }
-  // optionen with mode=fix may only appear in preis.inkludiert after computeOffer
   if (Array.isArray(cfg.optionen)) {
     for (const o of cfg.optionen) {
       if (o && o.mode === 'fix' && o.key) keys.add(String(o.key).toLowerCase());
@@ -89,7 +89,7 @@ function namesMatch(names, re) {
 
 /**
  * Resolve which diagram parts are in color for this offer.
- * @returns {{ flags: Record<string, boolean>, greyKeys: string[] }}
+ * @returns {{ flags: Record<string, boolean>, greyKeys: string[], alwaysColor: string[] }}
  */
 function resolveHouseDiagramSelection(offer) {
   const cfg = (offer && offer.config) || {};
@@ -110,7 +110,6 @@ function resolveHouseDiagramSelection(offer) {
     || !!(cfg.inverter)
     || namesMatch(names, /wechselrichter|hybrid|inverter|gen24|sigenstor ec|sun2000/);
 
-  // Notstrom / Gateway / Umschaltbox — sellable product (not the utility meter)
   const hasNotstrom = inkl.has('notstrom')
     || namesMatch(names, /notstrom|umschalt|gateway|netztren|backup.?box/);
 
@@ -122,16 +121,13 @@ function resolveHouseDiagramSelection(offer) {
     || !!(cfg.klima && (cfg.klima.enabled || cfg.klima.packageId
       || (Array.isArray(cfg.klima) && cfg.klima.length)));
 
-  // EV visual follows Wallbox (no separate offer line)
   const hasEv = hasWallbox;
 
   const flags = {
-    // Always color — not sellable / always present
     netz: true,
-    smartMeter: true, // utility/grid Zähler — unrelated to SigenStor Smart Meter line item
+    smartMeter: true, // utility Zähler — never tied to SigenStor Smart Meter line
     verteiler: true,
-    hausverbraucher: true,
-    // Offer products
+    hausverbraucher: true, // Allgemeine Hausverbraucher — always color
     pv: !!hasPv,
     inverter: !!hasInverter,
     battery: !!hasBattery,
@@ -146,20 +142,15 @@ function resolveHouseDiagramSelection(offer) {
 }
 
 /**
- * Strong mute: full desaturate + wash toward slate grey so even light/white
- * product icons (and already-grey hardware) clearly read as „not in offer“.
+ * True pale black-and-white: full desaturate + lighten so missing products
+ * read as obviously „not in this offer“.
  */
 function mutePixel(r, g, b) {
   const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-  // Pull toward #9a9a9a — inactive but still readable
-  const target = 154;
-  const t = 0.78;
-  const muted = gray * (1 - 0.35) + target * 0.35;
-  return {
-    r: Math.round(r * (1 - t) + muted * t),
-    g: Math.round(g * (1 - t) + muted * t),
-    b: Math.round(b * (1 - t) + muted * t),
-  };
+  // Blend grayscale toward light grey (~#d0d0d0) — blass / schwarz-weiß
+  const pale = Math.min(235, gray * 0.35 + 210 * 0.65);
+  const v = Math.round(pale);
+  return { r: v, g: v, b: v };
 }
 
 function applyGreyRegions(png, greyKeys) {
@@ -178,7 +169,7 @@ function applyGreyRegions(png, greyKeys) {
         const r = png.data[i];
         const g = png.data[i + 1];
         const b = png.data[i + 2];
-        // Keep pure page white; mute everything else in the box (incl. labels)
+        // Keep pure page white clean
         if (r >= 252 && g >= 252 && b >= 252) continue;
         const { r: nr, g: ng, b: nb } = mutePixel(r, g, b);
         png.data[i] = nr;
@@ -189,10 +180,6 @@ function applyGreyRegions(png, greyKeys) {
   }
 }
 
-/**
- * Render diagram PNG buffer for this offer (full color + greyed inactive parts).
- * Falls back to raw base file bytes if pngjs fails.
- */
 function renderHouseDiagramPng(offer) {
   if (!fs.existsSync(BASE)) return null;
   const { greyKeys } = resolveHouseDiagramSelection(offer);
@@ -208,7 +195,6 @@ function renderHouseDiagramPng(offer) {
   }
 }
 
-/** Write rendered diagram to a temp path for pdfkit (returns path or null). */
 function writeHouseDiagramTemp(offer, tmpDir = null) {
   const buf = renderHouseDiagramPng(offer);
   if (!buf) return null;
