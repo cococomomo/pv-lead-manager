@@ -21,6 +21,8 @@ const {
   getLeadsSheetDebug,
   setLeadStatus,
   getLeadByEmail,
+  getLeadById,
+  searchLeads,
   setLeadAssignedToUserId,
   countLeadsMissingMapCoords,
   getLeadsMissingMapCoordsList,
@@ -1367,7 +1369,7 @@ app.get(['/admin/users', '/admin/users/'], (req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin.html'));
 });
 
-mountOfferRoutes(app, { getProfile, getLeadByEmail });
+mountOfferRoutes(app, { getProfile, getLeadByEmail, getLeadById, searchLeads });
 mountLayoutOfferPersistRoutes(app);
 
 app.use(express.static(path.join(__dirname, '../public'), {

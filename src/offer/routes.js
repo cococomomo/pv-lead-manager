@@ -143,13 +143,37 @@ function maybeBumpCounter(angebotsnummer) {
   if (Number.isFinite(used) && year === cur.year && used >= cur.next) writeCounter(used + 1, year);
 }
 
+/** Lead-Zeile → Kundendaten für die Angebotsmaske. */
+function leadToOfferCustomerPayload(lead) {
+  if (!lead) return null;
+  const raw = String(lead['Nachname + Vorname'] || lead.namen || '').trim();
+  const names = resolveCustomerNames({ name: raw });
+  return {
+    vorname: names.vorname,
+    nachname: names.nachname,
+    name: names.displayName || raw,
+    street: String(lead['Straße'] || lead.strasse || '').trim(),
+    zip: String(lead.PLZ || lead.plz || '').trim(),
+    city: String(lead.Ort || lead.ort || '').trim(),
+    email: String(lead['E-Mail'] || lead.email || '').trim(),
+    phone: String(lead.Telefon || lead.telefon || '').trim(),
+  };
+}
+
+function leadIdFromLead(lead) {
+  if (!lead) return null;
+  if (lead.pvlDbId != null) return Number(lead.pvlDbId);
+  if (lead.id != null) return Number(lead.id);
+  return null;
+}
+
 /**
  * Registriert alle Angebots-Routen auf der bestehenden Express-App.
  * @param {import('express').Express} app
- * @param {{ getProfile: Function, getLeadByEmail: Function }} deps
+ * @param {{ getProfile: Function, getLeadByEmail: Function, getLeadById?: Function, searchLeads?: Function }} deps
  */
 function mountOfferRoutes(app, deps) {
-  const { getProfile, getLeadByEmail } = deps;
+  const { getProfile, getLeadByEmail, getLeadById, searchLeads } = deps;
 
   /** Admin per Session-Rolle oder Bearer ADMIN_TOKEN. */
   function isAdmin(req) {
@@ -275,30 +299,53 @@ function mountOfferRoutes(app, deps) {
   // Lead-Daten für Vorbefüllung ("Angebot senden" beim Kunden)
   app.get('/api/offer/lead', async (req, res) => {
     const email = String(req.query.email || '').trim();
-    if (!email) return res.status(400).json({ error: 'email erforderlich' });
+    const leadIdQ = req.query.leadId != null ? String(req.query.leadId).trim() : '';
+    if (!email && !leadIdQ) return res.status(400).json({ error: 'email oder leadId erforderlich' });
     try {
-      const lead = await getLeadByEmail(email);
+      let lead = null;
+      if (leadIdQ && typeof getLeadById === 'function') {
+        lead = await getLeadById(leadIdQ);
+      }
+      if (!lead && email) lead = await getLeadByEmail(email);
       if (!lead) return res.status(404).json({ error: 'Lead nicht gefunden' });
       const info = [lead.Info, lead.Notizen].filter(Boolean).join(' \n').trim();
       res.json({
-        customer: (() => {
-          const raw = String(lead['Nachname + Vorname'] || '').trim();
-          const names = resolveCustomerNames({ name: raw });
-          return {
-            vorname: names.vorname,
-            nachname: names.nachname,
-            name: names.displayName || raw,
-            street: String(lead['Straße'] || '').trim(),
-            zip: String(lead.PLZ || '').trim(),
-            city: String(lead.Ort || '').trim(),
-            email: String(lead['E-Mail'] || '').trim(),
-            phone: String(lead.Telefon || '').trim(),
-          };
-        })(),
-        leadId: lead.pvlDbId != null ? Number(lead.pvlDbId) : (lead.id != null ? Number(lead.id) : null),
+        customer: leadToOfferCustomerPayload(lead),
+        leadId: leadIdFromLead(lead),
         info,
       });
     } catch (err) {
+      res.status(500).json({ error: err.message || String(err) });
+    }
+  });
+
+  // Kundensuche in der Angebotserstellung (Name, E-Mail, Telefon, Adresse)
+  app.get('/api/offer/customers/search', (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ ok: true, results: [] });
+    if (typeof searchLeads !== 'function') {
+      return res.status(501).json({ error: 'Kundensuche nicht verfügbar' });
+    }
+    try {
+      const limit = Math.min(25, Number(req.query.limit) || 12);
+      const leads = searchLeads(q, { limit });
+      const results = leads.map((lead) => {
+        const customer = leadToOfferCustomerPayload(lead);
+        const addr = [customer.street, [customer.zip, customer.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        const labelParts = [customer.name || customer.email || 'Ohne Name'];
+        if (customer.email) labelParts.push(customer.email);
+        if (customer.phone) labelParts.push(customer.phone);
+        if (addr) labelParts.push(addr);
+        return {
+          leadId: leadIdFromLead(lead),
+          customer,
+          label: labelParts.join(' · '),
+          info: [lead.Info, lead.Notizen].filter(Boolean).join(' \n').trim(),
+        };
+      });
+      res.json({ ok: true, results });
+    } catch (err) {
+      console.error('[NOORTEC] /api/offer/customers/search:', err.message);
       res.status(500).json({ error: err.message || String(err) });
     }
   });

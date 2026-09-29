@@ -614,6 +614,74 @@ async function getLeadByEmail(email) {
   return row ? dbRowToApiLead(row) : null;
 }
 
+/** Aktiver Lead per SQLite-Id. */
+async function getLeadById(id) {
+  const idNum = parseInt(String(id), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) return null;
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT * FROM leads
+    WHERE id = ? AND (archived_at IS NULL OR archived_at = '')
+    LIMIT 1
+  `).get(idNum);
+  return row ? dbRowToApiLead(row) : null;
+}
+
+/**
+ * Kundensuche für Angebotserstellung: Name, E-Mail, Telefon, Adresse (Straße/PLZ/Ort).
+ * @param {string} query
+ * @param {{ limit?: number }} [opts]
+ * @returns {ReturnType<typeof dbRowToApiLead>[]}
+ */
+function searchLeads(query, opts = {}) {
+  const raw = String(query || '').trim();
+  if (raw.length < 2) return [];
+  const limit = Math.min(25, Math.max(1, Number(opts.limit) || 15));
+  // LIKE-Wildcards im Nutzerinput entschärfen
+  const safe = raw.toLowerCase().replace(/[%_\\]/g, '');
+  if (safe.length < 2) return [];
+  const like = `%${safe}%`;
+  const phoneDigits = raw.replace(/\D/g, '');
+  const db = getDb();
+
+  let rows;
+  if (phoneDigits.length >= 3) {
+    rows = db.prepare(`
+      SELECT * FROM leads
+      WHERE (archived_at IS NULL OR archived_at = '')
+        AND (
+          lower(ifnull(namen, '')) LIKE @like
+          OR lower(ifnull(email, '')) LIKE @like
+          OR lower(ifnull(telefon, '')) LIKE @like
+          OR lower(ifnull(strasse, '')) LIKE @like
+          OR lower(ifnull(plz, '')) LIKE @like
+          OR lower(ifnull(ort, '')) LIKE @like
+          OR lower(trim(ifnull(strasse, '')) || ' ' || trim(ifnull(plz, '')) || ' ' || trim(ifnull(ort, ''))) LIKE @like
+          OR replace(replace(replace(replace(ifnull(telefon, ''), ' ', ''), '-', ''), '/', ''), '+', '') LIKE @phoneLike
+        )
+      ORDER BY datetime(COALESCE(NULLIF(trim(last_updated), ''), created_at, '1970-01-01')) DESC, id DESC
+      LIMIT @limit
+    `).all({ like, phoneLike: `%${phoneDigits}%`, limit });
+  } else {
+    rows = db.prepare(`
+      SELECT * FROM leads
+      WHERE (archived_at IS NULL OR archived_at = '')
+        AND (
+          lower(ifnull(namen, '')) LIKE @like
+          OR lower(ifnull(email, '')) LIKE @like
+          OR lower(ifnull(telefon, '')) LIKE @like
+          OR lower(ifnull(strasse, '')) LIKE @like
+          OR lower(ifnull(plz, '')) LIKE @like
+          OR lower(ifnull(ort, '')) LIKE @like
+          OR lower(trim(ifnull(strasse, '')) || ' ' || trim(ifnull(plz, '')) || ' ' || trim(ifnull(ort, ''))) LIKE @like
+        )
+      ORDER BY datetime(COALESCE(NULLIF(trim(last_updated), ''), created_at, '1970-01-01')) DESC, id DESC
+      LIMIT @limit
+    `).all({ like, limit });
+  }
+  return rows.map(dbRowToApiLead);
+}
+
 /**
  * Vertriebler-Zuweisung (SQLite `users.id`); setzt `betreuer` auf Anzeigename.
  * @param {string|null|undefined} email — Lead-E-Mail
@@ -891,6 +959,8 @@ module.exports = {
   getLeadsSheetDebug,
   setLeadStatus,
   getLeadByEmail,
+  getLeadById,
+  searchLeads,
   setLeadAssignedToUserId,
   countLeadsMissingMapCoords,
   getLeadsMissingMapCoordsList,
