@@ -29,14 +29,14 @@ const REGIONS = {
   verteiler: [0.54, 0.32, 0.67, 0.56],
   hausverbraucher: [0.66, 0.72, 0.84, 0.94],
 
-  // Sellable products — tight around glyph + caption
-  notstrom: [0.275, 0.28, 0.375, 0.50],
+  // Sellable products — tight around glyph + caption (not surrounding arrows)
+  notstrom: [0.275, 0.28, 0.375, 0.54],
   pv: [0.34, 0.02, 0.58, 0.26],
   inverter: [0.38, 0.30, 0.51, 0.50],
   battery: [0.38, 0.52, 0.52, 0.74],
-  waermepumpe: [0.74, 0.14, 0.91, 0.40],
-  wallbox: [0.72, 0.44, 0.84, 0.66],
-  ev: [0.84, 0.40, 0.97, 0.68],
+  waermepumpe: [0.74, 0.14, 0.92, 0.42],
+  wallbox: [0.72, 0.44, 0.85, 0.70],
+  ev: [0.84, 0.40, 0.98, 0.72],
 };
 
 /** Sellable product keys muted when not in the offer. */
@@ -142,33 +142,147 @@ function resolveHouseDiagramSelection(offer) {
 }
 
 /**
- * Pale black-and-white for component pixels only.
+ * Pale black-and-white for icon/label ink (strong enough to read as “not in offer”).
  */
 function mutePixel(r, g, b) {
   const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-  const pale = Math.min(235, gray * 0.35 + 210 * 0.65);
+  // Lift toward paper white so muted icons look washed-out, not just darker grey
+  const pale = Math.min(238, gray * 0.22 + 218 * 0.78);
   const v = Math.round(pale);
   return { r: v, g: v, b: v };
 }
 
-/** Skip arrows, house shell, and page background — mute only icon/label ink. */
-function shouldProtectInfrastructure(r, g, b) {
-  // Page white
-  if (r >= 250 && g >= 250 && b >= 250) return true;
-  // Stromfluss arrows (diagram blue ~ rgb(46,110,185))
-  if (b > r + 16 && b > g + 6 && b > 75) return true;
+/** Near-white / soft house wash — never mute. */
+function isBackgroundWash(r, g, b) {
+  if (r >= 248 && g >= 248 && b >= 248) return true;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const sat = max - min;
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  // Light house outline / soft fill (neutral, bright)
   if (sat < 22 && lum > 200) return true;
-  // Soft house shadow wash
   if (sat < 16 && lum > 185) return true;
   return false;
 }
 
-function applyGreyRegions(png, greyKeys) {
+/** Candidate Stromfluss blue (tight — matches thick flow arrows ~rgb(5,104,219)). */
+function isFlowBlueCandidate(r, g, b) {
+  return b >= 175 && r <= 110 && g >= 60 && g <= 175 && (b - r) >= 70 && (b - g) >= 30;
+}
+
+/**
+ * Flood-fill flow-blue components. A component is treated as a Stromfluss arrow
+ * only if it is large/elongated AND extends outside the mute box (true flows),
+ * so blue icon accents (Blitz etc.) inside the box still get muted.
+ */
+function collectBlueComponents(png) {
+  const w = png.width;
+  const h = png.height;
+  const n = w * h;
+  const cand = new Uint8Array(n);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = (w * y + x) << 2;
+      if (isFlowBlueCandidate(png.data[i], png.data[i + 1], png.data[i + 2])) {
+        cand[y * w + x] = 1;
+      }
+    }
+  }
+  const label = new Int32Array(n);
+  const comps = []; // { count, minX, maxX, minY, maxY, pixels: Int32Array of indices }
+  const seen = new Uint8Array(n);
+  const qx = new Int32Array(n);
+  const qy = new Int32Array(n);
+  let labelId = 0;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const start = y * w + x;
+      if (!cand[start] || seen[start]) continue;
+      labelId += 1;
+      let qh = 0;
+      let qt = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt += 1;
+      seen[start] = 1;
+      let minX = x;
+      let maxX = x;
+      let minY = y;
+      let maxY = y;
+      const pix = [];
+      while (qh < qt) {
+        const cx = qx[qh];
+        const cy = qy[qh];
+        qh += 1;
+        const idx = cy * w + cx;
+        pix.push(idx);
+        label[idx] = labelId;
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            if (!dx && !dy) continue;
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const ni = ny * w + nx;
+            if (!cand[ni] || seen[ni]) continue;
+            seen[ni] = 1;
+            qx[qt] = nx;
+            qy[qt] = ny;
+            qt += 1;
+          }
+        }
+      }
+      comps.push({
+        id: labelId,
+        count: pix.length,
+        minX,
+        maxX,
+        minY,
+        maxY,
+        pixels: pix,
+      });
+    }
+  }
+  return { w, h, label, comps };
+}
+
+function buildArrowMaskForBox(components, boxPx) {
+  const { w, h, comps } = components;
+  const n = w * h;
+  const mask = new Uint8Array(n);
+  const [x0, y0, x1, y1] = boxPx;
+  for (const c of comps) {
+    const bw = c.maxX - c.minX + 1;
+    const bh = c.maxY - c.minY + 1;
+    const longAxis = Math.max(bw, bh);
+    if (c.count < 160 || longAxis < 32) continue;
+    // Must extend outside this mute box → real flow, not an icon-local blitz
+    const outside = c.minX < x0 - 2 || c.maxX > x1 + 2 || c.minY < y0 - 2 || c.maxY > y1 + 2;
+    if (!outside) continue;
+    for (let k = 0; k < c.pixels.length; k += 1) mask[c.pixels[k]] = 1;
+  }
+  // Dilate 1px for anti-alias
+  const dil = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) {
+    if (!mask[i]) continue;
+    const x = i % w;
+    const y = (i / w) | 0;
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        dil[ny * w + nx] = 1;
+      }
+    }
+  }
+  return dil;
+}
+
+function applyGreyRegions(png, greyKeys, components) {
   const w = png.width;
   const h = png.height;
   for (const key of greyKeys) {
@@ -178,13 +292,24 @@ function applyGreyRegions(png, greyKeys) {
     const y0 = Math.max(0, Math.floor(box[1] * h));
     const x1 = Math.min(w, Math.ceil(box[2] * w));
     const y1 = Math.min(h, Math.ceil(box[3] * h));
+    const arrowMask = buildArrowMaskForBox(components, [x0, y0, x1, y1]);
+    // Icon core: mute ALL ink (incl. blue blitz). Only the rim may keep arrow strokes.
+    const insetX = Math.max(4, Math.round((x1 - x0) * 0.14));
+    const insetY = Math.max(4, Math.round((y1 - y0) * 0.12));
+    const cx0 = x0 + insetX;
+    const cy0 = y0 + insetY;
+    const cx1 = x1 - insetX;
+    const cy1 = y1 - insetY;
     for (let y = y0; y < y1; y += 1) {
       for (let x = x0; x < x1; x += 1) {
-        const i = (w * y + x) << 2;
+        const pi = y * w + x;
+        const inCore = x >= cx0 && x < cx1 && y >= cy0 && y < cy1;
+        if (!inCore && arrowMask[pi]) continue; // Stromfluss in the rim stays
+        const i = pi << 2;
         const r = png.data[i];
         const g = png.data[i + 1];
         const b = png.data[i + 2];
-        if (shouldProtectInfrastructure(r, g, b)) continue;
+        if (isBackgroundWash(r, g, b)) continue;
         const { r: nr, g: ng, b: nb } = mutePixel(r, g, b);
         png.data[i] = nr;
         png.data[i + 1] = ng;
@@ -201,7 +326,8 @@ function renderHouseDiagramPng(offer) {
     const raw = fs.readFileSync(BASE);
     if (!greyKeys.length) return raw;
     const png = PNG.sync.read(raw);
-    applyGreyRegions(png, greyKeys);
+    const components = collectBlueComponents(png);
+    applyGreyRegions(png, greyKeys, components);
     return PNG.sync.write(png);
   } catch (err) {
     console.warn('[NOORTEC] house-diagram render:', err.message);
