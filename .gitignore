@@ -20,6 +20,7 @@ data/offers/
 data/app-settings.json
 data/offer-counter.json
 data/vertriebler.json
+data/sales-photos/
 data/*.backup*
 data/*.safety*
 

@@ -52,37 +52,132 @@ function registerOfferFonts(doc) {
   }
 }
 
-/** Resolve Vertriebler-Foto: photoPath (fs) → photoUrl local map → fallback product asset. */
+const SALES_PHOTOS_DIR = path.join(ROOT, 'data', 'sales-photos');
+const SALES_PHOTO_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
+
+/** Filename stem matching PR #4 upload (`safePhotoStem`). */
+function salesPhotoStem(username) {
+  const raw = String(username || '').trim().toLowerCase();
+  const stem = raw.replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^_+|_+$/g, '');
+  return stem || 'user';
+}
+
+function absMaybe(p) {
+  if (!p) return null;
+  const s = String(p).trim();
+  if (!s) return null;
+  return path.isAbsolute(s) ? s : path.join(ROOT, s);
+}
+
+/**
+ * Newest file in data/sales-photos for this username (by mtime).
+ * Survives extension changes on replace (png→jpg) without stale path.
+ */
+function findNewestSalesPhotoAbs(username) {
+  const u = String(username || '').trim();
+  if (!u || !fs.existsSync(SALES_PHOTOS_DIR)) return null;
+  const stems = new Set([u, u.toLowerCase(), salesPhotoStem(u)]);
+  let best = null;
+  let bestM = -1;
+  let names;
+  try { names = fs.readdirSync(SALES_PHOTOS_DIR); } catch (_) { return null; }
+  for (const name of names) {
+    const ext = path.extname(name).toLowerCase();
+    if (!SALES_PHOTO_EXTS.includes(ext)) continue;
+    const stem = path.basename(name, path.extname(name));
+    const match = [...stems].some((s) => s.toLowerCase() === stem.toLowerCase());
+    if (!match) continue;
+    const abs = path.join(SALES_PHOTOS_DIR, name);
+    let mtime = 0;
+    try { mtime = fs.statSync(abs).mtimeMs; } catch (_) { continue; }
+    if (mtime >= bestM) {
+      bestM = mtime;
+      best = abs;
+    }
+  }
+  return best;
+}
+
+/** Optional DB photo_path (PR #4 column) — ignore if column/schema missing. */
+function tryDbSalesPhotoAbs(username) {
+  const u = String(username || '').trim();
+  if (!u) return null;
+  try {
+    const { getDb } = require('../database');
+    const row = getDb().prepare(
+      'SELECT photo_path FROM users WHERE lower(username) = lower(?)',
+    ).get(u);
+    const rel = row && row.photo_path ? String(row.photo_path).trim() : '';
+    if (!rel) return null;
+    const abs = absMaybe(rel);
+    return abs && fs.existsSync(abs) ? abs : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Resolve Vertriebler-Foto for this render (always from current disk state).
+ * Order: existing photoPath → photoUrl map → DB photo_path → newest data/sales-photos/<user>.*
+ * → baked-in salesPortrait only if nothing else exists.
+ */
 function resolveSalesPhotoPath(vertrieb) {
   const v = vertrieb || {};
-  const candidates = [];
-  if (v.photoPath) {
-    const p = String(v.photoPath);
-    candidates.push(path.isAbsolute(p) ? p : path.join(ROOT, p));
-  }
-  // Sibling UI serves /api/sales-photos/<user>; map to data/sales-photos on disk.
+  const tried = [];
+
+  const push = (p) => {
+    const abs = absMaybe(p);
+    if (abs && !tried.includes(abs)) tried.push(abs);
+  };
+
+  if (v.photoPath) push(v.photoPath);
+
+  let urlUser = null;
   if (v.photoUrl) {
     const u = String(v.photoUrl);
     const m = u.match(/\/api\/sales-photos\/([^/?#]+)/i);
     if (m) {
-      const user = decodeURIComponent(m[1]);
-      for (const ext of ['.jpg', '.jpeg', '.png', '.webp']) {
-        candidates.push(path.join(ROOT, 'data', 'sales-photos', `${user}${ext}`));
+      urlUser = decodeURIComponent(m[1]);
+      for (const ext of SALES_PHOTO_EXTS) {
+        push(path.join(SALES_PHOTOS_DIR, `${urlUser}${ext}`));
+        push(path.join(SALES_PHOTOS_DIR, `${salesPhotoStem(urlUser)}${ext}`));
       }
     } else if (u.startsWith('/') && !u.startsWith('//')) {
-      candidates.push(path.join(ROOT, 'public', u.replace(/^\//, '')));
-      candidates.push(path.join(ROOT, u.replace(/^\//, '')));
+      push(path.join(ROOT, 'public', u.replace(/^\//, '')));
+      push(path.join(ROOT, u.replace(/^\//, '')));
     }
   }
-  if (v.username) {
-    for (const ext of ['.jpg', '.jpeg', '.png', '.webp']) {
-      candidates.push(path.join(ROOT, 'data', 'sales-photos', `${v.username}${ext}`));
-    }
+
+  for (const p of tried) {
+    if (fs.existsSync(p)) return p;
   }
-  for (const p of candidates) {
-    if (p && fs.existsSync(p)) return p;
-  }
+
+  const user = v.username || urlUser;
+  const fromDb = tryDbSalesPhotoAbs(user);
+  if (fromDb) return fromDb;
+
+  const newest = findNewestSalesPhotoAbs(user);
+  if (newest) return newest;
+
   return productAbs('salesPortrait');
+}
+
+/** Rel path + URL for offer.meta when a disk photo exists (upload code may be on another PR). */
+function salesPhotoMetaForUsername(username, photoPath, photoUrl) {
+  const abs = resolveSalesPhotoPath({
+    username,
+    photoPath: photoPath || null,
+    photoUrl: photoUrl || null,
+  });
+  const portrait = productAbs('salesPortrait');
+  if (!abs || (portrait && path.resolve(abs) === path.resolve(portrait))) {
+    return { photoPath: photoPath || null, photoUrl: photoUrl || null };
+  }
+  const rel = path.relative(ROOT, abs).split(path.sep).join('/');
+  const url = username
+    ? `/api/sales-photos/${encodeURIComponent(String(username).trim())}`
+    : (photoUrl || null);
+  return { photoPath: rel, photoUrl: url };
 }
 
 /**
@@ -292,14 +387,20 @@ function drawSalesBadge(doc, vertrieb, photoPath, x, y, opts = {}) {
   const badgeH = opts.height || 52;
   doc.save().roundedRect(x, y, badgeW, badgeH, 10).fill('#ececec').restore();
   let textX = x + 12;
-  if (photoPath && fs.existsSync(photoPath)) {
+  // Re-resolve on every badge draw so a replaced file is never skipped for a stale path.
+  const resolved = resolveSalesPhotoPath({
+    ...v,
+    photoPath: photoPath || v.photoPath,
+  });
+  if (resolved && fs.existsSync(resolved)) {
     try {
       const side = 32;
       const cx = x + 10 + side / 2;
       const cy = y + badgeH / 2;
       doc.save();
       doc.circle(cx, cy, side / 2).clip();
-      const img = doc.openImage(photoPath);
+      // Buffer load — no PDFKit path-cache of a previous portrait at the same filename
+      const img = doc.openImage(fs.readFileSync(resolved));
       // Cover-fit (kein Stauchen) in den Kreis
       const scale = Math.max(side / Math.max(1, img.width), side / Math.max(1, img.height));
       const dw = img.width * scale;
@@ -339,7 +440,7 @@ function drawCoverPage(doc, offer, customer, salesPhoto) {
   const v = (offer.meta && offer.meta.vertrieb) || {};
   const badgeW = 210;
   const badgeX = PAGE.width - MARGIN - badgeW;
-  drawSalesBadge(doc, v, salesPhoto || productAbs('salesPortrait'), badgeX, 32, { width: badgeW, height: 52 });
+  drawSalesBadge(doc, v, salesPhoto, badgeX, 32, { width: badgeW, height: 52 });
 
   // Title
   let y = 130;
@@ -1411,4 +1512,7 @@ module.exports = {
   DEFAULT_BULLETS,
   DEFAULT_INTRO,
   collectLayoutPages,
+  resolveSalesPhotoPath,
+  salesPhotoMetaForUsername,
+  findNewestSalesPhotoAbs,
 };

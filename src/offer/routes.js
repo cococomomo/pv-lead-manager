@@ -7,7 +7,7 @@ const express = require('express');
 const catalog = require('./catalog');
 const { getLlmPublic, saveLlmSettings, getLlmConfig } = require('../app-settings');
 const { parseOfferCommand, chatCompletionJson } = require('./ai-offer');
-const { generateOfferPdf, appendVollmacht } = require('./pdf');
+const { generateOfferPdf, appendVollmacht, salesPhotoMetaForUsername } = require('./pdf');
 const { buildEmailText, buildEmailTextAI, buildMailtoUrl, safeFileBase, buildSummaryTitle, buildOfferFilenameBase } = require('./email');
 const { resolveCustomerNames } = require('./names');
 const klimaLeads = require('../klima-leads');
@@ -61,15 +61,21 @@ function resolveVertrieb(req, getProfile, override = {}) {
   try { prof = getProfile(req.session.user.username) || {}; } catch (_) { /* ignore */ }
   const o = override && typeof override === 'object' ? override : {};
   // Sibling sales-photo upload: photoPath (fs) / photoUrl (HTTP). Accept either from body or profile.
-  const photoPath = (o.photoPath != null ? o.photoPath : prof.photoPath) || null;
-  const photoUrl = (o.photoUrl != null ? o.photoUrl : prof.photoUrl) || null;
+  let photoPath = (o.photoPath != null ? o.photoPath : prof.photoPath) || null;
+  let photoUrl = (o.photoUrl != null ? o.photoUrl : prof.photoUrl) || null;
+  const username = (o.username || prof.username
+    || (req.session && req.session.user && req.session.user.username) || '').trim() || null;
+  // If profile/body omitted photo fields (upload PR not merged yet), still attach current disk photo.
+  const meta = salesPhotoMetaForUsername(username, photoPath, photoUrl);
+  if (meta.photoPath) photoPath = meta.photoPath;
+  if (meta.photoUrl) photoUrl = meta.photoUrl;
   return {
     name: (o.name || prof.voller_name || process.env.MY_NAME || 'Cosimo Lippe').trim(),
     email: (o.email || prof.email_kontakt || process.env.MY_EMAIL || 'vertrieb@noortec.at').trim(),
     phone: (o.phone || prof.telefon || process.env.MY_PHONE || '+43 676 707 55 25').trim(),
     photoPath: photoPath ? String(photoPath).trim() : null,
     photoUrl: photoUrl ? String(photoUrl).trim() : null,
-    username: (o.username || prof.username || (req.session && req.session.user && req.session.user.username) || '').trim() || null,
+    username,
   };
 }
 
