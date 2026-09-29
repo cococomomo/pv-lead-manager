@@ -3,7 +3,11 @@
 /**
  * House system diagram for „Auf einen Blick“.
  * Base art: house-system-diagram.png (Useini-style reference).
- * Selected offer components stay in color; others are desaturated.
+ *
+ * Always full color (Noortec does not sell these / always present):
+ *   Öffentliches Netz, utility Smart Meter (Zähler), Haupt-Verteilerkasten,
+ *   Allgemeine Hausverbraucher, house shell.
+ * Offer products: color if in this quote, else grey.
  */
 
 const fs = require('fs');
@@ -17,13 +21,13 @@ const BASE = path.join(__dirname, 'assets', 'products', 'house-system-diagram.pn
  * Include nearby labels / local arrows so greying reads clearly.
  */
 const REGIONS = {
-  // Always-on context (never greyed)
+  // Always-on context — never greyed (utility Smart Meter ≠ SigenStor product)
   netz: [0.00, 0.28, 0.13, 0.72],
+  smartMeter: [0.11, 0.36, 0.29, 0.70],
   verteiler: [0.52, 0.36, 0.68, 0.64],
   hausverbraucher: [0.78, 0.72, 0.99, 0.99],
 
-  // Offer-dependent products
-  smartMeter: [0.11, 0.36, 0.29, 0.70],
+  // Offer-dependent sellable products
   notstrom: [0.26, 0.32, 0.43, 0.64],
   inverter: [0.37, 0.20, 0.56, 0.50],
   battery: [0.35, 0.48, 0.56, 0.80],
@@ -34,17 +38,19 @@ const REGIONS = {
   ev: [0.78, 0.38, 0.99, 0.82],
 };
 
-/** Product keys that can be greyed (context keys omitted). */
+/** Sellable product keys that may be greyed when not in the offer. */
 const PRODUCT_KEYS = [
   'pv',
   'inverter',
   'battery',
-  'smartMeter',
   'notstrom',
   'waermepumpe',
   'wallbox',
   'ev',
 ];
+
+/** Context keys — always full color. */
+const ALWAYS_COLOR_KEYS = ['netz', 'smartMeter', 'verteiler', 'hausverbraucher'];
 
 function itemNames(offer) {
   const names = [];
@@ -104,11 +110,7 @@ function resolveHouseDiagramSelection(offer) {
     || !!(cfg.inverter)
     || namesMatch(names, /wechselrichter|hybrid|inverter|gen24|sigenstor ec|sun2000/);
 
-  // Smart Meter: in Speicherstückliste, or explicit option / nachrüstung line
-  const hasSmartMeter = hasBattery
-    || inkl.has('smartmeter')
-    || namesMatch(names, /smart.?meter|zähler|zaehler|stromsensor|sigen.?sensor/);
-
+  // Notstrom / Gateway / Umschaltbox — sellable product (not the utility meter)
   const hasNotstrom = inkl.has('notstrom')
     || namesMatch(names, /notstrom|umschalt|gateway|netztren|backup.?box/);
 
@@ -124,13 +126,15 @@ function resolveHouseDiagramSelection(offer) {
   const hasEv = hasWallbox;
 
   const flags = {
+    // Always color — not sellable / always present
     netz: true,
+    smartMeter: true, // utility/grid Zähler — unrelated to SigenStor Smart Meter line item
     verteiler: true,
     hausverbraucher: true,
+    // Offer products
     pv: !!hasPv,
     inverter: !!hasInverter,
     battery: !!hasBattery,
-    smartMeter: !!hasSmartMeter,
     notstrom: !!hasNotstrom,
     waermepumpe: !!hasWaermepumpe,
     wallbox: !!hasWallbox,
@@ -138,7 +142,7 @@ function resolveHouseDiagramSelection(offer) {
   };
 
   const greyKeys = PRODUCT_KEYS.filter((k) => !flags[k]);
-  return { flags, greyKeys };
+  return { flags, greyKeys, alwaysColor: ALWAYS_COLOR_KEYS.slice() };
 }
 
 /**
@@ -219,6 +223,7 @@ module.exports = {
   BASE,
   REGIONS,
   PRODUCT_KEYS,
+  ALWAYS_COLOR_KEYS,
   resolveHouseDiagramSelection,
   renderHouseDiagramPng,
   writeHouseDiagramTemp,
