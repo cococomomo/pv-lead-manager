@@ -19,7 +19,8 @@
     "deploy-check": "node scripts/deploy-check.js",
     "compare-csv-sqlite": "node scripts/compare-csv-sqlite.js",
     "fix-missing-coords": "node scripts/fix-missing-coords.js",
-    "renumber-leads-anfrage": "node scripts/renumber-leads-anfrage.js"
+    "renumber-leads-anfrage": "node scripts/renumber-leads-anfrage.js",
+    "test:layout-tilt": "node scripts/test-layout-tilt.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
