@@ -247,19 +247,9 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       y = startContentPage();
       y = drawWirtschaftPage(doc, y, eco);
 
-      // ── Abschluss (Ziel: 2 Seiten): Bestandteile + Preis | Optionals + Unterschrift ──
+      // ── Abschluss (großzügig, i. d. R. 2 Seiten): Liste → Preis+Optionals+Unterschrift ──
       y = startContentPage();
-      y = drawBestandteilePage(doc, y, offer, startContentPage);
-      // Endpreis immer direkt unter der Komponentenliste (neue Seite nur wenn nötig)
-      if (y > CONTENT_BOTTOM - 88) y = startContentPage();
-      else y += 10;
-      y = drawPriceBlock(doc, y, offer.preis);
-      const optionals = offer.optionaleKomponenten || [];
-      const acceptH = estimateAcceptHeight(optionals);
-      // Direkt danach auf derselben Seite, wenn der Block noch Platz hat
-      if (y + 12 + acceptH <= CONTENT_BOTTOM) y += 12;
-      else y = startContentPage();
-      y = drawAcceptPage(doc, y, optionals);
+      y = drawClosingSection(doc, y, offer, startContentPage);
 
       // ── Datenblätter ──
       const sheets = selectDatasheetsForOffer(offer, {
@@ -1058,51 +1048,130 @@ function drawAmortBars(doc, x, y, w, h, yearly) {
   });
 }
 
-function drawBestandteilePage(doc, y, offer, startContentPage) {
-  doc.font(F.bold).fontSize(18).fillColor(COLORS.text)
-    .text('Bestandteile Ihres Angebots', MARGIN, y);
-  y = doc.y + 4;
-  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
-    .text('Alle Komponenten & Dienstleistungen Ihres Angebots.', MARGIN, y, { width: CONTENT_W });
-  y = doc.y + 10;
+/**
+ * Abschluss-Block im Chesky-/Airbnb-Sinn:
+ * – ruhige Hierarchie, großzügige Zeilen, keine schreienden Titel
+ * – Seite 1: Bestandteile (atmen)
+ * – Seite 2: Fortsetzung der Liste falls nötig + Preis + Optionals + Unterschrift unten
+ */
+function drawClosingSection(doc, y, offer, startContentPage) {
+  const optionals = offer.optionaleKomponenten || [];
+  const decisionH = estimateDecisionBlockHeight(optionals);
 
-  // Reihenfolge: PV → Energiespeicher → weitere → Leistungen (kompakt für ≤2 Abschlussseiten)
-  const sections = orderedOverviewSections(offer);
-  for (const section of sections) {
-    if (y > CONTENT_BOTTOM - 56) {
-      y = startContentPage();
-    }
-    doc.font(F.bold).fontSize(10.5).fillColor(COLORS.text).text(section.title, MARGIN, y);
-    y = doc.y + 5;
-    doc.font(F.bold).fontSize(7).fillColor(COLORS.softMuted)
-      .text('NAME', MARGIN, y)
-      .text('TYP', MARGIN + CONTENT_W * 0.58, y)
-      .text('ANZAHL', MARGIN, y, { width: CONTENT_W, align: 'right' });
-    y += 10;
-    for (const item of section.items || []) {
-      if (y > CONTENT_BOTTOM - 16) {
-        y = startContentPage();
-        doc.font(F.bold).fontSize(7).fillColor(COLORS.softMuted)
-          .text('NAME', MARGIN, y).text('TYP', MARGIN + CONTENT_W * 0.58, y)
-          .text('ANZAHL', MARGIN, y, { width: CONTENT_W, align: 'right' });
-        y += 10;
-      }
-      doc.save().lineWidth(0.4).strokeColor(COLORS.rule)
-        .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-      y += 3;
-      const kind = classifyKind(item.name, section.title);
-      const nameH = doc.font(F.regular).fontSize(8.5).heightOfString(item.name || '', { width: CONTENT_W * 0.55 });
-      doc.font(F.regular).fontSize(8.5).fillColor(COLORS.text)
-        .text(item.name || '', MARGIN, y, { width: CONTENT_W * 0.55 });
-      doc.font(F.regular).fontSize(8.5).fillColor(COLORS.text)
-        .text(kind, MARGIN + CONTENT_W * 0.58, y, { width: CONTENT_W * 0.2, lineBreak: false });
-      doc.font(F.regular).fontSize(8.5).fillColor(COLORS.text)
-        .text(item.qty || '', MARGIN, y, { width: CONTENT_W, align: 'right', lineBreak: false });
-      y += Math.max(13, nameH + 4);
-    }
-    y += 6;
+  const list = drawBestandteileList(doc, y, offer, startContentPage, {
+    // Seite 1 füllt sich großzügig; Rest + Preis + Unterschrift auf Seite 2
+    firstPageSoftLimit: CONTENT_TOP + (CONTENT_BOTTOM - CONTENT_TOP) * 0.88,
+  });
+  y = list.y;
+
+  // Signaturzone am Fuß — Entscheidungsinhalt muss darüber enden
+  const sigZone = 52;
+  if (list.pageIndex === 0) {
+    // Kurze Liste: eigene ruhige Entscheidungsseite
+    y = startContentPage();
+  } else if (y + decisionH > CONTENT_BOTTOM - sigZone) {
+    y = startContentPage();
+  } else {
+    y += 24;
   }
-  return y;
+
+  y = drawPriceBlock(doc, y, offer.preis);
+  y += 22;
+  y = drawAcceptBody(doc, y, optionals);
+  drawSignaturePinned(doc);
+  return CONTENT_BOTTOM;
+}
+
+function drawColumnHeaders(doc, y) {
+  doc.font(F.bold).fontSize(8).fillColor(COLORS.softMuted)
+    .text('NAME', MARGIN, y)
+    .text('TYP', MARGIN + CONTENT_W * 0.56, y)
+    .text('ANZAHL', MARGIN, y, { width: CONTENT_W, align: 'right' });
+  return y + 14;
+}
+
+/**
+ * Großzügige Komponentenliste.
+ * firstPageSoftLimit: weicher Umbruch auf Seite 1 (Platz für Entscheidungsseite).
+ * decisionReserve: auf Folgeseiten Platz für Preis+Signatur freihalten.
+ */
+function drawBestandteileList(doc, y, offer, startContentPage, opts = {}) {
+  const firstPageSoftLimit = Number(opts.firstPageSoftLimit) || 0;
+  let pageIndex = 0;
+
+  const pageLimit = () => {
+    if (pageIndex === 0 && firstPageSoftLimit > 0) return firstPageSoftLimit;
+    return CONTENT_BOTTOM;
+  };
+
+  doc.font(F.bold).fontSize(16).fillColor(COLORS.text)
+    .text('Bestandteile Ihres Angebots', MARGIN, y);
+  y = doc.y + 8;
+  doc.font(F.regular).fontSize(11).fillColor(COLORS.muted)
+    .text('Alles, was in Ihrem Angebot enthalten ist — Komponenten und Leistungen.', MARGIN, y, {
+      width: CONTENT_W,
+      lineGap: 2,
+    });
+  y = doc.y + 22;
+
+  const sections = orderedOverviewSections(offer);
+  let openSectionTitle = null;
+
+  const breakPage = (redrawSection) => {
+    y = startContentPage();
+    pageIndex += 1;
+    if (redrawSection && openSectionTitle) {
+      doc.font(F.bold).fontSize(12).fillColor(COLORS.text).text(openSectionTitle, MARGIN, y);
+      y = doc.y + 10;
+      y = drawColumnHeaders(doc, y);
+    }
+  };
+
+  /** @returns {boolean} true wenn umbrochen wurde */
+  const ensureRowSpace = (need, redrawSection = true) => {
+    if (y + need <= pageLimit()) return false;
+    breakPage(redrawSection);
+    return true;
+  };
+
+  for (const section of sections) {
+    openSectionTitle = section.title || '';
+    // Abschnitt nur beginnen, wenn Titel + mind. eine Zeile Platz haben
+    // (sonst leerer Sektionskopf am Seitenende)
+    const brokeBeforeSection = ensureRowSpace(52 + 36, true);
+    if (!brokeBeforeSection) {
+      doc.font(F.bold).fontSize(12).fillColor(COLORS.text).text(openSectionTitle, MARGIN, y);
+      y = doc.y + 10;
+      y = drawColumnHeaders(doc, y);
+    }
+
+    for (const item of section.items || []) {
+      const name = item.name || '';
+      const kind = classifyKind(name, section.title);
+      const nameH = doc.font(F.regular).fontSize(11).heightOfString(name, { width: CONTENT_W * 0.52 });
+      const rowH = Math.max(26, nameH + 14);
+      ensureRowSpace(rowH + 10, true);
+
+      doc.save().lineWidth(0.5).strokeColor(COLORS.rule)
+        .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
+      y += 8;
+      doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
+        .text(name, MARGIN, y, { width: CONTENT_W * 0.52, lineGap: 1.5 });
+      doc.font(F.regular).fontSize(10.5).fillColor(COLORS.muted)
+        .text(kind, MARGIN + CONTENT_W * 0.56, y, { width: CONTENT_W * 0.22, lineBreak: false });
+      doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
+        .text(item.qty || '', MARGIN, y, { width: CONTENT_W, align: 'right', lineBreak: false });
+      y += rowH;
+    }
+    y += 18;
+    openSectionTitle = null;
+  }
+  return { y, pageIndex };
+}
+
+/** @deprecated – use drawClosingSection */
+function drawBestandteilePage(doc, y, offer, startContentPage) {
+  return drawBestandteileList(doc, y, offer, startContentPage, {}).y;
 }
 
 function drawPriceBlock(doc, y, preis) {
@@ -1112,18 +1181,18 @@ function drawPriceBlock(doc, y, preis) {
     [`MwSt. (${((p.mwstRate || 0.2) * 100).toFixed(1).replace('.', ',')} % auf ${p.nettoFmt || formatEUR(p.netto)})`, p.mwstFmt || formatEUR(p.mwst)],
   ];
   rows.forEach(([label, val]) => {
-    doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text).text(label, MARGIN, y);
-    doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
+    doc.font(F.regular).fontSize(11).fillColor(COLORS.text).text(label, MARGIN, y);
+    doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
       .text(val || '—', MARGIN, y, { width: CONTENT_W, align: 'right' });
-    y += 18;
-    doc.save().lineWidth(0.6).strokeColor(COLORS.rule)
+    y += 20;
+    doc.save().lineWidth(0.55).strokeColor(COLORS.rule)
       .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-    y += 8;
+    y += 10;
   });
-  doc.font(F.bold).fontSize(13).fillColor(COLORS.text).text('Gesamtpreis (Brutto)', MARGIN, y);
-  doc.font(F.bold).fontSize(13).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(14).fillColor(COLORS.text).text('Gesamtpreis (Brutto)', MARGIN, y);
+  doc.font(F.bold).fontSize(14).fillColor(COLORS.text)
     .text(p.bruttoFmt || formatEUR(p.brutto), MARGIN, y, { width: CONTENT_W, align: 'right' });
-  return y + 18;
+  return y + 22;
 }
 
 /** @deprecated Alias – Prefer drawPriceBlock directly under the overview list. */
@@ -1131,58 +1200,74 @@ function drawPricePage(doc, y, preis) {
   return drawPriceBlock(doc, y, preis);
 }
 
-function estimateAcceptHeight(optionals = []) {
+function estimateDecisionBlockHeight(optionals = []) {
   const opts = Array.isArray(optionals) ? optionals : [];
-  let h = 18 + 10 + 12 + 10 + 12;
-  if (opts.length) h += 14 + 10 + opts.length * 18 + 10;
-  else h += 14;
-  h += 34; // signature line + label
+  // Nur fließender Inhalt (Unterschrift ist am Seitenfuß gepinnt, zählt nicht in die Flusshöhe)
+  let h = 92; // price block
+  h += 22;
+  h += 16 + 14 + 14 + 16; // accept title + terms
+  if (opts.length) h += 16 + 14 + opts.length * 24 + 8;
+  else h += 8;
+  h += 16; // kleiner Abstand vor Signaturzone
   return h;
 }
 
-/**
- * Akzeptieren-Block: optionale Komponenten (falls vorhanden) + genau eine Unterschriftszeile.
- * Folgt direkt auf den Preis, wenn Platz; sonst eigene Seite.
- */
-function drawAcceptPage(doc, y, optionals = []) {
-  doc.font(F.bold).fontSize(18).fillColor(COLORS.text).text('Angebot akzeptieren', MARGIN, y);
-  y = doc.y + 10;
-  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
-    .text('Zahlungskonditionen : 100% nach Fertigstellung der Installation und Inbetriebnahme', MARGIN, y);
-  y = doc.y + 5;
-  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
-    .text('Liefer- und Montagetermin : ca. 10-14 Wochen nach Bestellung', MARGIN, y);
+function estimateAcceptHeight(optionals = []) {
+  return estimateDecisionBlockHeight(optionals);
+}
+
+/** Akzeptieren-Inhalt ohne Signatur (Signatur wird separat am Seitenfuß verankert). */
+function drawAcceptBody(doc, y, optionals = []) {
+  doc.font(F.bold).fontSize(15).fillColor(COLORS.text).text('Angebot akzeptieren', MARGIN, y);
   y = doc.y + 12;
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
+    .text('Zahlungskonditionen: 100 % nach Fertigstellung der Installation und Inbetriebnahme', MARGIN, y, {
+      width: CONTENT_W,
+    });
+  y = doc.y + 6;
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
+    .text('Liefer- und Montagetermin: ca. 10–14 Wochen nach Bestellung', MARGIN, y, {
+      width: CONTENT_W,
+    });
+  y = doc.y + 16;
 
   const opts = Array.isArray(optionals) ? optionals : [];
   if (opts.length) {
     doc.font(F.bold).fontSize(12).fillColor(COLORS.text).text('Optionale Komponenten', MARGIN, y);
-    y = doc.y + 4;
-    doc.font(F.regular).fontSize(8.5).fillColor(COLORS.muted)
-      .text('Nicht im Gesamtpreis enthalten – auf Wunsch beauftragbar.', MARGIN, y);
-    y = doc.y + 8;
+    y = doc.y + 6;
+    doc.font(F.regular).fontSize(10).fillColor(COLORS.muted)
+      .text('Nicht im Gesamtpreis enthalten — auf Wunsch beauftragbar.', MARGIN, y);
+    y = doc.y + 12;
     for (const opt of opts) {
       const rowY = y;
-      doc.save().lineWidth(1).strokeColor(COLORS.yellow)
-        .roundedRect(MARGIN, rowY + 1, 10, 10, 2).stroke().restore();
-      doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
-        .text(opt.label || '', MARGIN + 18, rowY, { width: CONTENT_W - 120 });
-      doc.font(F.bold).fontSize(9.5).fillColor(COLORS.text)
+      doc.save().lineWidth(1.1).strokeColor(COLORS.yellow)
+        .roundedRect(MARGIN, rowY + 2, 11, 11, 2).stroke().restore();
+      doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
+        .text(opt.label || '', MARGIN + 20, rowY, { width: CONTENT_W - 130 });
+      doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
         .text(formatEUR(opt.price), MARGIN, rowY, { width: CONTENT_W, align: 'right' });
-      y = Math.max(doc.y, rowY + 14) + 4;
+      y = Math.max(doc.y, rowY + 16) + 8;
     }
-    y += 12;
-  } else {
-    y += 16;
   }
+  return y;
+}
 
-  // Unterschrift immer unter dem Inhalt — nie nach oben in Optionals ziehen
-  const sigY = y + 10;
-  doc.save().lineWidth(0.8).strokeColor('#c8c8c8')
+/** Unterschriftszeile fest knapp oberhalb der gelben Footer-Leiste. */
+function drawSignaturePinned(doc) {
+  const sigY = PAGE.height - FOOTER_H - 42;
+  doc.save().lineWidth(0.9).strokeColor('#c8c8c8')
     .moveTo(MARGIN, sigY).lineTo(PAGE.width - MARGIN, sigY).stroke().restore();
-  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.muted)
-    .text('Ort, Datum, Name, Unterschrift', MARGIN, sigY + 6);
-  return sigY + 28;
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.muted)
+    .text('Ort, Datum, Name, Unterschrift', MARGIN, sigY + 8);
+}
+
+/**
+ * Akzeptieren-Seite (Legacy-API): Körper + gepinnte Unterschrift.
+ */
+function drawAcceptPage(doc, y, optionals = []) {
+  y = drawAcceptBody(doc, y, optionals);
+  drawSignaturePinned(doc);
+  return CONTENT_BOTTOM;
 }
 
 function drawDatasheetsPage(doc, y, sheets) {
