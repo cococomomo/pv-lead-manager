@@ -361,7 +361,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     return { x: (p.x - originX) * scale, y: (p.y - originY) * scale };
   }
 
-  const lw = Math.max(1.5, 2.2 * scale);
+  // Vorlage: Dachlinien sehr dünn; Module schwarz mit hellgrauem Rahmen
+  const lwRoof = Math.max(0.6, 0.85 * scale);
+  const lwMod = Math.max(0.7, 0.9 * scale);
   const roofs = Array.isArray(planObj.roofs) && planObj.roofs.length
     ? planObj.roofs
     : (planObj.roof ? [{ ring: planObj.roof, tilt: (planObj.meta && planObj.meta.tilt) || 30 }] : []);
@@ -370,19 +372,19 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
 
   roofs.forEach((roof) => {
     const ring = ringToWorld(roof.ring, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, ring, 59, 130, 246, 70);
-    strokePolygon(png.data, outW, outH, ring, 29, 78, 216, 230, lw);
+    fillPolygon(png.data, outW, outH, ring, 232, 234, 238, 55);
+    strokePolygon(png.data, outW, outH, ring, 107, 114, 128, 200, lwRoof);
   });
   obstacles.forEach((ring) => {
     const ptsR = ringToWorld(ring, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, ptsR, 239, 68, 68, 100);
-    strokePolygon(png.data, outW, outH, ptsR, 185, 28, 28, 230, lw * 0.9);
+    fillPolygon(png.data, outW, outH, ptsR, 252, 165, 165, 70);
+    strokePolygon(png.data, outW, outH, ptsR, 185, 28, 28, 200, lwRoof);
   });
 
   modules.forEach((m) => {
     const corners = moduleCornersWorld(m, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, corners, 96, 165, 250, 200);
-    strokePolygon(png.data, outW, outH, corners, 30, 64, 175, 240, Math.max(1.2, 1.4 * scale));
+    fillPolygon(png.data, outW, outH, corners, 17, 17, 17, 235);
+    strokePolygon(png.data, outW, outH, corners, 232, 232, 232, 250, lwMod);
 
     const tilt = m.tilt != null ? Number(m.tilt) : ((planObj.meta && planObj.meta.tilt) || 30);
     const c = toImg(latLngToWorldPixel(m.lat, m.lng, zoom));
@@ -390,7 +392,7 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     const refPx = ((Math.min(Number(m.widthM) || 1, Number(m.heightM) || 1) * 0.7) / mpp) * scale;
     const len = arrowLenFromTilt(tilt, refPx);
 
-    // Traufe = erste Kante des enthaltenden Dachs
+    // Traufe = erste Kante des enthaltenden Dachs (Geometrie unverändert)
     let ux = 0;
     let uy = 1;
     for (const roof of roofs) {
@@ -414,11 +416,11 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     }
     const tip = { x: c.x + ux * len * 0.5, y: c.y + uy * len * 0.5 };
     const base = { x: c.x - ux * len * 0.5, y: c.y - uy * len * 0.5 };
-    drawLine(png.data, outW, outH, base.x, base.y, tip.x, tip.y, 232, 121, 169, 240, Math.max(1.5, 2 * scale));
+    drawLine(png.data, outW, outH, base.x, base.y, tip.x, tip.y, 196, 196, 196, 220, Math.max(0.8, 1.1 * scale));
     const dx = tip.x - base.x;
     const dy = tip.y - base.y;
     const al = Math.hypot(dx, dy) || 1;
-    const head = Math.max(4, 4 * scale);
+    const head = Math.max(3, 3 * scale);
     const hx = (-dy / al) * head;
     const hy = (dx / al) * head;
     const bx = tip.x - (dx / al) * (head * 1.7);
@@ -427,7 +429,7 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
       tip,
       { x: bx + hx, y: by + hy },
       { x: bx - hx, y: by - hy },
-    ], 232, 121, 169, 245);
+    ], 196, 196, 196, 220);
   });
 
   return PNG.sync.write(png);

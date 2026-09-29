@@ -7,13 +7,14 @@ const { PDFDocument: PdfLibDoc } = require('pdf-lib');
 const { formatEUR } = require('./catalog');
 const { drawLayoutPreview } = require('./layout-preview');
 const { selectDatasheetsForOffer } = require('./datasheets');
+const { computeEconomics } = require('./economics');
+const { buildComponentShowcases, firstExisting } = require('./product-images');
 
 const ASSETS = path.join(__dirname, 'assets');
 const LOGO = path.join(ASSETS, 'noortec-logo.png');
 const VOLLMACHT_PDF = path.join(ASSETS, 'vollmacht.pdf');
 const VOLLMACHT_IMG = path.join(ASSETS, 'vollmacht.png');
 
-// ── Design-Tokens ──────────────────────────────────────────────────────────
 const COLORS = {
   text: '#1d1d1f',
   muted: '#8a8a8a',
@@ -25,10 +26,11 @@ const COLORS = {
   darkBg: '#1e232e',
   darkLabel: '#9aa1ad',
   white: '#ffffff',
+  soft: '#f7f5f1',
 };
 
 const PAGE = { width: 595.28, height: 841.89 };
-const MARGIN = 50;
+const MARGIN = 48;
 const CONTENT_W = PAGE.width - MARGIN * 2;
 const CONTENT_TOP = 52;
 const CONTENT_BOTTOM = 788;
@@ -44,9 +46,8 @@ const DEFAULT_BULLETS = [
   'Modernes Überwachungssystem inkl. persönlicher Einschulung und App',
 ];
 
-const DEFAULT_INTRO = 'vielen Dank für Ihr Interesse an unseren Lösungen im Bereich der Photovoltaik. Gerne unterbreiten wir Ihnen ein individuelles Angebot, das speziell auf Ihre Bedürfnisse zugeschnitten ist. Unser Angebot beinhaltet:';
+const DEFAULT_INTRO = 'vielen Dank für Ihr Interesse an unseren Lösungen im Bereich der Photovoltaik. Gerne unterbreiten wir Ihnen ein individuelles Angebot, das speziell auf Ihre Bedürfnisse zugeschnitten ist.';
 
-/** URI-Link-Annotation, die Viewer anweist, in neuem Tab/Fenster zu öffnen. */
 function addPdfLinkNewWindow(doc, x, y, w, h, url) {
   try {
     const action = doc.ref({
@@ -57,7 +58,6 @@ function addPdfLinkNewWindow(doc, x, y, w, h, url) {
     action.end();
     doc.annotate(x, y, w, h, { Subtype: 'Link', A: action, Border: [0, 0, 0] });
   } catch (_) {
-    // Fallback ohne NewWindow
     try { doc.link(x, y, w, h, url); } catch (__) { /* ignore */ }
   }
 }
@@ -73,12 +73,22 @@ function fmtAddrLines(customer) {
   return lines;
 }
 
+function deNumPdf(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return String(n == null ? '' : n);
+  return String(num).replace('.', ',');
+}
+
 /**
- * Erzeugt das Angebots-PDF (ohne Vollmacht). Liefert ein Promise<Buffer>.
- * @param {object} offer  Ergebnis von computeOffer()
- * @param {object} customer  { name,street,zip,city,email,phone }
- * @param {object} [texts]  { intro, bullets[], greeting }
- * @param {object} [opts]  { layoutSnapshotPath, layoutPlan }
+ * Erzeugt das Angebots-PDF (ohne Vollmacht). Promise<Buffer>.
+ * @param {object} offer
+ * @param {object} customer
+ * @param {object} [texts]
+ * @param {object} [opts]
+ *   layoutSnapshotPath, layoutPlan,
+ *   variantLayouts: [{ index, label, layoutPlanId, layoutSnapshotPath, layoutPlan }],
+ *   economics / ertrag overrides,
+ *   baseUrl
  */
 function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -101,34 +111,20 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
         return y;
       };
 
-      // ── Kopf (nur Seite 1) ──
-      try {
-        if (fs.existsSync(LOGO)) doc.image(LOGO, MARGIN, 44, { height: 34 });
-      } catch (_) { /* ignore */ }
-      const v = offer.meta.vertrieb || {};
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.text)
-        .text(v.name || '', MARGIN, 46, { width: CONTENT_W, align: 'right' });
-      doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted);
-      doc.text(v.email || '', MARGIN, 60, { width: CONTENT_W, align: 'right' });
-      doc.text(v.phone || '', MARGIN, 72, { width: CONTENT_W, align: 'right' });
-      y = 92;
-      doc.save().lineWidth(2).strokeColor(COLORS.accent)
-        .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-      y += 22;
+      const economics = computeEconomics(offer, {
+        ...(opts.economics || {}),
+        ...(opts.ertrag || {}),
+        ...(texts.economics || {}),
+        jahresverbrauch: opts.jahresverbrauch || texts.jahresverbrauch,
+      });
 
-      // ── Titel ──
-      doc.font('Helvetica-Bold').fontSize(26).fillColor(COLORS.text)
-        .text('Ihr persönliches Angebot', MARGIN, y);
-      y = doc.y + 4;
-      const sub = `von Noortec GmbH · Rudolf-Köppl-Gasse 2/7 · 1220 Wien   |   ${offer.meta.datum}   |   Angebotsnummer ${offer.meta.angebotsnummer || ''}`;
-      doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted).text(sub, MARGIN, y);
-      y = doc.y + 16;
-
-      // ── Info-Karten ──
+      // ═══ 1) Cover / Intro ═══
+      y = drawPageHeader(doc, offer, { compact: false });
+      y = drawCoverHero(doc, y, customer, offer);
+      y += 14;
       y = drawInfoCards(doc, y, offer, customer);
-      y += 18;
+      y += 16;
 
-      // ── Anrede + Intro + Bullets ──
       doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
         .text(texts.greeting || 'Guten Tag,', MARGIN, y);
       y = doc.y + 8;
@@ -145,91 +141,32 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
           .text(b, MARGIN + 16, y + 0.5, { width: CONTENT_W - 18, lineGap: 1 });
         y = doc.y + 5;
       }
-      y += 8;
-
-      // ── Stat-Karten ──
+      y += 10;
       ensure(74);
       y = drawStatCards(doc, y, offer);
-      y += 18;
 
-      // ── Belegungsplan auf Seite 1 (Snapshot oder Vektor-Fallback aus Plan) ──
-      const snapPath = opts && opts.layoutSnapshotPath;
-      const layoutPlan = opts && opts.layoutPlan;
-      let layoutOnPage1 = false;
-      const hasSnap = !!(snapPath && fs.existsSync(snapPath));
-      const hasPlan = !!(layoutPlan && (
-        (Array.isArray(layoutPlan.modules) && layoutPlan.modules.length)
-        || (Array.isArray(layoutPlan.roofs) && layoutPlan.roofs.length)
-        || (Array.isArray(layoutPlan.roof) && layoutPlan.roof.length)
-      ));
-
-      if (hasSnap || hasPlan) {
-        ensure(36);
-        y = drawSectionHeading(doc, y, 'Belegungsplan');
-        y += 6;
-        const avail = Math.max(180, CONTENT_BOTTOM - y - 16);
-
-        if (hasSnap) {
-          try {
-            const img = doc.openImage(snapPath);
-            const iw = Math.max(1, img.width);
-            const ih = Math.max(1, img.height);
-            // Möglichst volle Seitenbreite – Bild größer, weniger Weißraum links/rechts
-            const maxH = Math.min(520, avail);
-            let drawW = CONTENT_W;
-            let drawH = drawW * (ih / iw);
-            if (drawH > maxH) {
-              drawH = maxH;
-              drawW = drawH * (iw / ih);
-            }
-            // Bei fast-quadratischen Snaps: Höhe priorisieren, wenn noch Platz
-            if (drawW < CONTENT_W * 0.92 && drawH < maxH) {
-              const grow = Math.min(CONTENT_W / drawW, maxH / drawH);
-              drawW *= grow;
-              drawH *= grow;
-            }
-            const xOff = MARGIN + Math.max(0, (CONTENT_W - drawW) / 2);
-            doc.image(img, xOff, y, { width: drawW, height: drawH });
-            y += drawH + 8;
-            layoutOnPage1 = true;
-          } catch (e) {
-            // Snapshot defekt → Vektor-Fallback
-            if (hasPlan) {
-              const imgH = Math.min(420, avail);
-              const out = drawLayoutPreview(doc, layoutPlan, {
-                x: MARGIN, y, width: CONTENT_W, height: imgH,
-              });
-              if (out.drawn) {
-                y += out.height + 6;
-                layoutOnPage1 = true;
-              }
-            }
-          }
-        } else if (hasPlan) {
-          const imgH = Math.min(420, avail);
-          const out = drawLayoutPreview(doc, layoutPlan, {
-            x: MARGIN, y, width: CONTENT_W, height: imgH,
-          });
-          if (out.drawn) {
-            y += out.height + 6;
-            layoutOnPage1 = true;
-          }
-        }
-      }
-
-      // Bestandteile beginnen auf Seite 2, wenn Belegung auf Seite 1 steht
-      if (layoutOnPage1) {
+      // ═══ 2) Komponenten-Seiten (ein Thema pro Seite) ═══
+      const showcases = buildComponentShowcases(offer);
+      for (const page of showcases) {
         newPage();
-      } else {
-        ensure(40);
+        y = drawPageHeader(doc, offer, { compact: true });
+        y = drawTopicPage(doc, y, page);
       }
 
-      // ── Bestandteile ──
+      // ═══ 3) Belegungsplan(e) — aktiv + weitere Varianten mit eigenem Plan ═══
+      const layoutPages = collectLayoutPages(opts);
+      for (const lp of layoutPages) {
+        newPage();
+        y = drawPageHeader(doc, offer, { compact: true });
+        y = drawBelegungsplanPage(doc, y, lp, ensure, newPage);
+      }
+
+      // ═══ 4) Alle Komponenten aufgelistet ═══
+      newPage();
+      y = drawPageHeader(doc, offer, { compact: true });
       y = drawSectionHeading(doc, y, 'Bestandteile Ihres Angebots');
       y += 6;
-
-      for (const section of offer.sections) {
-        // Titel + Tabellenkopf + mind. erste Zeile zusammenhalten → sonst ganze Sektion auf neuer Seite
+      for (const section of offer.sections || []) {
         const firstH = section.items && section.items[0]
           ? measureItemRowHeight(doc, section.items[0])
           : 24;
@@ -244,14 +181,33 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
         y += 8;
       }
 
-      // ── Summen ──
-      y += 4;
-      ensure(80);
-      y = drawTotals(doc, y, offer.preis);
-      y += 18;
+      // ═══ 5) Ertragsberechnung ═══
+      newPage();
+      y = drawPageHeader(doc, offer, { compact: true });
+      y = drawErtragPage(doc, y, economics, offer);
 
-      // ── Optionale Komponenten ──
+      // ═══ 6) Haushaltsenergie ═══
+      newPage();
+      y = drawPageHeader(doc, offer, { compact: true });
+      y = drawHaushaltPage(doc, y, economics);
+
+      // ═══ 7) Wirtschaftlichkeit ═══
+      newPage();
+      y = drawPageHeader(doc, offer, { compact: true });
+      y = drawWirtschaftPage(doc, y, economics);
+
+      // ═══ 8) Übersicht + Gesamtpreis ═══
+      newPage();
+      y = drawPageHeader(doc, offer, { compact: true });
+      y = drawSectionHeading(doc, y, 'Übersicht & Gesamtpreis');
+      y += 10;
+      y = drawFinalOverview(doc, y, offer, ensure, newPage);
+      y += 8;
+      ensure(90);
+      y = drawTotals(doc, y, offer.preis);
+
       if (offer.optionaleKomponenten && offer.optionaleKomponenten.length) {
+        y += 16;
         ensure(60);
         y = drawSectionHeading(doc, y, 'Optionale Komponenten');
         y += 8;
@@ -262,10 +218,9 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
         y += 4;
         doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
           .text('Optionale Komponenten sind nicht im Gesamtpreis enthalten und können auf Wunsch beauftragt werden.', MARGIN, y, { width: CONTENT_W });
-        y = doc.y + 18;
+        y = doc.y + 12;
       }
 
-      // ── Hinweise aus dem Gespräch / KI ──
       if (offer.offerNotes && offer.offerNotes.length) {
         ensure(50);
         y = drawSectionHeading(doc, y, 'Hinweise');
@@ -276,10 +231,10 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
             .text(`• ${note}`, MARGIN, y, { width: CONTENT_W });
           y = doc.y + 6;
         }
-        y += 10;
+        y += 8;
       }
 
-      // ── Angebot akzeptieren (eigene Seite nur bei Platzmangel) ──
+      // ═══ 9) Angebot akzeptieren ═══
       ensure(150);
       y = drawSectionHeading(doc, y, 'Angebot akzeptieren');
       y += 10;
@@ -302,7 +257,7 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted).text('Ort, Datum, Name, Unterschrift', MARGIN, y);
       y = doc.y + 18;
 
-      // ── Datenblätter (klickbare Links, vor der Vollmacht) ──
+      // ═══ 10) Datenblätter ═══
       const sheetLinks = selectDatasheetsForOffer(offer, {
         baseUrl: opts.baseUrl || process.env.APP_BASE_URL || 'https://pvl.lifeco.at',
       });
@@ -318,29 +273,28 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
         for (const sheet of sheetLinks) {
           ensure(18);
           const lineY = y;
-          const bullet = '•  ';
-          doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text(bullet, MARGIN, y, { continued: true });
+          doc.font('Helvetica').fontSize(10).fillColor(COLORS.text).text('•  ', MARGIN, y, { continued: true });
           doc.fillColor(COLORS.accent).text(sheet.label, {
             underline: true,
             width: CONTENT_W - 14,
           });
-          // Link-Annotation mit NewWindow → PDF-Viewer öffnet in neuem Tab/Fenster
           const linkH = Math.max(12, doc.y - lineY);
           addPdfLinkNewWindow(doc, MARGIN, lineY - 1, CONTENT_W, linkH + 2, sheet.url);
           y = doc.y + 4;
         }
-        y += 6;
       }
 
-      // ── Footer auf jeder Seite ──
+      // Footer
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i += 1) {
         doc.switchToPage(i);
-        // Unteren Rand neutralisieren, sonst löst ein Schreibvorgang unter der
-        // Marge eine automatische (leere) Folgeseite aus.
         doc.page.margins.bottom = 0;
         doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
           .text(COMPANY_FOOTER, MARGIN, 805, { width: CONTENT_W, align: 'center', lineBreak: false });
+        doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
+          .text(`${i - range.start + 1} / ${range.count}`, MARGIN, 818, {
+            width: CONTENT_W, align: 'right', lineBreak: false,
+          });
       }
 
       doc.end();
@@ -350,13 +304,339 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
   });
 }
 
-function deNumPdf(n) {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return String(n == null ? '' : n);
-  return String(num).replace('.', ',');
+/** Aktiver Plan + weitere Varianten-Pläne (ohne Duplikat der aktiven ID). */
+function collectLayoutPages(opts) {
+  const pages = [];
+  const seen = new Set();
+  const push = (entry) => {
+    if (!entry) return;
+    const hasSnap = !!(entry.layoutSnapshotPath && fs.existsSync(entry.layoutSnapshotPath));
+    const plan = entry.layoutPlan;
+    const hasPlan = !!(plan && (
+      (Array.isArray(plan.modules) && plan.modules.length)
+      || (Array.isArray(plan.roofs) && plan.roofs.length)
+      || (Array.isArray(plan.roof) && plan.roof.length)
+    ));
+    if (!hasSnap && !hasPlan) return;
+    const id = entry.layoutPlanId != null ? Number(entry.layoutPlanId) : null;
+    if (id != null && seen.has(id)) return;
+    if (id != null) seen.add(id);
+    pages.push({
+      title: entry.title || 'Belegungsplan',
+      subtitle: entry.subtitle || '',
+      layoutSnapshotPath: hasSnap ? entry.layoutSnapshotPath : null,
+      layoutPlan: hasPlan ? plan : null,
+      layoutPlanId: id,
+    });
+  };
+
+  push({
+    title: 'Belegungsplan',
+    subtitle: opts.layoutVariantLabel || '',
+    layoutSnapshotPath: opts.layoutSnapshotPath,
+    layoutPlan: opts.layoutPlan,
+    layoutPlanId: opts.layoutPlanId,
+  });
+
+  const extras = Array.isArray(opts.variantLayouts) ? opts.variantLayouts : [];
+  for (const v of extras) {
+    if (!v) continue;
+    const id = v.layoutPlanId != null ? Number(v.layoutPlanId) : null;
+    if (id != null && seen.has(id)) continue;
+    push({
+      title: 'Belegungsplan',
+      subtitle: v.label || (v.index != null ? `Variante ${Number(v.index) + 1}` : ''),
+      layoutSnapshotPath: v.layoutSnapshotPath,
+      layoutPlan: v.layoutPlan,
+      layoutPlanId: id,
+    });
+  }
+  return pages;
 }
 
-/** Konfigurationszeilen für die Angebots-Karte (ohne Zusatzmodule-Hinweis). */
+function drawPageHeader(doc, offer, { compact }) {
+  try {
+    if (fs.existsSync(LOGO)) doc.image(LOGO, MARGIN, compact ? 36 : 40, { height: compact ? 26 : 32 });
+  } catch (_) { /* ignore */ }
+  const v = (offer.meta && offer.meta.vertrieb) || {};
+  const top = compact ? 38 : 42;
+  doc.font('Helvetica-Bold').fontSize(compact ? 9 : 10).fillColor(COLORS.text)
+    .text(v.name || '', MARGIN, top, { width: CONTENT_W, align: 'right' });
+  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted);
+  doc.text([v.email, v.phone].filter(Boolean).join(' · '), MARGIN, top + 12, { width: CONTENT_W, align: 'right' });
+  let y = compact ? 72 : 84;
+  doc.save().lineWidth(compact ? 1.2 : 2).strokeColor(COLORS.accent)
+    .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
+  return y + (compact ? 14 : 18);
+}
+
+function drawCoverHero(doc, yStart, customer, offer) {
+  const hero = firstExisting('heroPv', 'heroHome');
+  const h = 168;
+  doc.save().roundedRect(MARGIN, yStart, CONTENT_W, h, 8).fill(COLORS.soft).restore();
+  if (hero) {
+    try {
+      doc.save();
+      doc.roundedRect(MARGIN, yStart, CONTENT_W, h, 8).clip();
+      const img = doc.openImage(hero);
+      const scale = Math.max(CONTENT_W / img.width, h / img.height);
+      const dw = img.width * scale;
+      const dh = img.height * scale;
+      doc.image(img, MARGIN + (CONTENT_W - dw) / 2, yStart + (h - dh) / 2, { width: dw, height: dh });
+      doc.restore();
+      // sanfter Verlauf unten für Textlesbarkeit
+      doc.save().rect(MARGIN, yStart + h - 56, CONTENT_W, 56).fillOpacity(0.45).fill('#1e232e').restore();
+    } catch (_) { /* ignore */ }
+  }
+  const titleY = yStart + h - 48;
+  doc.font('Helvetica-Bold').fontSize(22).fillColor(hero ? COLORS.white : COLORS.text)
+    .text('Ihr persönliches Angebot', MARGIN + 16, titleY, { width: CONTENT_W - 32 });
+  const sub = `Noortec GmbH · ${offer.meta.datum} · Angebotsnummer ${offer.meta.angebotsnummer || ''}`;
+  doc.font('Helvetica').fontSize(9).fillColor(hero ? '#d7dbe2' : COLORS.muted)
+    .text(sub, MARGIN + 16, titleY + 28, { width: CONTENT_W - 32 });
+  return yStart + h + 8;
+}
+
+function drawTopicPage(doc, y, page) {
+  y = drawSectionHeading(doc, y, page.title);
+  y += 10;
+  const imgH = 320;
+  const imgBoxY = y;
+  doc.save().roundedRect(MARGIN, imgBoxY, CONTENT_W, imgH, 8).fill(COLORS.soft).restore();
+  if (page.image && fs.existsSync(page.image)) {
+    try {
+      const img = doc.openImage(page.image);
+      const maxW = CONTENT_W - 48;
+      const maxH = imgH - 36;
+      let dw = maxW;
+      let dh = dw * (img.height / Math.max(1, img.width));
+      if (dh > maxH) {
+        dh = maxH;
+        dw = dh * (img.width / Math.max(1, img.height));
+      }
+      const ix = MARGIN + (CONTENT_W - dw) / 2;
+      const iy = imgBoxY + (imgH - dh) / 2;
+      doc.image(img, ix, iy, { width: dw, height: dh });
+    } catch (_) { /* ignore */ }
+  }
+  y = imgBoxY + imgH + 18;
+  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+    .text(page.text || '', MARGIN, y, { width: CONTENT_W, lineGap: 3, align: 'left' });
+  return doc.y + 8;
+}
+
+function drawBelegungsplanPage(doc, y, lp) {
+  const heading = lp.subtitle ? `${lp.title} · ${lp.subtitle}` : lp.title;
+  y = drawSectionHeading(doc, y, heading);
+  y += 8;
+  doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.muted)
+    .text('Dachlinien dezent, Module schwarz mit hellem Rahmen – so sehen Sie die geplante Belegung auf einen Blick.', MARGIN, y, { width: CONTENT_W });
+  y = doc.y + 10;
+  const avail = Math.max(220, CONTENT_BOTTOM - y - 24);
+
+  if (lp.layoutSnapshotPath) {
+    try {
+      const img = doc.openImage(lp.layoutSnapshotPath);
+      const iw = Math.max(1, img.width);
+      const ih = Math.max(1, img.height);
+      let drawW = CONTENT_W;
+      let drawH = drawW * (ih / iw);
+      if (drawH > avail) {
+        drawH = avail;
+        drawW = drawH * (iw / ih);
+      }
+      const xOff = MARGIN + Math.max(0, (CONTENT_W - drawW) / 2);
+      doc.image(img, xOff, y, { width: drawW, height: drawH });
+      return y + drawH + 8;
+    } catch (_) { /* fallback vector */ }
+  }
+  if (lp.layoutPlan) {
+    const imgH = Math.min(480, avail);
+    const out = drawLayoutPreview(doc, lp.layoutPlan, {
+      x: MARGIN, y, width: CONTENT_W, height: imgH,
+    });
+    if (out.drawn) return y + out.height + 6;
+  }
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
+    .text('Für diese Variante liegt noch kein Belegungsplan vor.', MARGIN, y);
+  return doc.y + 8;
+}
+
+function drawMetricGrid(doc, y, cells) {
+  const cols = Math.min(3, cells.length);
+  const gap = 10;
+  const cardW = (CONTENT_W - gap * (cols - 1)) / cols;
+  const cardH = 72;
+  cells.forEach((c, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = MARGIN + col * (cardW + gap);
+    const cy = y + row * (cardH + gap);
+    doc.save().roundedRect(x, cy, cardW, cardH, 6).fill(COLORS.darkBg).restore();
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLORS.darkLabel)
+      .text(c.label, x + 12, cy + 12, { width: cardW - 24, characterSpacing: 0.5 });
+    doc.font('Helvetica-Bold').fontSize(16).fillColor(COLORS.white)
+      .text(c.value, x + 12, cy + 30, { width: cardW - 24 });
+    if (c.hint) {
+      doc.font('Helvetica').fontSize(8).fillColor('#cfd3da')
+        .text(c.hint, x + 12, cy + 52, { width: cardW - 24 });
+    }
+  });
+  const rows = Math.ceil(cells.length / cols);
+  return y + rows * (cardH + gap);
+}
+
+function drawErtragPage(doc, y, eco, offer) {
+  y = drawSectionHeading(doc, y, 'Ertragsberechnung');
+  y += 10;
+  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+    .text('So viel Solarstrom erzeugt Ihre geplante Anlage voraussichtlich im Jahr – Grundlage für Eigenverbrauch und Einspeisung.', MARGIN, y, { width: CONTENT_W, lineGap: 2 });
+  y = doc.y + 16;
+  y = drawMetricGrid(doc, y, [
+    { label: 'JAHRESERTRAG', value: eco.labels.annualYield, hint: eco.labels.specificYield },
+    { label: 'ANLAGENLEISTUNG', value: `${deNumPdf(Math.round(eco.kwp * 100) / 100)} kWp`, hint: `${(offer.config && offer.config.moduleCount) || '—'} Module` },
+    { label: 'SPEICHER', value: eco.hasStorage ? `${deNumPdf(eco.speicherKwh)} kWh` : 'ohne', hint: eco.hasStorage ? 'mit Speicher' : 'Direktverbrauch' },
+  ]);
+  y += 8;
+  const hero = firstExisting('heroPv', 'energyHome');
+  if (hero) {
+    const h = 200;
+    doc.save().roundedRect(MARGIN, y, CONTENT_W, h, 8).fill(COLORS.soft).restore();
+    try {
+      const im = doc.openImage(hero);
+      const scale = Math.max(CONTENT_W / im.width, h / im.height);
+      const dw = im.width * scale;
+      const dh = im.height * scale;
+      doc.save();
+      doc.roundedRect(MARGIN, y, CONTENT_W, h, 8).clip();
+      doc.image(im, MARGIN + (CONTENT_W - dw) / 2, y + (h - dh) / 2, { width: dw, height: dh });
+      doc.restore();
+    } catch (_) { /* ignore */ }
+    y += h + 14;
+  }
+  doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted)
+    .text(eco.source === 'override'
+      ? 'Werte aus der hinterlegten Ertragsrechnung der Anlagenplanung.'
+      : 'Schätzwerte für den Standort Österreich (Ostregion). Die tatsächlichen Erträge hängen von Ausrichtung, Verschattung und Wetterjahr ab.', MARGIN, y, { width: CONTENT_W });
+  return doc.y + 8;
+}
+
+function drawHaushaltPage(doc, y, eco) {
+  y = drawSectionHeading(doc, y, 'Haushaltsenergie');
+  y += 10;
+  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+    .text('Ihr Haushalt, Ihr Solarstrom: So verteilt sich Erzeugung und Verbrauch über das Jahr – verständlich und auf einen Blick.', MARGIN, y, { width: CONTENT_W, lineGap: 2 });
+  y = doc.y + 16;
+
+  // Einfaches Balken-Diagramm
+  const barMaxW = CONTENT_W - 160;
+  const rows = [
+    { label: 'Jahresverbrauch', kwh: eco.household, color: '#6b7280' },
+    { label: 'Eigenverbrauch', kwh: eco.selfConsumed, color: COLORS.accent },
+    { label: 'Netzeinspeisung', kwh: eco.feedInKwh, color: '#3b82f6' },
+    { label: 'Restbezug Netz', kwh: eco.gridRemain, color: '#94a3b8' },
+  ];
+  const maxK = Math.max(...rows.map((r) => r.kwh), 1);
+  for (const r of rows) {
+    doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.text).text(r.label, MARGIN, y, { width: 130 });
+    const bw = Math.max(4, (r.kwh / maxK) * barMaxW);
+    doc.save().roundedRect(MARGIN + 140, y + 2, bw, 12, 3).fill(r.color).restore();
+    doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted)
+      .text(`${deNumPdf(Math.round(r.kwh))} kWh`, MARGIN + 140 + bw + 8, y + 1);
+    y += 26;
+  }
+  y += 10;
+  y = drawMetricGrid(doc, y, [
+    { label: 'AUTARKIEGRAD', value: eco.labels.autarky, hint: 'Anteil Eigenversorgung' },
+    { label: 'EIGENVERBRAUCHSQUOTE', value: eco.labels.selfRate, hint: 'vom Jahresertrag' },
+    { label: 'HAUSHALTSBEDARF', value: eco.labels.household, hint: 'pro Jahr' },
+  ]);
+  y += 6;
+  const img = firstExisting('energyHome', 'heroHome');
+  if (img) {
+    const h = 180;
+    doc.save().roundedRect(MARGIN, y, CONTENT_W, h, 8).fill(COLORS.soft).restore();
+    try {
+      const im = doc.openImage(img);
+      const scale = Math.max(CONTENT_W / im.width, h / im.height);
+      const dw = im.width * scale;
+      const dh = im.height * scale;
+      doc.save();
+      doc.roundedRect(MARGIN, y, CONTENT_W, h, 8).clip();
+      doc.image(im, MARGIN + (CONTENT_W - dw) / 2, y + (h - dh) / 2, { width: dw, height: dh });
+      doc.restore();
+    } catch (_) { /* ignore */ }
+    y += h + 10;
+  }
+  return y;
+}
+
+function drawWirtschaftPage(doc, y, eco) {
+  y = drawSectionHeading(doc, y, 'Wirtschaftlichkeit');
+  y += 10;
+  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+    .text('Ihre Investition im Überblick: jährliche Ersparnis, Amortisation und Nutzen über den Betrachtungszeitraum.', MARGIN, y, { width: CONTENT_W, lineGap: 2 });
+  y = doc.y + 16;
+  y = drawMetricGrid(doc, y, [
+    { label: 'ERSCHPARNIS JAHR 1', value: eco.labels.savingsYear1, hint: `Strom ${eco.labels.gridPrice}` },
+    { label: 'AMORTISATION', value: eco.labels.payback, hint: 'bei konstanten Preisen' },
+    { label: 'INVESTITION', value: eco.labels.investment, hint: 'Brutto Angebotspreis' },
+  ]);
+  y += 8;
+  y = drawMetricGrid(doc, y, [
+    { label: `SUMME ${eco.years} JAHRE`, value: eco.labels.totalSavings, hint: 'kumulierte Ersparnis' },
+    { label: 'NETTOVORTEIL', value: eco.labels.netGain, hint: 'Ersparnis abzgl. Investition' },
+    { label: 'OHNE PV / JAHR', value: eco.labels.costWithout, hint: 'reiner Netzbezug' },
+  ]);
+  y += 14;
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.text)
+    .text('Kumulative Ersparnis', MARGIN, y);
+  y = doc.y + 8;
+
+  // Mini sparkline / bars for years 5,10,15,20,25
+  const checkpoints = [5, 10, 15, 20, 25].filter((n) => n <= eco.years);
+  const gap = 12;
+  const barW = (CONTENT_W - gap * (checkpoints.length - 1)) / Math.max(1, checkpoints.length);
+  const maxC = Math.max(...checkpoints.map((n) => (eco.yearly[n - 1] || {}).cumulative || 0), 1);
+  const chartH = 120;
+  const baseY = y + chartH;
+  checkpoints.forEach((n, i) => {
+    const cum = (eco.yearly[n - 1] && eco.yearly[n - 1].cumulative) || 0;
+    const bh = Math.max(4, (cum / maxC) * (chartH - 24));
+    const x = MARGIN + i * (barW + gap);
+    doc.save().roundedRect(x, baseY - bh, barW, bh, 4).fill(COLORS.accent).restore();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.text)
+      .text(`${n} J.`, x, baseY + 4, { width: barW, align: 'center' });
+    doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
+      .text(formatEUR(cum), x, baseY + 16, { width: barW, align: 'center' });
+  });
+  y = baseY + 36;
+  doc.font('Helvetica').fontSize(8.5).fillColor(COLORS.muted)
+    .text('Hinweis: Modellrechnung ohne Finanzierung, Inflation oder Steuer. Einspeisetarif und Strompreis können abweichen.', MARGIN, y, { width: CONTENT_W });
+  return doc.y + 8;
+}
+
+function drawFinalOverview(doc, y, offer, ensure, newPage) {
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
+    .text('Zusammenfassung aller verbauten Komponenten und Leistungen dieses Angebots:', MARGIN, y, { width: CONTENT_W });
+  y = doc.y + 10;
+  for (const section of offer.sections || []) {
+    ensure(28);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.label).text(section.title, MARGIN, y);
+    y = doc.y + 4;
+    for (const item of section.items || []) {
+      ensure(18);
+      doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.text)
+        .text(`• ${item.name}`, MARGIN + 4, y, { width: CONTENT_W - 90, continued: false });
+      doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted)
+        .text(item.qty || '', MARGIN, y, { width: CONTENT_W, align: 'right' });
+      y = Math.max(doc.y, y + 14);
+    }
+    y += 6;
+  }
+  return y;
+}
+
 function buildConfigCardLines(offer) {
   const cfg = (offer && offer.config) || {};
   const lines = [];
@@ -408,8 +688,7 @@ function drawInfoCards(doc, yStart, offer, customer) {
   const rightX = MARGIN + cardW + gap;
 
   const addrLines = fmtAddrLines(customer);
-  // Höhe links messen
-  let leftH = pad + 14; // label
+  let leftH = pad + 14;
   for (const l of addrLines) {
     doc.font(l.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(l.bold ? 10.5 : 9.5);
     leftH += doc.heightOfString(l.t, { width: cardW - pad * 2 }) + 2;
@@ -426,11 +705,9 @@ function drawInfoCards(doc, yStart, offer, customer) {
 
   const cardH = Math.max(leftH, rightH, 92);
 
-  // Hintergründe
   doc.save().roundedRect(leftX, yStart, cardW, cardH, 6).fillAndStroke(COLORS.cardBg, COLORS.cardBorder).restore();
   doc.save().roundedRect(rightX, yStart, cardW, cardH, 6).fillAndStroke(COLORS.cardBg, COLORS.cardBorder).restore();
 
-  // Links
   let ly = yStart + pad;
   doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.label)
     .text('ANGEBOT FÜR', leftX + pad, ly, { characterSpacing: 0.6 });
@@ -441,7 +718,6 @@ function drawInfoCards(doc, yStart, offer, customer) {
     ly = doc.y + 2;
   }
 
-  // Rechts
   let ry = yStart + pad;
   doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.label)
     .text('KONFIGURATION', rightX + pad, ry, { characterSpacing: 0.6 });
@@ -525,8 +801,6 @@ function drawItemRow(doc, y, item, newPage) {
   const rowH = measureItemRowHeight(doc, item);
 
   if (y + rowH > CONTENT_BOTTOM) {
-    // Tabellenkopf auf neuer Seite neu zeichnen; y kommt von newPage (nicht doc.y —
-    // sonst landet die Zeile über der Kopf-Linie und die Linie geht durch den Text).
     y = newPage(true);
   }
 
@@ -594,7 +868,6 @@ function drawOptionRow(doc, y, opt) {
   return y + h + 6;
 }
 
-/** Hängt die Vollmacht ans Angebots-PDF an (echtes PDF bevorzugt, sonst Bild). */
 async function appendVollmacht(offerPdfBuffer) {
   const merged = await PdfLibDoc.load(offerPdfBuffer);
   try {
@@ -622,4 +895,10 @@ async function appendVollmacht(offerPdfBuffer) {
   return Buffer.from(out);
 }
 
-module.exports = { generateOfferPdf, appendVollmacht, DEFAULT_BULLETS, DEFAULT_INTRO };
+module.exports = {
+  generateOfferPdf,
+  appendVollmacht,
+  DEFAULT_BULLETS,
+  DEFAULT_INTRO,
+  collectLayoutPages,
+};

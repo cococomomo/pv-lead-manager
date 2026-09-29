@@ -14,6 +14,11 @@ const klimaLeads = require('../klima-leads');
 const persist = require('./persist');
 const mapProviders = require('./map-providers');
 const { renderLayoutOrthoPng } = require('./layout-ortho-render');
+const {
+  resolveExportLayout,
+  loadLayoutAssets,
+  listVariantLayoutRefs,
+} = require('./layout-resolve');
 
 const PUBLIC_DIR = path.join(__dirname, '../../public');
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -359,47 +364,74 @@ function mountOfferRoutes(app, deps) {
       );
       const fileBase = safeFileBase(customer, angebotsnummer, customerVersion);
 
-      // Optional: Belegungsplan-Snapshot / Plan-JSON fürs PDF
-      let layoutSnapshotAbs = null;
-      let layoutPlan = null;
-      let layoutPlanId = body.layoutPlanId != null ? Number(body.layoutPlanId) : null;
-      if (!Number.isFinite(layoutPlanId) && body.leadId != null) {
-        // Fallback: neuestes Layout zum Lead
-        try {
-          const list = persist.listLayoutsForLead(Number(body.leadId));
-          if (list && list[0]) layoutPlanId = Number(list[0].id);
-        } catch (_) { /* ignore */ }
-      }
-      if (Number.isFinite(layoutPlanId)) {
-        layoutSnapshotAbs = persist.getLayoutSnapshotAbsPath(layoutPlanId);
-        if (layoutSnapshotAbs && !fs.existsSync(layoutSnapshotAbs)) layoutSnapshotAbs = null;
-        const layoutRow = persist.getLayout(layoutPlanId);
-        if (layoutRow && layoutRow.plan) layoutPlan = layoutRow.plan;
-
-        // Orthofoto-Render serverseitig (Haus + Satellit + Module) – unabhängig vom Browser-Snapshot
-        if (layoutPlan && (
+      // Belegungsplan je Variante: aktive Config zuerst, niemals fremden Varianten-Plan teilen
+      async function refreshOrthoSnapshot(layoutPlanId, layoutPlan, layoutRow) {
+        if (!layoutPlan || !(
           (Array.isArray(layoutPlan.modules) && layoutPlan.modules.length)
           || (Array.isArray(layoutPlan.roofs) && layoutPlan.roofs.length)
           || (Array.isArray(layoutPlan.roof) && layoutPlan.roof.length)
         )) {
-          try {
-            const png = await renderLayoutOrthoPng(layoutPlan, {
-              basemapProvider: (layoutRow && layoutRow.basemapProvider) || 'basemap_at',
-            });
-            if (png && png.length > 100) {
-              persist.saveLayoutSnapshotBuffer(layoutPlanId, png);
-              layoutSnapshotAbs = persist.getLayoutSnapshotAbsPath(layoutPlanId);
-              if (layoutSnapshotAbs && !fs.existsSync(layoutSnapshotAbs)) layoutSnapshotAbs = null;
-            }
-          } catch (e) {
-            console.warn('[NOORTEC] Ortho-Belegungsplan:', e.message);
-          }
+          return loadLayoutAssets(persist, layoutPlanId).layoutSnapshotAbs;
         }
+        try {
+          const png = await renderLayoutOrthoPng(layoutPlan, {
+            basemapProvider: (layoutRow && layoutRow.basemapProvider) || 'basemap_at',
+          });
+          if (png && png.length > 100) {
+            persist.saveLayoutSnapshotBuffer(layoutPlanId, png);
+          }
+        } catch (e) {
+          console.warn('[NOORTEC] Ortho-Belegungsplan:', e.message);
+        }
+        return loadLayoutAssets(persist, layoutPlanId).layoutSnapshotAbs;
+      }
+
+      const resolved = resolveExportLayout(body, persist);
+      let layoutPlanId = resolved.layoutPlanId;
+      let layoutPlan = resolved.layoutPlan;
+      let layoutSnapshotAbs = resolved.layoutSnapshotAbs;
+      const layoutRow = resolved.layoutRow;
+      if (Number.isFinite(layoutPlanId) && layoutPlan) {
+        layoutSnapshotAbs = await refreshOrthoSnapshot(layoutPlanId, layoutPlan, layoutRow);
+      }
+
+      // Weitere Varianten mit eigenem layoutPlanId → eigene Belegungsplan-Seiten
+      const activeId = Number.isFinite(layoutPlanId) ? Number(layoutPlanId) : null;
+      const variantLayouts = [];
+      for (const ref of listVariantLayoutRefs(body)) {
+        const vid = ref.layoutPlanId != null ? Number(ref.layoutPlanId) : null;
+        if (!Number.isFinite(vid) || vid === activeId) continue;
+        const assets = loadLayoutAssets(persist, vid);
+        if (!assets.layoutPlan && !assets.layoutSnapshotAbs) continue;
+        let snap = assets.layoutSnapshotAbs;
+        if (assets.layoutPlan) {
+          snap = await refreshOrthoSnapshot(vid, assets.layoutPlan, assets.layoutRow);
+        }
+        variantLayouts.push({
+          index: ref.index,
+          label: ref.label,
+          layoutPlanId: vid,
+          layoutPlan: assets.layoutPlan,
+          layoutSnapshotPath: snap,
+        });
+      }
+
+      // Aktive Varianten-Bezeichnung (für Belegungsplan-Titel)
+      let layoutVariantLabel = '';
+      const variantsArr = Array.isArray(body.variants) ? body.variants : [];
+      if (variantsArr.length > 1) {
+        const idx = variantsArr.findIndex((v) => v && Number(v.layoutPlanId) === activeId);
+        layoutVariantLabel = idx >= 0 ? `Variante ${idx + 1}` : 'Aktive Variante';
       }
 
       let pdf = await generateOfferPdf(offer, customer, body.texts || {}, {
         layoutSnapshotPath: layoutSnapshotAbs,
         layoutPlan,
+        layoutPlanId: Number.isFinite(layoutPlanId) ? layoutPlanId : null,
+        layoutVariantLabel,
+        variantLayouts,
+        economics: body.economics || body.ertrag || undefined,
+        jahresverbrauch: body.jahresverbrauch,
         baseUrl: process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`,
       });
       const kind = (offer.meta && offer.meta.offerKind) || 'pv';

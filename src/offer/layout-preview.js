@@ -180,39 +180,39 @@ function drawLayoutPreview(doc, plan, box) {
     doc.moveTo(x0, y0 + gy).lineTo(x0 + w, y0 + gy).stroke();
   }
 
-  // Dachflächen
+  // Dachflächen — nur sehr dünne Linien (Vorlage: Dachlinien dezent)
   roofs.forEach((roof) => {
     const ring = roof.ring || [];
     if (ring.length < 3) return;
     pathRing(ring);
-    doc.fillColor('#3b82f6').fillOpacity(0.28).fill();
+    doc.fillColor('#e8eaee').fillOpacity(0.35).fill();
     pathRing(ring);
-    doc.strokeColor('#1d4ed8').lineWidth(1.6).strokeOpacity(1).stroke();
+    doc.strokeColor('#6b7280').lineWidth(0.45).strokeOpacity(0.85).stroke();
   });
 
   // Sperrzonen
   obstacles.forEach((ring) => {
     if (!ring || ring.length < 3) return;
     pathRing(ring);
-    doc.fillColor('#ef4444').fillOpacity(0.35).fill();
+    doc.fillColor('#fca5a5').fillOpacity(0.25).fill();
     pathRing(ring);
-    doc.strokeColor('#b91c1c').lineWidth(1.2).strokeOpacity(1).stroke();
+    doc.strokeColor('#b91c1c').lineWidth(0.6).strokeOpacity(0.9).stroke();
   });
 
-  // Module
+  // Module — schwarz mit hellgrauem/weißem dünnem Rahmen
   modules.forEach((m) => {
     const corners = moduleCorners(m, proj).map(toPage);
     if (corners.length < 3) return;
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.fillColor('#60a5fa').fillOpacity(0.85).fill();
+    doc.fillColor('#111111').fillOpacity(0.92).fill();
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.strokeColor('#1e40af').lineWidth(0.7).strokeOpacity(1).stroke();
+    doc.strokeColor('#e8e8e8').lineWidth(0.55).strokeOpacity(1).stroke();
 
-    // Neigungspfeil
+    // Neigungspfeil (dezent, Geometrie unverändert)
     const tilt = m.tilt != null ? Number(m.tilt) : ((planObj.meta && planObj.meta.tilt) || 30);
     const ref = Math.min(Number(m.widthM) || 1, Number(m.heightM) || 1);
     const lenM = arrowLenFromTilt(tilt, ref * 0.7);
@@ -234,17 +234,17 @@ function drawLayoutPreview(doc, plan, box) {
     const c = proj.toXY(m.lat, m.lng);
     const base = toPage({ x: c.x - ux * lenM * 0.5, y: c.y - uy * lenM * 0.5 });
     const tip = toPage({ x: c.x + ux * lenM * 0.5, y: c.y + uy * lenM * 0.5 });
-    doc.strokeColor('#e879a9').lineWidth(1.4).strokeOpacity(0.95);
+    doc.strokeColor('#c4c4c4').lineWidth(0.7).strokeOpacity(0.9);
     doc.moveTo(base.x, base.y).lineTo(tip.x, tip.y).stroke();
     const dx = tip.x - base.x;
     const dy = tip.y - base.y;
     const al = Math.hypot(dx, dy) || 1;
-    const hx = (-dy / al) * 3.2;
-    const hy = (dx / al) * 3.2;
-    const bx = tip.x - (dx / al) * 5.5;
-    const by = tip.y - (dy / al) * 5.5;
+    const hx = (-dy / al) * 2.4;
+    const hy = (dx / al) * 2.4;
+    const bx = tip.x - (dx / al) * 4.2;
+    const by = tip.y - (dy / al) * 4.2;
     doc.moveTo(tip.x, tip.y).lineTo(bx + hx, by + hy).lineTo(bx - hx, by - hy).closePath();
-    doc.fillColor('#e879a9').fillOpacity(0.95).fill();
+    doc.fillColor('#c4c4c4').fillOpacity(0.9).fill();
   });
 
   doc.restore();
