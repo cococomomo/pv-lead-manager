@@ -30,6 +30,27 @@ const ROOT = path.join(__dirname, '../..');
 const LOGO = path.join(ASSETS, 'noortec-logo.png');
 const VOLLMACHT_PDF = path.join(ASSETS, 'vollmacht.pdf');
 const VOLLMACHT_IMG = path.join(ASSETS, 'vollmacht.png');
+const FONT_DIR = path.join(ASSETS, 'fonts');
+/** Liberation Sans (Arial-metrisch) — saubere A4-Darstellung ohne Helvetica-Stretch. */
+const FONT_REG = path.join(FONT_DIR, 'LiberationSans-Regular.ttf');
+const FONT_BOLD = path.join(FONT_DIR, 'LiberationSans-Bold.ttf');
+const FONT_ITALIC = path.join(FONT_DIR, 'LiberationSans-Italic.ttf');
+const F = { regular: 'OfferSans', bold: 'OfferSans-Bold', italic: 'OfferSans-Italic' };
+
+function registerOfferFonts(doc) {
+  try {
+    if (fs.existsSync(FONT_REG)) doc.registerFont(F.regular, FONT_REG);
+    else F.regular = 'Helvetica';
+    if (fs.existsSync(FONT_BOLD)) doc.registerFont(F.bold, FONT_BOLD);
+    else F.bold = 'Helvetica-Bold';
+    if (fs.existsSync(FONT_ITALIC)) doc.registerFont(F.italic, FONT_ITALIC);
+    else F.italic = 'Helvetica-Oblique';
+  } catch (_) {
+    F.regular = 'Helvetica';
+    F.bold = 'Helvetica-Bold';
+    F.italic = 'Helvetica-Oblique';
+  }
+}
 
 /** Resolve Vertriebler-Foto: photoPath (fs) → photoUrl local map → fallback product asset. */
 function resolveSalesPhotoPath(vertrieb) {
@@ -146,6 +167,7 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true, autoFirstPage: true });
+      registerOfferFonts(doc);
       const chunks = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -225,16 +247,19 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       y = startContentPage();
       y = drawWirtschaftPage(doc, y, eco);
 
-      // ── 11 Gesamtübersicht: PV → Speicher → weitere → Leistungen → Preis (ohne Unterschrift) ──
+      // ── Abschluss (Ziel: 2 Seiten): Bestandteile + Preis | Optionals + Unterschrift ──
       y = startContentPage();
       y = drawBestandteilePage(doc, y, offer, startContentPage);
-      y += 14;
-      if (y > CONTENT_BOTTOM - 120) y = startContentPage();
+      // Endpreis immer direkt unter der Komponentenliste (neue Seite nur wenn nötig)
+      if (y > CONTENT_BOTTOM - 88) y = startContentPage();
+      else y += 10;
       y = drawPriceBlock(doc, y, offer.preis);
-
-      // ── Angebot akzeptieren: Optionals + genau eine Unterschrift ──
-      y = startContentPage();
-      y = drawAcceptPage(doc, y, offer.optionaleKomponenten || []);
+      const optionals = offer.optionaleKomponenten || [];
+      const acceptH = estimateAcceptHeight(optionals);
+      // Direkt danach auf derselben Seite, wenn der Block noch Platz hat
+      if (y + 12 + acceptH <= CONTENT_BOTTOM) y += 12;
+      else y = startContentPage();
+      y = drawAcceptPage(doc, y, optionals);
 
       // ── Datenblätter ──
       const sheets = selectDatasheetsForOffer(offer, {
@@ -265,9 +290,9 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
 function drawYellowFooter(doc, pageNum, total) {
   const y = PAGE.height - FOOTER_H;
   doc.save().rect(0, y, PAGE.width, FOOTER_H).fill(COLORS.footer).restore();
-  doc.font('Helvetica').fontSize(9).fillColor(COLORS.white)
+  doc.font(F.regular).fontSize(9).fillColor(COLORS.white)
     .text('noortec.at', MARGIN, y + 8, { lineBreak: false });
-  doc.font('Helvetica').fontSize(9).fillColor(COLORS.white)
+  doc.font(F.regular).fontSize(9).fillColor(COLORS.white)
     .text(`${pageNum} / ${total}`, MARGIN, y + 8, { width: CONTENT_W, align: 'right', lineBreak: false });
 }
 
@@ -279,17 +304,25 @@ function drawSalesBadge(doc, vertrieb, photoPath, x, y, opts = {}) {
   let textX = x + 12;
   if (photoPath && fs.existsSync(photoPath)) {
     try {
+      const side = 32;
+      const cx = x + 10 + side / 2;
+      const cy = y + badgeH / 2;
       doc.save();
-      doc.circle(x + 26, y + badgeH / 2, 16).clip();
-      doc.image(photoPath, x + 10, y + badgeH / 2 - 16, { width: 32, height: 32 });
+      doc.circle(cx, cy, side / 2).clip();
+      const img = doc.openImage(photoPath);
+      // Cover-fit (kein Stauchen) in den Kreis
+      const scale = Math.max(side / Math.max(1, img.width), side / Math.max(1, img.height));
+      const dw = img.width * scale;
+      const dh = img.height * scale;
+      doc.image(img, cx - dw / 2, cy - dh / 2, { width: dw, height: dh });
       doc.restore();
       textX = x + 48;
     } catch (_) { /* ignore */ }
   }
   const tw = badgeW - (textX - x) - 8;
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(9.5).fillColor(COLORS.text)
     .text(v.name || 'Noortec Vertrieb', textX, y + 8, { width: tw, lineBreak: false });
-  doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
+  doc.font(F.regular).fontSize(7.5).fillColor(COLORS.muted)
     .text(v.email || '', textX, y + 22, { width: tw, lineBreak: false })
     .text(v.phone || '', textX, y + 34, { width: tw, lineBreak: false });
   return badgeH;
@@ -302,7 +335,7 @@ function drawContentHeader(doc, dateLabel, vertrieb, salesPhoto) {
   const badgeW = 200;
   const badgeX = PAGE.width - MARGIN - badgeW;
   drawSalesBadge(doc, vertrieb, salesPhoto, badgeX, 22, { width: badgeW, height: 48 });
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.softMuted)
+  doc.font(F.regular).fontSize(8).fillColor(COLORS.softMuted)
     .text(dateLabel || '', MARGIN, 56, { width: CONTENT_W - badgeW - 12, align: 'left' });
   return 88;
 }
@@ -320,13 +353,13 @@ function drawCoverPage(doc, offer, customer, salesPhoto) {
 
   // Title
   let y = 130;
-  doc.font('Helvetica-Bold').fontSize(28).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(28).fillColor(COLORS.text)
     .text('Ihr persönliches Angebot', MARGIN, y);
   y = doc.y + 10;
   doc.save().lineWidth(0.8).strokeColor(COLORS.rule)
     .moveTo(MARGIN, y).lineTo(MARGIN + 280, y).stroke().restore();
   y += 10;
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
+  doc.font(F.regular).fontSize(10).fillColor(COLORS.muted)
     .text('von Noortec GmbH | Rudolf Köpplgasse 2/7 | 1220 Wien', MARGIN, y);
 
   // Yellow waves (bottom third)
@@ -369,7 +402,7 @@ function drawCoverPage(doc, offer, customer, salesPhoto) {
   }
 
   // Angebotsnummer auf der hellen Welle (Vorlage)
-  doc.font('Helvetica').fontSize(12).fillColor(COLORS.dark)
+  doc.font(F.regular).fontSize(12).fillColor(COLORS.dark)
     .text(`Angebotsnummer ${offer.meta.angebotsnummer || ''}`, MARGIN, 720);
 
   // Customer on gold (bottom right)
@@ -380,7 +413,7 @@ function drawCoverPage(doc, offer, customer, salesPhoto) {
   if (city) lines.push(city);
   if (customer.email) lines.push(customer.email);
   if (customer.phone) lines.push(customer.phone);
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.white);
+  doc.font(F.regular).fontSize(11).fillColor(COLORS.white);
   let cyText = 700;
   lines.forEach((t) => {
     doc.text(t, MARGIN, cyText, { width: CONTENT_W, align: 'right' });
@@ -396,7 +429,7 @@ function drawAboutPage(doc) {
   const cardX = MARGIN;
   const cardY = 70;
   doc.save().roundedRect(cardX, cardY, cardW, cardH, 4).fill(COLORS.white).restore();
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(13).fillColor(COLORS.text)
     .text('Noortec: Energie, die für Sie arbeitet! – Ihr Komplettanbieter für nachhaltige Energielösungen seit 2011', cardX + 18, cardY + 18, {
       width: cardW - 36,
       align: 'left',
@@ -407,46 +440,46 @@ function drawAboutPage(doc) {
   try {
     if (fs.existsSync(LOGO)) doc.image(LOGO, MARGIN, y, { height: 28 });
   } catch (_) { /* ignore */ }
-  doc.font('Helvetica-Bold').fontSize(16).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(16).fillColor(COLORS.text)
     .text('Ihr Partner für Photovoltaikanlagen in Wien, Niederösterreich und Burgenland.', MARGIN + 130, y, {
       width: CONTENT_W - 130,
     });
   y = Math.max(doc.y, y + 40) + 16;
 
   for (const p of ABOUT_PARAS) {
-    doc.font('Helvetica').fontSize(10).fillColor(COLORS.dark)
+    doc.font(F.regular).fontSize(10).fillColor(COLORS.dark)
       .text(p, MARGIN, y, { width: CONTENT_W, align: 'justify', lineGap: 2 });
     y = doc.y + 12;
   }
 }
 
 function drawLetterPage(doc, y, texts) {
-  doc.font('Helvetica-Bold').fontSize(26).fillColor(COLORS.text).text('Ihr Angebot', MARGIN, y);
+  doc.font(F.bold).fontSize(26).fillColor(COLORS.text).text('Ihr Angebot', MARGIN, y);
   y = doc.y + 18;
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
     .text(texts.greeting || 'Guten Tag,', MARGIN, y);
   y = doc.y + 12;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text(texts.intro || DEFAULT_INTRO, MARGIN, y, { width: CONTENT_W, lineGap: 3 });
   y = doc.y + 14;
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
     .text('Unser Angebot beinhaltet:', MARGIN, y);
   y = doc.y + 10;
   const bullets = Array.isArray(texts.bullets) && texts.bullets.length ? texts.bullets : DEFAULT_BULLETS;
   for (const b of bullets) {
-    doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.yellow).text('+', MARGIN, y);
-    doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+    doc.font(F.bold).fontSize(12).fillColor(COLORS.yellow).text('+', MARGIN, y);
+    doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
       .text(b, MARGIN + 16, y + 1, { width: CONTENT_W - 16, lineGap: 1 });
     y = doc.y + 6;
   }
   y += 10;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Wir sind überzeugt, dass unsere Photovoltaiklösungen Ihnen helfen werden, unabhängig von schwankenden Strompreisen zu werden und gleichzeitig einen Beitrag zum Umweltschutz zu leisten.', MARGIN, y, { width: CONTENT_W, lineGap: 3 });
   y = doc.y + 12;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Bitte überprüfen Sie die Details des Angebots und zögern Sie nicht, mich bei Fragen oder für weitere Informationen zu kontaktieren.', MARGIN, y, { width: CONTENT_W, lineGap: 3 });
   y = doc.y + 12;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Wir freuen uns darauf, Sie auf dem Weg zu einer nachhaltigeren Energieversorgung zu begleiten.', MARGIN, y, { width: CONTENT_W });
   return doc.y;
 }
@@ -459,10 +492,10 @@ function drawGlancePage(doc, y, offer, eco) {
   const cardH = 52 + 56 + maxH + 14 + (eco.hasStorage ? 70 : 40) + 16;
   doc.save().roundedRect(MARGIN, y, CONTENT_W, cardH, 10).fill(COLORS.cardBg).restore();
   let yy = y + pad;
-  doc.font('Helvetica-Bold').fontSize(20).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(20).fillColor(COLORS.text)
     .text('Auf einen Blick', MARGIN + pad, yy);
   yy = doc.y + 6;
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10).fillColor(COLORS.text)
     .text('Ihr Angebot auf einen Blick:  Mit Ihrer Photovoltaikanlage produzieren Sie CO2-neutral Strom. Mit Ihrem Stromspeicher erreichen Sie eine höhere Unabhängigkeit. Graue Komponenten sind nicht Bestandteil dieses Angebots.', MARGIN + pad, yy, {
       width: CONTENT_W - pad * 2,
       lineGap: 1.5,
@@ -506,17 +539,17 @@ function drawGlancePage(doc, y, offer, eco) {
         .moveTo(MARGIN + pad, yy).lineTo(PAGE.width - MARGIN - pad, yy).stroke().restore();
       yy += 6;
     }
-    doc.font('Helvetica').fontSize(11).fillColor(COLORS.text).text(label, MARGIN + pad, yy);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
+    doc.font(F.regular).fontSize(11).fillColor(COLORS.text).text(label, MARGIN + pad, yy);
+    doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
       .text(val, MARGIN + pad, yy, { width: CONTENT_W - pad * 2, align: 'right' });
     yy += 22;
   });
 
   const boxY = yy + 14;
   doc.save().roundedRect(MARGIN, boxY, CONTENT_W, 64, 10).fill(COLORS.cardBg).restore();
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
     .text('Sie finden Ihr Angebot auch Online.', MARGIN + 22, boxY + 14);
-  doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
     .text('Scannen Sie dazu einfach den nebenstehenden QR-Code.', MARGIN + 22, boxY + 34, { width: CONTENT_W - 120 });
   const qr = productAbs('qrPlaceholder');
   if (qr) {
@@ -529,12 +562,12 @@ function drawPvIntroPage(doc, y, offer, eco, lp, isPrimary = true) {
   const title = isPrimary || !lp || !lp.subtitle
     ? 'Ihre Photovoltaikanlage'
     : `Ihre Photovoltaikanlage · ${lp.subtitle}`;
-  doc.font('Helvetica-Bold').fontSize(26).fillColor(COLORS.text).text(title, MARGIN, y);
+  doc.font(F.bold).fontSize(26).fillColor(COLORS.text).text(title, MARGIN, y);
   y = doc.y + 8;
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
     .text('Hier sehen Sie die Details zur Photovoltaikanlage, die wir für Sie geplant haben.', MARGIN, y, { width: CONTENT_W });
   y = doc.y + 14;
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(11).fillColor(COLORS.softMuted)
     .text(lp && lp.subtitle ? `IHRE DACHBELEGUNG · ${String(lp.subtitle).toUpperCase()}` : 'IHRE DACHBELEGUNG', MARGIN, y, { characterSpacing: 0.4 });
   y = doc.y + 10;
 
@@ -566,7 +599,7 @@ function drawPvIntroPage(doc, y, offer, eco, lp, isPrimary = true) {
     drawn = !!out.drawn;
   }
   if (!drawn) {
-    doc.font('Helvetica').fontSize(11).fillColor(COLORS.muted)
+    doc.font(F.regular).fontSize(11).fillColor(COLORS.muted)
       .text('Belegungsplan wird ergänzt, sobald die Dachplanung vorliegt.', MARGIN + 24, y + imgH / 2 - 8, {
         width: CONTENT_W - 48,
         align: 'center',
@@ -589,12 +622,12 @@ function drawPvIntroPage(doc, y, offer, eco, lp, isPrimary = true) {
 }
 
 function drawKeyValueRow(doc, y, title, desc, value) {
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.text).text(title, MARGIN, y);
+  doc.font(F.bold).fontSize(12).fillColor(COLORS.text).text(title, MARGIN, y);
   const valW = 140;
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(18).fillColor(COLORS.text)
     .text(value, MARGIN, y, { width: CONTENT_W, align: 'right' });
   y = doc.y + 2;
-  doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted)
+  doc.font(F.regular).fontSize(9).fillColor(COLORS.muted)
     .text(desc, MARGIN, y, { width: CONTENT_W - valW - 10 });
   return doc.y + 12;
 }
@@ -602,7 +635,7 @@ function drawKeyValueRow(doc, y, title, desc, value) {
 function drawComponentCardPages(doc, cards, startContentPage, heading) {
   if (!cards.length) return 0;
   let y = startContentPage();
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(13).fillColor(COLORS.softMuted)
     .text(heading, MARGIN, y, { characterSpacing: 0.6 });
   y = doc.y + 12;
 
@@ -613,7 +646,7 @@ function drawComponentCardPages(doc, cards, startContentPage, heading) {
     // Pack ~4–5 Bildkarten / Seite (Vorlage-Feedback: deutlich mehr als 2)
     if (y + blockH > CONTENT_BOTTOM) {
       y = startContentPage();
-      doc.font('Helvetica-Bold').fontSize(13).fillColor(COLORS.softMuted)
+      doc.font(F.bold).fontSize(13).fillColor(COLORS.softMuted)
         .text(heading, MARGIN, y, { characterSpacing: 0.6 });
       y = doc.y + 12;
     }
@@ -627,7 +660,7 @@ function estimateCardHeight(doc, card) {
   const hasImg = !!(card.image && fs.existsSync(card.image));
   const textW = CONTENT_W - (hasImg ? 118 : 0);
   const desc = truncateDesc(card.desc, 220);
-  doc.font('Helvetica').fontSize(8.5);
+  doc.font(F.regular).fontSize(8.5);
   const descH = doc.heightOfString(desc || ' ', { width: textW, lineGap: 1 });
   return Math.max(hasImg ? 96 : 62, 30 + Math.min(descH, 58) + 12);
 }
@@ -643,19 +676,19 @@ function drawComponentCard(doc, y, index, card) {
   const numR = 9;
   const titleY = y;
   doc.save().circle(MARGIN + numR, y + numR, numR).lineWidth(1.1).strokeColor(COLORS.text).stroke().restore();
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(9.5).fillColor(COLORS.text)
     .text(String(index), MARGIN, y + 4, { width: numR * 2, align: 'center', lineBreak: false });
 
   const right = [card.brandLabel, card.qty].filter(Boolean).join('  ·  ');
   const rightW = right ? Math.min(200, doc.widthOfString(right) + 4) : 0;
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
     .text(card.name || '', MARGIN + numR * 2 + 8, y + 3, {
       width: CONTENT_W - numR * 2 - 16 - rightW,
       lineBreak: false,
       ellipsis: true,
     });
   if (right) {
-    doc.font('Helvetica').fontSize(8.5).fillColor(COLORS.muted)
+    doc.font(F.regular).fontSize(8.5).fillColor(COLORS.muted)
       .text(right, MARGIN, y + 5, { width: CONTENT_W, align: 'right', lineBreak: false });
   }
   y += 22;
@@ -668,7 +701,7 @@ function drawComponentCard(doc, y, index, card) {
   const imgBoxH = hasImg ? 78 : 0;
   const textW = CONTENT_W - (hasImg ? imgBoxW + 14 : 0);
   const desc = truncateDesc(card.desc, 240);
-  doc.font('Helvetica').fontSize(8.5).fillColor(COLORS.dark)
+  doc.font(F.regular).fontSize(8.5).fillColor(COLORS.dark)
     .text(desc, MARGIN, y, { width: textW, lineGap: 1.2, height: 58, ellipsis: true });
   const textBottom = doc.y;
   if (hasImg) {
@@ -680,12 +713,12 @@ function drawComponentCard(doc, y, index, card) {
 }
 
 function drawStorageSection(doc, y, cards, eco, startContentPage) {
-  doc.font('Helvetica-Bold').fontSize(24).fillColor(COLORS.text).text('Ihr Energiespeicher', MARGIN, y);
+  doc.font(F.bold).fontSize(24).fillColor(COLORS.text).text('Ihr Energiespeicher', MARGIN, y);
   y = doc.y + 6;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Hier sehen Sie die Details zum Energiespeicher, den wir für Sie geplant haben.', MARGIN, y);
   y = doc.y + 12;
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(11).fillColor(COLORS.softMuted)
     .text('VERBAUTE KOMPONENTEN', MARGIN, y, { characterSpacing: 0.5 });
   y = doc.y + 10;
 
@@ -709,10 +742,10 @@ function drawStorageSection(doc, y, cards, eco, startContentPage) {
 }
 
 function drawErtragPage(doc, y, eco) {
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(14).fillColor(COLORS.softMuted)
     .text('MONATLICHE ENERGIEPRODUKTION', MARGIN, y, { characterSpacing: 0.5 });
   y = doc.y + 10;
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
     .text('Hier sehen Sie die Stromproduktion Ihrer zukünftigen Photovoltaikanlage über ein Jahr hinweg.', MARGIN, y, { width: CONTENT_W });
   y = doc.y + 16;
 
@@ -726,7 +759,7 @@ function drawErtragPage(doc, y, eco) {
     'In einem durchschnittlichen Jahr ist für Ihre Photovoltaikanlage von ungefähr diesem Ertrag auszugehen.',
     eco.labels.annualYield);
   y += 16;
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
+  doc.font(F.regular).fontSize(8).fillColor(COLORS.muted)
     .text('Die in dieser Simulation berechneten Ertragswerte basieren auf dem spezifischen Standort, der Neigung und der Ausrichtung der PV-Module. Sie stellen eine näherungsweise Schätzung dar und können im Individualfall abweichen. Die Ergebnisse sind nicht als verbindliche Zusage für die tatsächliche Leistung der Anlage zu verstehen.', MARGIN, y, { width: CONTENT_W, lineGap: 1 });
   return doc.y;
 }
@@ -736,7 +769,7 @@ function drawMonthlyBars(doc, x, y, w, h, monthly) {
   const gap = 6;
   const barW = (w - gap * (monthly.length - 1)) / monthly.length;
   // grid
-  doc.font('Helvetica').fontSize(7).fillColor(COLORS.softMuted);
+  doc.font(F.regular).fontSize(7).fillColor(COLORS.softMuted);
   for (let i = 0; i <= 4; i += 1) {
     const gy = y + h - (h * i) / 4;
     doc.save().lineWidth(0.4).strokeColor('#ddd')
@@ -749,20 +782,20 @@ function drawMonthlyBars(doc, x, y, w, h, monthly) {
     const bx = x + i * (barW + gap);
     doc.save().roundedRect(bx, y + h - bh, barW, bh, 2).fill(COLORS.yellow).restore();
     if (i % 2 === 0) {
-      doc.font('Helvetica').fontSize(7).fillColor(COLORS.muted)
+      doc.font(F.regular).fontSize(7).fillColor(COLORS.muted)
         .text(m.month, bx - 4, y + h + 4, { width: barW + 8, align: 'center' });
     }
   });
 }
 
 function drawHaushaltPage(doc, y, eco) {
-  doc.font('Helvetica-Bold').fontSize(26).fillColor(COLORS.text).text('Ihr Haushalt', MARGIN, y);
+  doc.font(F.bold).fontSize(26).fillColor(COLORS.text).text('Ihr Haushalt', MARGIN, y);
   y = doc.y + 8;
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
     .text('Hier sehen Sie, wie sich Ihr Haushalt in Zukunft im Hinblick auf Energieverbrauch & Energieerzeugung verhalten kann.', MARGIN, y, { width: CONTENT_W });
   y = doc.y + 18;
 
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(12).fillColor(COLORS.softMuted)
     .text('IHRE ANGABEN', MARGIN, y, { characterSpacing: 0.4 });
   y = doc.y + 10;
   const inputs = [
@@ -774,8 +807,8 @@ function drawHaushaltPage(doc, y, eco) {
     doc.save().lineWidth(0.6).strokeColor(COLORS.rule)
       .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
     y += 10;
-    doc.font('Helvetica').fontSize(11).fillColor(COLORS.text).text(label, MARGIN, y);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.text)
+    doc.font(F.regular).fontSize(11).fillColor(COLORS.text).text(label, MARGIN, y);
+    doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
       .text(val, MARGIN, y, { width: CONTENT_W, align: 'right' });
     y += 24;
   });
@@ -783,19 +816,20 @@ function drawHaushaltPage(doc, y, eco) {
     .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
   y += 18;
 
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(12).fillColor(COLORS.softMuted)
     .text('IHR ENERGIEHAUSHALT', MARGIN, y, { characterSpacing: 0.4 });
   y = doc.y + 10;
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10).fillColor(COLORS.text)
     .text(eco.flowText, MARGIN, y, { width: CONTENT_W, lineGap: 2 });
   y = doc.y + 12;
 
   // Sankey mit echten Angebotszahlen (Vorlage-Stil, siehe energy-flow-reference.png)
-  const flowH = 200;
+  // Höhe so wählen, dass das Diagramm nicht horizontal „auseinandergezogen“ wirkt
+  const flowH = 168;
   doc.save().roundedRect(MARGIN, y, CONTENT_W, flowH, 8)
     .lineWidth(0.8).strokeColor('#d0d0d0').fillAndStroke('#fafafa', '#d0d0d0').restore();
-  drawEnergyFlowDiagram(doc, MARGIN + 12, y + 10, CONTENT_W - 24, flowH - 20, eco);
-  y += flowH + 14;
+  drawEnergyFlowDiagram(doc, MARGIN + 16, y + 12, CONTENT_W - 32, flowH - 24, eco);
+  y += flowH + 12;
 
   y = drawKeyValueRow(doc, y,
     'Ihre Autarkie im Haushalt',
@@ -807,139 +841,157 @@ function drawHaushaltPage(doc, y, eco) {
     'Die Eigenverbrauchsquote gibt an, wie viel des erzeugten Solarstroms selbst genutzt und nicht in das öffentliche Stromnetz eingespeist wird.',
     eco.labels.selfRate);
   y += 10;
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
+  doc.font(F.regular).fontSize(8).fillColor(COLORS.muted)
     .text('Die in dieser Simulation berechneten Ertragswerte basieren auf dem spezifischen Standort, der Neigung und der Ausrichtung der PV-Module. Sie stellen eine näherungsweise Schätzung dar und können im Individualfall abweichen.', MARGIN, y, { width: CONTENT_W });
   return doc.y;
 }
 
 /**
- * Energiefluss wie Vorlagen-Referenz:
- * links Photovoltaik+kWh, Mitte Netz (Einsp./Bezug) + Speicher+kWh, rechts Verbrauch+kWh.
+ * Energiefluss-Sankey (Vorlage / Best Practice):
+ * PV → (Einspeisung/Netz, Direktverbrauch, Speicher) → Verbrauch (+ Netzbezug / Speicherabgabe).
+ * Banddicken proportional zu kWh, Knotenhöhe = Summe der angebundenen Bänder.
  */
 function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
   const pv = Math.max(1, Math.round(eco.annualYield || 1));
   const feed = Math.max(0, Math.round(eco.feedInKwh || 0));
   const toStore = Math.max(0, Math.round(eco.toStorage || 0));
-  const toHome = Math.max(0, Math.round(eco.directToHome || Math.max(0, (eco.selfConsumed || 0) - toStore * 0.9)));
+  const toHome = Math.max(0, Math.round(eco.directToHome || 0));
   const fromStore = Math.max(0, Math.round(eco.fromStorage || 0));
   const fromGrid = Math.max(0, Math.round(eco.gridRemain || 0));
-  const household = Math.max(1, Math.round(eco.household || fromGrid + toHome + fromStore));
+  const household = Math.max(1, Math.round(eco.household || toHome + fromStore + fromGrid));
+  const hasStorage = !!(eco.hasStorage && (toStore > 0 || fromStore > 0));
 
-  const ORANGE = '#e8a317';
+  const ORANGE = '#e6b81e';
   const ORANGE_SOFT = '#f0c96a';
   const YELLOW_SOFT = '#f3e2a8';
   const GRAY = '#5a5a5a';
-  const GRAY_SOFT = '#b8b8b8';
+  const GRAY_SOFT = '#c4c4c4';
 
-  const labelW = 72;
-  const nodeW = 16;
-  const pvX = x + labelW;
-  const midX = x + w * 0.48;
-  const endX = x + w - labelW - nodeW;
-  const topPad = 8;
-  const botPad = 8;
-  const usableH = h - topPad - botPad;
-  const pvTop = y + topPad;
-  const pvH = usableH;
+  const leftLabelW = 78;
+  const rightLabelW = 70;
+  const nodeW = 14;
+  const gapMid = 10;
+  const topPad = 6;
+  const botPad = 6;
+  const usableH = Math.max(40, h - topPad - botPad);
 
-  const totalOut = Math.max(1, feed + toHome + toStore);
-  const scaleBand = (v) => Math.max(v > 0 ? 10 : 0, (v / totalOut) * (pvH * 0.9));
+  const pvOut = Math.max(1, feed + toHome + toStore);
+  const consIn = Math.max(1, toHome + fromGrid + fromStore);
+  const scale = usableH / Math.max(pvOut, consIn);
 
-  function band(x0, yC0, x1, yC1, thickness, color) {
-    const t = Math.max(4, thickness);
+  const thick = (v) => (v > 0 ? Math.max(5, v * scale) : 0);
+  const tFeed = thick(feed);
+  const tHome = thick(toHome);
+  const tStore = thick(toStore);
+  const tFromGrid = thick(fromGrid);
+  const tFromStore = thick(fromStore);
+
+  const pvH = tFeed + tHome + tStore;
+  const netzH = Math.max(tFeed, tFromGrid, feed || fromGrid ? 18 : 0);
+  const speicherH = hasStorage ? Math.max(tStore, tFromStore, 16) : 0;
+  const verbrauchH = tHome + tFromGrid + tFromStore;
+
+  const pvX = x + leftLabelW;
+  const midX = x + w * 0.46;
+  const endX = x + w - rightLabelW - nodeW;
+  const pvTop = y + topPad + (usableH - pvH) / 2;
+  const verbrauchTop = y + topPad + (usableH - verbrauchH) / 2;
+  const netzTop = y + topPad + 2;
+  const speicherTop = y + h - botPad - speicherH - 2;
+
+  function band(x0, y0, t0, x1, y1, t1, color) {
+    if (t0 <= 0 && t1 <= 0) return;
+    const a = Math.max(3, t0);
+    const b = Math.max(3, t1);
+    const mx = (x0 + x1) / 2;
     doc.save();
-    doc.fillColor(color).fillOpacity(0.72);
-    doc.moveTo(x0, yC0 - t / 2)
-      .bezierCurveTo((x0 + x1) * 0.5, yC0 - t / 2, (x0 + x1) * 0.5, yC1 - t / 2, x1, yC1 - t / 2)
-      .lineTo(x1, yC1 + t / 2)
-      .bezierCurveTo((x0 + x1) * 0.5, yC1 + t / 2, (x0 + x1) * 0.5, yC0 + t / 2, x0, yC0 + t / 2)
+    doc.fillColor(color).fillOpacity(0.78);
+    doc.moveTo(x0, y0)
+      .bezierCurveTo(mx, y0, mx, y1, x1, y1)
+      .lineTo(x1, y1 + b)
+      .bezierCurveTo(mx, y1 + b, mx, y0 + a, x0, y0 + a)
       .closePath()
       .fill();
     doc.fillOpacity(1).restore();
   }
 
-  // Stack outgoing bands on PV bar (top→bottom: Einspeisung, Direktverbrauch, Speicher)
-  let cursor = pvTop;
-  const tFeed = scaleBand(feed);
-  const tHome = scaleBand(toHome);
-  const tStore = scaleBand(toStore);
+  // Stack on PV (top→bottom): Einspeisung, Direkt, Speicher
+  let pvY = pvTop;
+  const feedY0 = pvY; pvY += tFeed;
+  const homeY0 = pvY; pvY += tHome;
+  const storeY0 = pvY;
 
-  const netzH = Math.max(36, Math.min(pvH * 0.38, tFeed + 28));
-  const netzTop = pvTop + 4;
-  const speicherH = Math.max(28, Math.min(pvH * 0.28, tStore + 20));
-  const speicherTop = y + h - botPad - speicherH - 4;
-  const verbrauchH = pvH * 0.92;
-  const verbrauchTop = pvTop + (pvH - verbrauchH) / 2;
+  // Stack on Verbrauch (top→bottom): Direkt, Netzbezug, Speicher
+  let cY = verbrauchTop;
+  const cHomeY0 = cY; cY += tHome;
+  const cGridY0 = cY; cY += tFromGrid;
+  const cStoreY0 = cY;
 
-  // Destinations for band centers
-  const feedCenter = cursor + tFeed / 2;
-  cursor += tFeed;
-  const homeCenter = cursor + tHome / 2;
-  cursor += tHome;
-  const storeCenter = cursor + tStore / 2;
+  // Netz: Einspeisung oben rein, Bezug unten raus (gleiche Knotenhöhe)
+  const netzInY0 = netzTop + Math.max(0, (netzH - tFeed) / 2);
+  const netzOutY0 = netzTop + Math.max(0, (netzH - tFromGrid) / 2);
+  const speicherInY0 = speicherTop + Math.max(0, (speicherH - tStore) / 2);
+  const speicherOutY0 = speicherTop + Math.max(0, (speicherH - tFromStore) / 2);
 
-  const netzInCenter = netzTop + netzH * 0.35;
-  const netzOutCenter = netzTop + netzH * 0.65;
-  const speicherInCenter = speicherTop + speicherH * 0.4;
-  const speicherOutCenter = speicherTop + speicherH * 0.65;
-
-  // Incoming stack on Verbrauch (top→bottom: Direkt, Netzbezug, Speicher)
-  const inTotal = Math.max(1, toHome + fromGrid + fromStore);
-  const vHome = Math.max(toHome > 0 ? 10 : 0, (toHome / inTotal) * verbrauchH * 0.85);
-  const vGrid = Math.max(fromGrid > 0 ? 10 : 0, (fromGrid / inTotal) * verbrauchH * 0.85);
-  const vStore = Math.max(fromStore > 0 ? 10 : 0, (fromStore / inTotal) * verbrauchH * 0.85);
-  let vCursor = verbrauchTop + (verbrauchH - (vHome + vGrid + vStore)) / 2;
-  const verbrauchHomeC = vCursor + vHome / 2; vCursor += vHome;
-  const verbrauchGridC = vCursor + vGrid / 2; vCursor += vGrid;
-  const verbrauchStoreC = vCursor + vStore / 2;
-
-  if (feed > 0) band(pvX + nodeW, feedCenter, midX, netzInCenter, tFeed, GRAY_SOFT);
-  if (toHome > 0) band(pvX + nodeW, homeCenter, endX, verbrauchHomeC, tHome, ORANGE_SOFT);
-  if (toStore > 0 && eco.hasStorage) band(pvX + nodeW, storeCenter, midX, speicherInCenter, tStore, YELLOW_SOFT);
-  if (fromGrid > 0) band(midX + nodeW, netzOutCenter, endX, verbrauchGridC, vGrid, GRAY);
-  if (fromStore > 0 && eco.hasStorage) band(midX + nodeW, speicherOutCenter, endX, verbrauchStoreC, vStore, YELLOW_SOFT);
-
-  // Nodes
-  doc.save().roundedRect(pvX, pvTop, nodeW, pvH, 3).fill(ORANGE).restore();
-  doc.save().roundedRect(midX, netzTop, nodeW, netzH, 3).fill(GRAY).restore();
-  if (eco.hasStorage) {
-    doc.save().roundedRect(midX, speicherTop, nodeW, speicherH, 3).fill(YELLOW_SOFT).restore();
+  // Bänder zuerst (unter den Knoten)
+  if (feed > 0) band(pvX + nodeW, feedY0, tFeed, midX, netzInY0, tFeed, GRAY_SOFT);
+  if (toHome > 0) band(pvX + nodeW, homeY0, tHome, endX, cHomeY0, tHome, ORANGE_SOFT);
+  if (hasStorage && toStore > 0) band(pvX + nodeW, storeY0, tStore, midX, speicherInY0, tStore, YELLOW_SOFT);
+  if (fromGrid > 0) band(midX + nodeW, netzOutY0, tFromGrid, endX, cGridY0, tFromGrid, GRAY);
+  if (hasStorage && fromStore > 0) {
+    band(midX + nodeW, speicherOutY0, tFromStore, endX, cStoreY0, tFromStore, YELLOW_SOFT);
   }
-  doc.save().roundedRect(endX, verbrauchTop, nodeW, verbrauchH, 3).fill(GRAY).restore();
 
-  // Labels + kWh (Vorlage)
+  // Knoten
+  doc.save().roundedRect(pvX, pvTop, nodeW, Math.max(8, pvH), 3).fill(ORANGE).restore();
+  if (feed > 0 || fromGrid > 0) {
+    doc.save().roundedRect(midX, netzTop, nodeW, Math.max(8, netzH), 3).fill(GRAY).restore();
+  }
+  if (hasStorage) {
+    doc.save().roundedRect(midX, speicherTop, nodeW, Math.max(8, speicherH), 3).fill('#e8d48a').restore();
+  }
+  doc.save().roundedRect(endX, verbrauchTop, nodeW, Math.max(8, verbrauchH), 3).fill(GRAY).restore();
+
   const kwh = (n) => `${formatNum(Math.round(n))} kWh`;
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
-    .text('Photovoltaik', x, pvTop + pvH / 2 - 14, { width: labelW - 4, align: 'left' });
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
-    .text(kwh(pv), x, pvTop + pvH / 2 + 2, { width: labelW - 4, align: 'left' });
+  // Labels neben den Knoten (nicht auf Bändern)
+  const pvLabelY = pvTop + pvH / 2 - 12;
+  doc.font(F.bold).fontSize(9).fillColor(COLORS.text)
+    .text('Photovoltaik', x, pvLabelY, { width: leftLabelW - 6, lineGap: 0 });
+  doc.font(F.regular).fontSize(8).fillColor(COLORS.muted)
+    .text(kwh(pv), x, pvLabelY + 12, { width: leftLabelW - 6 });
 
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
-    .text('Netz', midX + nodeW + 6, netzTop - 2, { width: 90 });
-  doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
-    .text(`Einsp. ${formatNum(feed)}`, midX + nodeW + 6, netzTop + 12, { width: 90 })
-    .text(`Bezug ${formatNum(fromGrid)}`, midX + nodeW + 6, netzTop + 24, { width: 90 });
-
-  if (eco.hasStorage) {
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
-      .text('Speicher', midX + nodeW + 6, speicherTop + 4, { width: 90 });
-    doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
-      .text(kwh(toStore), midX + nodeW + 6, speicherTop + 18, { width: 90 });
+  if (feed > 0 || fromGrid > 0) {
+    const nx = midX + nodeW + gapMid;
+    doc.font(F.bold).fontSize(9).fillColor(COLORS.text)
+      .text('Netz', nx, netzTop - 1, { width: 88, lineBreak: false });
+    doc.font(F.regular).fontSize(7.5).fillColor(COLORS.muted)
+      .text(`Einsp. ${formatNum(feed)}`, nx, netzTop + 11, { width: 88, lineBreak: false })
+      .text(`Bezug ${formatNum(fromGrid)}`, nx, netzTop + 22, { width: 88, lineBreak: false });
   }
 
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
-    .text('Verbrauch', endX + nodeW + 6, verbrauchTop + verbrauchH / 2 - 14, { width: labelW - 2 });
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
-    .text(kwh(household), endX + nodeW + 6, verbrauchTop + verbrauchH / 2 + 2, { width: labelW - 2 });
+  if (hasStorage) {
+    const sx = midX + nodeW + gapMid;
+    doc.font(F.bold).fontSize(9).fillColor(COLORS.text)
+      .text('Speicher', sx, speicherTop + 2, { width: 88, lineBreak: false });
+    doc.font(F.regular).fontSize(7.5).fillColor(COLORS.muted)
+      .text(kwh(toStore), sx, speicherTop + 14, { width: 88, lineBreak: false });
+  }
+
+  const vx = endX + nodeW + 6;
+  const vLabelY = verbrauchTop + verbrauchH / 2 - 12;
+  doc.font(F.bold).fontSize(9).fillColor(COLORS.text)
+    .text('Verbrauch', vx, vLabelY, { width: rightLabelW - 4, lineBreak: false });
+  doc.font(F.regular).fontSize(8).fillColor(COLORS.muted)
+    .text(kwh(household), vx, vLabelY + 12, { width: rightLabelW - 4, lineBreak: false });
 }
 
 function drawWirtschaftPage(doc, y, eco) {
-  doc.font('Helvetica-Bold').fontSize(24).fillColor(COLORS.text).text('Ihre Wirtschaftlichkeit', MARGIN, y);
+  doc.font(F.bold).fontSize(24).fillColor(COLORS.text).text('Ihre Wirtschaftlichkeit', MARGIN, y);
   y = doc.y + 6;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Hier sehen Sie die Wirtschaftlichkeit Ihrer geplanten Komponenten über den Betrachtungszeitraum.', MARGIN, y, { width: CONTENT_W });
   y = doc.y + 14;
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(11).fillColor(COLORS.softMuted)
     .text('AMORTISATION', MARGIN, y, { characterSpacing: 0.4 });
   y = doc.y + 12;
 
@@ -958,7 +1010,7 @@ function drawWirtschaftPage(doc, y, eco) {
     : 'Amortisation außerhalb des Betrachtungszeitraums';
   y = drawKeyValueRow(doc, y, 'Break-Even', beSub, eco.labels.payback);
   y += 12;
-  doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
+  doc.font(F.regular).fontSize(7.5).fillColor(COLORS.muted)
     .text('Die Berechnungsergebnisse dienen der Orientierung und können im Einzelfall abweichen. Einflussfaktoren wie Wetterbedingungen, Strompreisänderungen, Degradation der PV-Module und individuelles Verbrauchsverhalten können zu Abweichungen führen.', MARGIN, y, { width: CONTENT_W });
   return doc.y;
 }
@@ -996,7 +1048,7 @@ function drawAmortBars(doc, x, y, w, h, yearly) {
     }
   });
   // Jahresbeschriftung an der Achse (ohne Extra-€-Tabelle)
-  doc.font('Helvetica').fontSize(7).fillColor(COLORS.muted);
+  doc.font(F.regular).fontSize(7).fillColor(COLORS.muted);
   const labelIdx = pickYearIndices(yearly);
   labelIdx.forEach((i) => {
     const bx = x + i * (barW + gap);
@@ -1007,48 +1059,48 @@ function drawAmortBars(doc, x, y, w, h, yearly) {
 }
 
 function drawBestandteilePage(doc, y, offer, startContentPage) {
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(18).fillColor(COLORS.text)
     .text('Bestandteile Ihres Angebots', MARGIN, y);
-  y = doc.y + 6;
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
-    .text('Hier sehen Sie alle Komponenten & Dienstleistungen, die wir Ihnen im Rahmen Ihres Angebots anbieten.', MARGIN, y, { width: CONTENT_W });
-  y = doc.y + 14;
+  y = doc.y + 4;
+  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
+    .text('Alle Komponenten & Dienstleistungen Ihres Angebots.', MARGIN, y, { width: CONTENT_W });
+  y = doc.y + 10;
 
-  // Reihenfolge: PV → Energiespeicher → weitere → Leistungen
+  // Reihenfolge: PV → Energiespeicher → weitere → Leistungen (kompakt für ≤2 Abschlussseiten)
   const sections = orderedOverviewSections(offer);
   for (const section of sections) {
-    if (y > CONTENT_BOTTOM - 80) {
+    if (y > CONTENT_BOTTOM - 56) {
       y = startContentPage();
     }
-    doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.text).text(section.title, MARGIN, y);
-    y = doc.y + 8;
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLORS.softMuted)
-      .text('NAME', MARGIN, y, { characterSpacing: 0.5 })
-      .text('TYP', MARGIN + CONTENT_W * 0.58, y, { characterSpacing: 0.5 })
-      .text('ANZAHL', MARGIN, y, { width: CONTENT_W, align: 'right', characterSpacing: 0.5 });
-    y += 12;
+    doc.font(F.bold).fontSize(10.5).fillColor(COLORS.text).text(section.title, MARGIN, y);
+    y = doc.y + 5;
+    doc.font(F.bold).fontSize(7).fillColor(COLORS.softMuted)
+      .text('NAME', MARGIN, y)
+      .text('TYP', MARGIN + CONTENT_W * 0.58, y)
+      .text('ANZAHL', MARGIN, y, { width: CONTENT_W, align: 'right' });
+    y += 10;
     for (const item of section.items || []) {
-      if (y > CONTENT_BOTTOM - 22) {
+      if (y > CONTENT_BOTTOM - 16) {
         y = startContentPage();
-        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLORS.softMuted)
+        doc.font(F.bold).fontSize(7).fillColor(COLORS.softMuted)
           .text('NAME', MARGIN, y).text('TYP', MARGIN + CONTENT_W * 0.58, y)
           .text('ANZAHL', MARGIN, y, { width: CONTENT_W, align: 'right' });
-        y += 12;
+        y += 10;
       }
-      doc.save().lineWidth(0.5).strokeColor(COLORS.rule)
+      doc.save().lineWidth(0.4).strokeColor(COLORS.rule)
         .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-      y += 5;
+      y += 3;
       const kind = classifyKind(item.name, section.title);
-      const nameH = doc.font('Helvetica').fontSize(9).heightOfString(item.name || '', { width: CONTENT_W * 0.55 });
-      doc.font('Helvetica').fontSize(9).fillColor(COLORS.text)
+      const nameH = doc.font(F.regular).fontSize(8.5).heightOfString(item.name || '', { width: CONTENT_W * 0.55 });
+      doc.font(F.regular).fontSize(8.5).fillColor(COLORS.text)
         .text(item.name || '', MARGIN, y, { width: CONTENT_W * 0.55 });
-      doc.font('Helvetica').fontSize(9).fillColor(COLORS.text)
+      doc.font(F.regular).fontSize(8.5).fillColor(COLORS.text)
         .text(kind, MARGIN + CONTENT_W * 0.58, y, { width: CONTENT_W * 0.2, lineBreak: false });
-      doc.font('Helvetica').fontSize(9).fillColor(COLORS.text)
+      doc.font(F.regular).fontSize(8.5).fillColor(COLORS.text)
         .text(item.qty || '', MARGIN, y, { width: CONTENT_W, align: 'right', lineBreak: false });
-      y += Math.max(16, nameH + 6);
+      y += Math.max(13, nameH + 4);
     }
-    y += 10;
+    y += 6;
   }
   return y;
 }
@@ -1060,18 +1112,18 @@ function drawPriceBlock(doc, y, preis) {
     [`MwSt. (${((p.mwstRate || 0.2) * 100).toFixed(1).replace('.', ',')} % auf ${p.nettoFmt || formatEUR(p.netto)})`, p.mwstFmt || formatEUR(p.mwst)],
   ];
   rows.forEach(([label, val]) => {
-    doc.font('Helvetica').fontSize(11).fillColor(COLORS.text).text(label, MARGIN, y);
-    doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+    doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text).text(label, MARGIN, y);
+    doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
       .text(val || '—', MARGIN, y, { width: CONTENT_W, align: 'right' });
-    y += 22;
+    y += 18;
     doc.save().lineWidth(0.6).strokeColor(COLORS.rule)
       .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-    y += 12;
+    y += 8;
   });
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.text).text('Gesamtpreis (Brutto)', MARGIN, y);
-  doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(13).fillColor(COLORS.text).text('Gesamtpreis (Brutto)', MARGIN, y);
+  doc.font(F.bold).fontSize(13).fillColor(COLORS.text)
     .text(p.bruttoFmt || formatEUR(p.brutto), MARGIN, y, { width: CONTENT_W, align: 'right' });
-  return y + 28;
+  return y + 18;
 }
 
 /** @deprecated Alias – Prefer drawPriceBlock directly under the overview list. */
@@ -1079,57 +1131,67 @@ function drawPricePage(doc, y, preis) {
   return drawPriceBlock(doc, y, preis);
 }
 
+function estimateAcceptHeight(optionals = []) {
+  const opts = Array.isArray(optionals) ? optionals : [];
+  let h = 18 + 10 + 12 + 10 + 12;
+  if (opts.length) h += 14 + 10 + opts.length * 18 + 10;
+  else h += 14;
+  h += 34; // signature line + label
+  return h;
+}
+
 /**
- * Akzeptieren-Seite: optionale Komponenten (falls vorhanden) + genau eine Unterschriftszeile.
+ * Akzeptieren-Block: optionale Komponenten (falls vorhanden) + genau eine Unterschriftszeile.
+ * Folgt direkt auf den Preis, wenn Platz; sonst eigene Seite.
  */
 function drawAcceptPage(doc, y, optionals = []) {
-  doc.font('Helvetica-Bold').fontSize(24).fillColor(COLORS.text).text('Angebot akzeptieren', MARGIN, y);
-  y = doc.y + 16;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  doc.font(F.bold).fontSize(18).fillColor(COLORS.text).text('Angebot akzeptieren', MARGIN, y);
+  y = doc.y + 10;
+  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
     .text('Zahlungskonditionen : 100% nach Fertigstellung der Installation und Inbetriebnahme', MARGIN, y);
-  y = doc.y + 8;
-  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
+  y = doc.y + 5;
+  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
     .text('Liefer- und Montagetermin : ca. 10-14 Wochen nach Bestellung', MARGIN, y);
-  y = doc.y + 18;
+  y = doc.y + 12;
 
   const opts = Array.isArray(optionals) ? optionals : [];
   if (opts.length) {
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.text).text('Optionale Komponenten', MARGIN, y);
-    y = doc.y + 6;
-    doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.muted)
+    doc.font(F.bold).fontSize(12).fillColor(COLORS.text).text('Optionale Komponenten', MARGIN, y);
+    y = doc.y + 4;
+    doc.font(F.regular).fontSize(8.5).fillColor(COLORS.muted)
       .text('Nicht im Gesamtpreis enthalten – auf Wunsch beauftragbar.', MARGIN, y);
-    y = doc.y + 12;
+    y = doc.y + 8;
     for (const opt of opts) {
       const rowY = y;
       doc.save().lineWidth(1).strokeColor(COLORS.yellow)
-        .roundedRect(MARGIN, rowY + 2, 11, 11, 2).stroke().restore();
-      doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
-        .text(opt.label || '', MARGIN + 20, rowY, { width: CONTENT_W - 130 });
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.text)
+        .roundedRect(MARGIN, rowY + 1, 10, 10, 2).stroke().restore();
+      doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
+        .text(opt.label || '', MARGIN + 18, rowY, { width: CONTENT_W - 120 });
+      doc.font(F.bold).fontSize(9.5).fillColor(COLORS.text)
         .text(formatEUR(opt.price), MARGIN, rowY, { width: CONTENT_W, align: 'right' });
-      y = Math.max(doc.y, rowY + 16) + 6;
+      y = Math.max(doc.y, rowY + 14) + 4;
     }
-    y += 16;
+    y += 12;
   } else {
-    y += 40;
+    y += 16;
   }
 
-  // Genau eine Unterschriftszeile (auf derselben Seite wie Optionals)
-  const sigY = Math.max(y, CONTENT_BOTTOM - 70);
+  // Unterschrift immer unter dem Inhalt — nie nach oben in Optionals ziehen
+  const sigY = y + 10;
   doc.save().lineWidth(0.8).strokeColor('#c8c8c8')
     .moveTo(MARGIN, sigY).lineTo(PAGE.width - MARGIN, sigY).stroke().restore();
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
-    .text('Ort, Datum, Name, Unterschrift', MARGIN, sigY + 8);
-  return sigY + 36;
+  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.muted)
+    .text('Ort, Datum, Name, Unterschrift', MARGIN, sigY + 6);
+  return sigY + 28;
 }
 
 function drawDatasheetsPage(doc, y, sheets) {
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.text).text('Datenblätter', MARGIN, y);
+  doc.font(F.bold).fontSize(22).fillColor(COLORS.text).text('Datenblätter', MARGIN, y);
   y = doc.y + 8;
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
+  doc.font(F.regular).fontSize(10).fillColor(COLORS.text)
     .text('Hier sehen Sie die Datenblätter aller Komponenten, die wir Ihnen im Rahmen Ihres Angebots anbieten.', MARGIN, y, { width: CONTENT_W });
   y = doc.y + 14;
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLORS.softMuted)
+  doc.font(F.bold).fontSize(7.5).fillColor(COLORS.softMuted)
     .text('KOMPONENTE', MARGIN, y, { characterSpacing: 0.4 })
     .text('TYP', MARGIN + CONTENT_W * 0.62, y, { characterSpacing: 0.4 })
     .text('LINK', MARGIN, y, { width: CONTENT_W, align: 'right', characterSpacing: 0.4 });
@@ -1146,16 +1208,16 @@ function drawDatasheetsPage(doc, y, sheets) {
     y += 8;
     const rowTop = y;
     const kind = kindMap[sheet.kind] || sheet.kind || 'Komponente';
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.text)
+    doc.font(F.bold).fontSize(10).fillColor(COLORS.text)
       .text(sheet.label || 'Komponente', MARGIN, y, { width: CONTENT_W * 0.58 });
     const nameBottom = doc.y;
-    doc.font('Helvetica').fontSize(9).fillColor(COLORS.muted)
+    doc.font(F.regular).fontSize(9).fillColor(COLORS.muted)
       .text(kind, MARGIN + CONTENT_W * 0.62, rowTop, { width: CONTENT_W * 0.2, lineBreak: false });
     // Short link on the far right – avoids long URLs overlapping name/type
     const linkLabel = 'Oeffnen';
     const linkW = 52;
     const linkX = PAGE.width - MARGIN - linkW;
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.yellow)
+    doc.font(F.bold).fontSize(9).fillColor(COLORS.yellow)
       .text(linkLabel, linkX, rowTop, { width: linkW, align: 'right', underline: true, lineBreak: false });
     addPdfLinkNewWindow(doc, linkX - 4, rowTop - 2, linkW + 8, 16, sheet.url);
     y = Math.max(nameBottom, rowTop + 14) + 10;

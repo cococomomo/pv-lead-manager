@@ -11,6 +11,7 @@ Assets used by `product-images.js` / `pdf.js` to match the Useini Vorlage look.
 | modul-das-fullblack.png | DAS Glas-Glas module |
 | fronius-*.png | Fronius WR / Reserva / Smartmeter / Umschaltbox |
 | sigen-gateway*.png | Sigenergy Gateway (Umschaltbox) |
+| sigen-ec-tp.jpg / sigen-inverter.jpg | Sigenergy SigenStor EC / Hybrid Three Phase TP (studio cutout) |
 | sigen-*.jpg/png | Sigenergy inverter / battery |
 | unterkonstruktion-*.png, gak-kasten.png | Montage / GAK |
 | hero-*.jpg, montage.jpg, wallbox.jpg, klima.jpg | Section atmosphere |

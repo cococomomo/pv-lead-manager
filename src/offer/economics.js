@@ -65,14 +65,33 @@ function computeEconomics(offer, overrides = {}) {
   const years = Math.max(1, Math.round(num(o.analysisYears, DEFAULTS.analysisYears)));
   const degradation = num(o.degradationPerYear, DEFAULTS.degradationPerYear);
 
-  const selfConsumed = Math.min(annualYield * selfRate, household);
-  const toStorage = hasStorage ? Math.round(annualYield * 0.22) : 0;
-  const directToHome = Math.round(Math.max(0, selfConsumed - (hasStorage ? toStorage * 0.9 : 0)));
-  const feedInKwh = Math.max(0, Math.round(annualYield - selfConsumed));
-  const fromStorage = hasStorage ? Math.round(toStorage * 0.9) : 0;
-  const gridRemain = Math.max(0, Math.round(household - selfConsumed));
+  // Energy-balance (kWh/a) for Sankey — respect both Autarkie- and Eigenverbrauchsziele.
+  // selfConsumed ≤ min(Haushalt·Autarkie, Ertrag·Eigenverbrauch, Haushalt, Ertrag)
+  const selfConsumed = Math.round(Math.min(
+    household * autarky,
+    annualYield * selfRate,
+    household,
+    annualYield,
+  ));
+  let toStorage = 0;
+  let fromStorage = 0;
+  let directToHome = selfConsumed;
+  if (hasStorage && selfConsumed > 0) {
+    // ~half of self-consumed solar arrives via battery (round-trip ~90 %).
+    fromStorage = Math.round(selfConsumed * 0.45);
+    toStorage = Math.round(fromStorage / 0.9);
+    directToHome = Math.max(0, selfConsumed - fromStorage);
+  }
+  // PV = Direktverbrauch + Speicherladung + Einspeisung
+  const feedInKwh = Math.max(0, Math.round(annualYield - directToHome - toStorage));
+  // Household = Direkt + aus Speicher + Netzbezug
+  const gridRemain = Math.max(0, Math.round(household - directToHome - fromStorage));
+  const selfConsumedBalanced = directToHome + fromStorage;
+  // Display rates from the closed balance (matches diagram + copy)
+  const autarkyActual = household > 0 ? selfConsumedBalanced / household : autarky;
+  const selfRateActual = annualYield > 0 ? selfConsumedBalanced / annualYield : selfRate;
 
-  const savingsYear1 = selfConsumed * gridPrice + feedInKwh * feedIn;
+  const savingsYear1 = selfConsumedBalanced * gridPrice + feedInKwh * feedIn;
   const investment = num(o.investmentBrutto, num(preis.brutto, 0)) || 0;
 
   let cumulative = -investment;
@@ -101,7 +120,7 @@ function computeEconomics(offer, overrides = {}) {
 
   const flowText = hasStorage
     ? `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt und ${formatNum(toStorage)} kWh in den Speicher. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Aus Ihrem Speicher fließen ${formatNum(fromStorage)} kWh weiter in Ihren Haushalt. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`
-    : `Von Ihrer Photovoltaikanlage fließen ${formatNum(Math.round(selfConsumed))} kWh direkt in Ihren Haushalt. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`;
+    : `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`;
 
   return {
     kwp,
@@ -110,9 +129,9 @@ function computeEconomics(offer, overrides = {}) {
     specificYield,
     annualYield,
     household,
-    selfRate,
-    autarky,
-    selfConsumed: Math.round(selfConsumed),
+    selfRate: selfRateActual,
+    autarky: autarkyActual,
+    selfConsumed: selfConsumedBalanced,
     feedInKwh,
     gridRemain,
     directToHome,
@@ -137,8 +156,8 @@ function computeEconomics(offer, overrides = {}) {
       household: `${formatNum(Math.round(household))} kWh`,
       gridPriceCt: `${formatNum(gridPriceCt.toFixed ? Number(gridPriceCt).toFixed(2) : gridPriceCt)} ct/kWh`,
       inflation: `${formatNum((inflation * 100).toFixed(2))} % pro Jahr`,
-      autarky: `${formatNum(Math.round(autarky * 100))} %`,
-      selfRate: `${formatNum(Math.round(selfRate * 100))} %`,
+      autarky: `${formatNum(Math.round(autarkyActual * 100))} %`,
+      selfRate: `${formatNum(Math.round(selfRateActual * 100))} %`,
       totalSavings: `${formatNum(Math.round(totalSavings))} €`,
       payback: paybackYears != null ? `${paybackYears} Jahre` : '—',
       investment: formatEUR(investment),

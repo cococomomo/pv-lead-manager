@@ -29,6 +29,7 @@ const FILES = {
   sigenGateway: 'sigen-gateway.png',
   sigenGatewayMax: 'sigen-gateway-max.png',
   sigenInverter: 'sigen-inverter.jpg',
+  sigenEcTp: 'sigen-ec-tp.jpg',
   sigenHybrid: 'sigen-hybrid.jpg',
   sigenBattery: 'sigen-battery.png',
   sigenStack: 'sigen-stack.jpg',
@@ -73,10 +74,11 @@ function guessImageForItem(name, brand) {
     && !/unterkonstruktion|montage/.test(n)) {
     return firstExisting('modulDas', 'pvModule');
   }
-  if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|sun2000/.test(n)) {
+  if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|\btp\b|tp2|sun2000/.test(n)) {
     if (b === 'fronius' || /fronius|gen24|symo/.test(n)) return firstExisting('froniusInverter', 'froniusGen24');
     if (b === 'huawei' || /huawei|sun2000/.test(n)) return firstExisting('huaweiInverter');
-    return firstExisting('sigenInverter', 'sigenHybrid', 'froniusInverter');
+    // Sigenergy SigenStor EC / Hybrid Three Phase TP (studio cutout)
+    return firstExisting('sigenEcTp', 'sigenInverter', 'sigenHybrid', 'froniusInverter');
   }
   if (/reserva|batter|speicher|sigenstor bat|akku/.test(n)) {
     if (b === 'fronius' || /fronius|reserva/.test(n)) return firstExisting('froniusReserva', 'sigenBattery');
