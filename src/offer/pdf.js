@@ -535,17 +535,7 @@ function drawGlancePage(doc, y, offer, eco) {
     yy += 22;
   });
 
-  const boxY = yy + 14;
-  doc.save().roundedRect(MARGIN, boxY, CONTENT_W, 64, 10).fill(COLORS.cardBg).restore();
-  doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
-    .text('Sie finden Ihr Angebot auch Online.', MARGIN + 22, boxY + 14);
-  doc.font(F.regular).fontSize(9.5).fillColor(COLORS.text)
-    .text('Scannen Sie dazu einfach den nebenstehenden QR-Code.', MARGIN + 22, boxY + 34, { width: CONTENT_W - 120 });
-  const qr = productAbs('qrPlaceholder');
-  if (qr) {
-    try { doc.image(qr, PAGE.width - MARGIN - 58, boxY + 6, { width: 52, height: 52 }); } catch (_) { /* ignore */ }
-  }
-  return boxY + 72;
+  return yy + 8;
 }
 
 function drawPvIntroPage(doc, y, offer, eco, lp, isPrimary = true) {
