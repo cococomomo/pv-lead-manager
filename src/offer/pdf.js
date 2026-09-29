@@ -2,10 +2,9 @@
 
 /**
  * Angebots-PDF im Stil der Useini-Vorlage (Reonic/NOORTEC).
- * Seite: Cover → Über uns → Brief → PV+Belegung →
+ * Seite: Cover → Über uns → Brief → Auf einen Blick → PV+Belegung →
  * Komponenten → Speicher → Ertrag → Haushalt → Wirtschaftlichkeit →
  * Bestandteile → Preis/Akzeptieren → Datenblätter (+ Vollmacht).
- * („Auf einen Blick“ / House-Diagramm entfällt — Komponenten stehen woanders.)
  */
 
 const fs = require('fs');
@@ -24,6 +23,8 @@ const {
   orderedOverviewSections,
   classifyKind,
 } = require('./product-images');
+const { writeHouseDiagramTemp, resolveHouseDiagramSelection } = require('./house-diagram');
+
 const ASSETS = path.join(__dirname, 'assets');
 const ROOT = path.join(__dirname, '../..');
 const LOGO = path.join(ASSETS, 'noortec-logo.png');
@@ -298,8 +299,11 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       y = startContentPage();
       y = drawLetterPage(doc, y, texts);
 
-      // ── 4 PV + Belegungsplan (aktiv) + weitere Varianten ──
-      // (kein „Auf einen Blick“ / House-Diagramm — Komponenten folgen als Karten)
+      // ── 4 Auf einen Blick (house-system-diagram v2, no QR) ──
+      y = startContentPage();
+      y = drawGlancePage(doc, y, offer, eco);
+
+      // ── 5 PV + Belegungsplan (aktiv) + weitere Varianten ──
       const layoutPages = collectLayoutPages(opts);
       if (cfg.includePv !== false && Number(cfg.moduleCount) > 0) {
         if (!layoutPages.length) {
@@ -569,6 +573,69 @@ function drawLetterPage(doc, y, texts) {
   doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Wir freuen uns darauf, Sie auf dem Weg zu einer nachhaltigeren Energieversorgung zu begleiten.', MARGIN, y, { width: CONTENT_W });
   return doc.y;
+}
+
+function drawGlancePage(doc, y, offer, eco) {
+  const pad = 18;
+  const maxW = CONTENT_W - pad * 2;
+  const maxH = 300;
+  const cardH = 52 + 56 + maxH + 14 + (eco.hasStorage ? 70 : 40) + 16;
+  doc.save().roundedRect(MARGIN, y, CONTENT_W, cardH, 10).fill(COLORS.cardBg).restore();
+  let yy = y + pad;
+  doc.font(F.bold).fontSize(20).fillColor(COLORS.text)
+    .text('Auf einen Blick', MARGIN + pad, yy);
+  yy = doc.y + 6;
+  doc.font(F.regular).fontSize(10).fillColor(COLORS.text)
+    .text('Ihr Angebot auf einen Blick:  Mit Ihrer Photovoltaikanlage produzieren Sie CO2-neutral Strom. Mit Ihrem Stromspeicher erreichen Sie eine höhere Unabhängigkeit. Graue Komponenten sind nicht Bestandteil dieses Angebots.', MARGIN + pad, yy, {
+      width: CONTENT_W - pad * 2,
+      lineGap: 1.5,
+    });
+  yy = doc.y + 10;
+
+  doc.save().roundedRect(MARGIN + pad, yy, maxW, maxH, 6).fill('#ffffff').restore();
+  let houseTmp = null;
+  try {
+    houseTmp = writeHouseDiagramTemp(offer);
+    const housePath = houseTmp || productAbs('houseSystemDiagram') || productAbs('houseOverview');
+    if (housePath && fs.existsSync(housePath)) {
+      const img = doc.openImage(housePath);
+      let dw = maxW;
+      let dh = dw * (img.height / Math.max(1, img.width));
+      if (dh > maxH) {
+        dh = maxH;
+        dw = dh * (img.width / Math.max(1, img.height));
+      }
+      doc.image(img, MARGIN + pad + (maxW - dw) / 2, yy + (maxH - dh) / 2, { width: dw, height: dh });
+    }
+  } catch (_) { /* ignore */ }
+  finally {
+    if (houseTmp) {
+      try { fs.unlinkSync(houseTmp); } catch (__) { /* ignore */ }
+    }
+  }
+  yy += maxH + 12;
+
+  const sel = resolveHouseDiagramSelection(offer);
+  const rows = [];
+  if (sel.flags.pv) rows.push(['Photovoltaikanlage', eco.labels.peak]);
+  if (sel.flags.battery) rows.push(['Stromspeicher', eco.labels.speicher]);
+  if (!rows.length) {
+    rows.push(['Ihr Energiesystem', 'individuell zusammengestellt']);
+  }
+  rows.forEach(([label, val], i) => {
+    if (i > 0) {
+      doc.save().lineWidth(0.6).strokeColor('#d8d8d8')
+        .moveTo(MARGIN + pad, yy).lineTo(PAGE.width - MARGIN - pad, yy).stroke().restore();
+      yy += 6;
+    }
+    doc.font(F.regular).fontSize(11).fillColor(COLORS.text).text(label, MARGIN + pad, yy);
+    doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
+      .text(val, MARGIN + pad, yy, { width: CONTENT_W - pad * 2, align: 'right' });
+    yy += 22;
+  });
+
+  // No „Angebot auch Online“ / QR on this page.
+  return yy + 8;
 }
 
 function drawPvIntroPage(doc, y, offer, eco, lp, isPrimary = true) {
