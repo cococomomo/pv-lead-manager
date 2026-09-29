@@ -813,12 +813,13 @@ function drawHaushaltPage(doc, y, eco) {
     .text(eco.flowText, MARGIN, y, { width: CONTENT_W, lineGap: 2 });
   y = doc.y + 12;
 
-  // Sankey: Höhe ≈ Breite / φ² → ruhiges Querformat (goldener Schnitt)
+  // Sankey-Rahmen: Höhe ≈ Breite / φ² (Querformat im goldenen Schnitt)
   const PHI = 1.6180339887;
   const flowH = Math.round(CONTENT_W / (PHI * PHI)); // ≈ 0.382 · CONTENT_W
   doc.save().roundedRect(MARGIN, y, CONTENT_W, flowH, 10)
     .lineWidth(0.7).strokeColor('#e0e0e0').fillAndStroke('#fcfcfc', '#e0e0e0').restore();
-  const inset = Math.round(flowH * (PHI - 1) * 0.22); // ≈ 0.136 · H
+  // Innenrand ≈ H/φ³ → ruhiger Weißraum um die Flüsse
+  const inset = Math.max(10, Math.round(flowH / (PHI * PHI * PHI)));
   drawEnergyFlowDiagram(doc, MARGIN + inset, y + inset, CONTENT_W - inset * 2, flowH - inset * 2, eco);
   y += flowH + 14;
 
@@ -838,10 +839,11 @@ function drawHaushaltPage(doc, y, eco) {
 }
 
 /**
- * Energiefluss-Sankey — UX/goldener Schnitt:
- * – Banddicke = kWh · scale (keine künstliche Mindestdicke → echte Proportionen)
- * – Knotenhöhe = Summe der gestapelten Bänder
- * – Spalten bei 1/φ · Chartbreite; ruhige Abstände, Labels nie auf Bändern
+ * Energiefluss-Sankey — proportionale Banddicken + goldener Schnitt:
+ * – Dicke = kWh · gemeinsame Skala (keine künstliche Mindestdicke)
+ * – 2 pt Luft zwischen gestapelten Bändern → klar lesbare Proportionen
+ * – PV- und Verbrauch-Säule je für sich vertikal zentriert (ausgeglichener Weißraum)
+ * – Mittelspalte bei span/φ; Knoten verbinden alle anliegenden Flüsse
  */
 function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
   const PHI = 1.6180339887;
@@ -859,20 +861,25 @@ function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
   const STORE_FLOW = '#efe0a8';
   const STORE_NODE = '#e4d08a';
   const GRAY = '#4a4a4a';
-  const GRAY_FLOW = '#c8c8c8';
-  const GRAY_FLOW_DARK = '#8e8e8e';
+  const GRAY_FLOW = '#d0d0d0';
+  const GRAY_FLOW_DARK = '#9a9a9a';
 
-  const leftLabelW = 82;
-  const rightLabelW = 72;
-  const nodeW = 12;
-  const padY = Math.max(4, h * 0.04);
-  const usableH = Math.max(36, h - padY * 2);
+  const leftLabelW = 84;
+  const rightLabelW = 74;
+  const nodeW = 11;
+  const gap = 2; // Luft zwischen Bändern — Dicken bleiben proportional
+  const padY = Math.max(6, h * (PHI - 1) * 0.08);
+  const usableH = Math.max(40, h - padY * 2);
 
-  // Eine gemeinsame Skala — reine Proportionalität (nur Haarlinie ab 0,8 pt für Sichtbarkeit)
-  const pvOut = Math.max(1, feed + toHome + toStore);
-  const consIn = Math.max(1, toHome + fromGrid + fromStore);
-  const scale = usableH / Math.max(pvOut, consIn);
-  const thick = (v) => (v > 0 ? Math.max(0.8, v * scale) : 0);
+  const pvParts = [feed, toHome, toStore].filter((v) => v > 0);
+  const consParts = [toHome, fromGrid, fromStore].filter((v) => v > 0);
+  const pvGaps = Math.max(0, pvParts.length - 1) * gap;
+  const consGaps = Math.max(0, consParts.length - 1) * gap;
+  const pvKwh = Math.max(1, feed + toHome + toStore);
+  const consKwh = Math.max(1, toHome + fromGrid + fromStore);
+  // Skala so, dass die größere Säule (inkl. Gaps) die nutzbare Höhe füllt
+  const scale = (usableH - Math.max(pvGaps, consGaps)) / Math.max(pvKwh, consKwh);
+  const thick = (v) => (v > 0 ? Math.max(0.6, v * scale) : 0);
 
   const tFeed = thick(feed);
   const tHome = thick(toHome);
@@ -880,57 +887,56 @@ function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
   const tFromGrid = thick(fromGrid);
   const tFromStore = thick(fromStore);
 
-  const pvH = tFeed + tHome + tStore;
-  const verbrauchH = tHome + tFromGrid + tFromStore;
-  // Netz-/Speicher-Knoten = jeweilige Banddicke(n), nicht künstlich aufgeblasen
-  const netzH = Math.max(tFeed, tFromGrid);
-  const speicherH = hasStorage ? Math.max(tStore, tFromStore) : 0;
+  const pvH = tFeed + tHome + tStore + pvGaps;
+  const verbrauchH = tHome + tFromGrid + tFromStore + consGaps;
 
-  // Horizontale Spalten nach goldenem Schnitt (Mitte bei ~61,8 % der Chartbreite)
+  // Spalten: Mittelknoten bei span/φ² ≈ 38,2 % → kurzer Zulauf, langer eleganter Fächer zum Verbrauch
   const chartLeft = x + leftLabelW;
   const chartRight = x + w - rightLabelW - nodeW;
   const span = Math.max(40, chartRight - chartLeft);
   const pvX = chartLeft;
-  const midX = chartLeft + span / PHI;
+  const midX = chartLeft + span / (PHI * PHI);
   const endX = chartRight;
 
-  // Vertikal: PV-Säule zentriert; Direktband waagrecht (Verbrauch startet dort)
   const frameTop = y + padY;
+  // Beide Säulen unabhängig zentriert → ruhige φ-Balance, kurvige Lesepfade
   const pvTop = frameTop + Math.max(0, (usableH - pvH) / 2);
+  const verbrauchTop = frameTop + Math.max(0, (usableH - verbrauchH) / 2);
 
-  // Stack PV (oben→unten): Einspeisung, Direkt, Speicher
+  // PV oben→unten: Einspeisung · Direkt · Speicher
   let pvY = pvTop;
-  const feedY0 = pvY; pvY += tFeed;
-  const homeY0 = pvY; pvY += tHome;
+  const feedY0 = pvY; pvY += tFeed + (tFeed > 0 && (tHome > 0 || tStore > 0) ? gap : 0);
+  const homeY0 = pvY; pvY += tHome + (tHome > 0 && tStore > 0 ? gap : 0);
   const storeY0 = pvY;
 
-  // Verbrauch: Direktband auf gleicher Höhe wie PV→Haushalt → ruhiger Lesepfad
-  const verbrauchTop = homeY0;
+  // Verbrauch oben→unten: Direkt · Netzbezug · Speicher
   let cY = verbrauchTop;
-  const cHomeY0 = cY; cY += tHome;
-  const cGridY0 = cY; cY += tFromGrid;
+  const cHomeY0 = cY; cY += tHome + (tHome > 0 && (tFromGrid > 0 || tFromStore > 0) ? gap : 0);
+  const cGridY0 = cY; cY += tFromGrid + (tFromGrid > 0 && tFromStore > 0 ? gap : 0);
   const cStoreY0 = cY;
 
-  // Netz sitzt am Einspeiseband; Speicher am Speicherband (klarer Lesepfad)
-  const netzTop = feedY0 + Math.max(0, (tFeed - netzH) / 2);
-  const speicherTop = hasStorage
-    ? storeY0 + Math.max(0, (tStore - speicherH) / 2)
-    : frameBot;
+  // Netz-Knoten spannt Einspeisung + Bezug; Austritt unten am Knoten
   const netzInY0 = feedY0;
-  const netzOutY0 = cGridY0;
-  const speicherInY0 = storeY0;
-  const speicherOutY0 = cStoreY0;
+  const netzBodyH = Math.max(tFeed, tFromGrid, 1);
+  const netzTop = feedY0;
+  const netzOutY0 = netzTop + Math.max(0, netzBodyH - tFromGrid);
 
-  /** Sanfter Fluss: Kontrollpunkte bei 1/φ der Strecke */
-  function band(x0, y0, t0, x1, y1, t1, color) {
+  // Speicher-Knoten spannt Ladung + Entladung
+  const speicherInY0 = storeY0;
+  const speicherBodyH = hasStorage ? Math.max(tStore, tFromStore, 1) : 0;
+  const speicherTop = hasStorage ? storeY0 : frameTop;
+  const speicherOutY0 = speicherTop + Math.max(0, speicherBodyH - tFromStore);
+
+  /** Flussband: Dicke links/rechts = kWh-Proportion; Kontrollpunkte bei 1/φ */
+  function band(x0, y0, t0, x1, y1, t1, color, opacity) {
     if (t0 <= 0 && t1 <= 0) return;
-    const a = Math.max(0.8, t0);
-    const b = Math.max(0.8, t1);
+    const a = Math.max(0.6, t0);
+    const b = Math.max(0.6, t1);
     const dx = x1 - x0;
     const c1x = x0 + dx / PHI;
-    const c2x = x1 - dx / PHI;
+    const c2x = x1 - dx * (1 - 1 / PHI);
     doc.save();
-    doc.fillColor(color).fillOpacity(0.88);
+    doc.fillColor(color).fillOpacity(opacity == null ? 0.92 : opacity);
     doc.moveTo(x0, y0)
       .bezierCurveTo(c1x, y0, c2x, y1, x1, y1)
       .lineTo(x1, y1 + b)
@@ -940,22 +946,26 @@ function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
     doc.fillOpacity(1).restore();
   }
 
-  // Bänder (unter den Knoten) — Reihenfolge: große Flächen zuerst, dann Kreuzungen
-  if (feed > 0) band(pvX + nodeW, feedY0, tFeed, midX, netzInY0, tFeed, GRAY_FLOW);
-  if (toHome > 0) band(pvX + nodeW, homeY0, tHome, endX, cHomeY0, tHome, ORANGE_FLOW);
-  if (hasStorage && toStore > 0) band(pvX + nodeW, storeY0, tStore, midX, speicherInY0, tStore, STORE_FLOW);
-  if (fromGrid > 0) band(midX + nodeW, netzOutY0, tFromGrid, endX, cGridY0, tFromGrid, GRAY_FLOW_DARK);
+  // Große Flächen zuerst, Kreuzungen danach — Lesereihenfolge PV → Netz/Speicher → Haus
+  if (feed > 0) band(pvX + nodeW, feedY0, tFeed, midX, netzInY0, tFeed, GRAY_FLOW, 0.85);
+  if (toHome > 0) band(pvX + nodeW, homeY0, tHome, endX, cHomeY0, tHome, ORANGE_FLOW, 0.94);
+  if (hasStorage && toStore > 0) {
+    band(pvX + nodeW, storeY0, tStore, midX, speicherInY0, tStore, STORE_FLOW, 0.9);
+  }
+  if (fromGrid > 0) {
+    band(midX + nodeW, netzOutY0, tFromGrid, endX, cGridY0, tFromGrid, GRAY_FLOW_DARK, 0.88);
+  }
   if (hasStorage && fromStore > 0) {
-    band(midX + nodeW, speicherOutY0, tFromStore, endX, cStoreY0, tFromStore, STORE_FLOW);
+    band(midX + nodeW, speicherOutY0, tFromStore, endX, cStoreY0, tFromStore, STORE_FLOW, 0.9);
   }
 
-  // Knoten
+  // Knoten (über den Bändern)
   doc.save().roundedRect(pvX, pvTop, nodeW, Math.max(1, pvH), 2.5).fill(ORANGE).restore();
   if (feed > 0 || fromGrid > 0) {
-    doc.save().roundedRect(midX, netzTop, nodeW, Math.max(1, netzH), 2.5).fill(GRAY).restore();
+    doc.save().roundedRect(midX, netzTop, nodeW, Math.max(1, netzBodyH), 2.5).fill(GRAY).restore();
   }
-  if (hasStorage && speicherH > 0) {
-    doc.save().roundedRect(midX, speicherTop, nodeW, Math.max(1, speicherH), 2.5).fill(STORE_NODE).restore();
+  if (hasStorage && speicherBodyH > 0) {
+    doc.save().roundedRect(midX, speicherTop, nodeW, Math.max(1, speicherBodyH), 2.5).fill(STORE_NODE).restore();
   }
   doc.save().roundedRect(endX, verbrauchTop, nodeW, Math.max(1, verbrauchH), 2.5).fill(GRAY).restore();
 
@@ -971,20 +981,20 @@ function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
   labelBeside('Photovoltaik', kwh(pv), x, pvTop + pvH / 2, leftLabelW - 8);
 
   if (feed > 0 || fromGrid > 0) {
-    const nx = midX + nodeW + 8;
-    // Labels rechts neben Netz, oberhalb kleiner Bänder — nicht auf dem Fluss
-    const netzLabelY = Math.min(netzTop - 2, feedY0 - 2);
+    const nx = midX + nodeW + 7;
+    // Label über dem Knoten, nicht auf dem Band — φ-Abstand zum Fluss
+    const netzLabelY = Math.max(frameTop - 2, netzTop - 28);
     doc.font(F.bold).fontSize(9).fillColor(COLORS.text)
-      .text('Netz', nx, Math.max(frameTop, netzLabelY), { width: 96, lineBreak: false });
+      .text('Netz', nx, netzLabelY, { width: 100, lineBreak: false });
     doc.font(F.regular).fontSize(7.5).fillColor(COLORS.muted)
-      .text(`Einsp. ${formatNum(feed)}`, nx, Math.max(frameTop, netzLabelY) + 11, { width: 96, lineBreak: false })
-      .text(`Bezug ${formatNum(fromGrid)}`, nx, Math.max(frameTop, netzLabelY) + 22, { width: 96, lineBreak: false });
+      .text(`Einsp. ${formatNum(feed)}`, nx, netzLabelY + 11, { width: 100, lineBreak: false })
+      .text(`Bezug ${formatNum(fromGrid)}`, nx, netzLabelY + 21, { width: 100, lineBreak: false });
   }
 
-  if (hasStorage && speicherH > 0) {
-    const sx = midX + nodeW + 8;
-    const sy = speicherTop + speicherH / 2;
-    labelBeside('Speicher', kwh(toStore), sx, sy, 96);
+  if (hasStorage && speicherBodyH > 0) {
+    const sx = midX + nodeW + 7;
+    const sy = speicherTop + speicherBodyH / 2;
+    labelBeside('Speicher', kwh(toStore), sx, sy, 100);
   }
 
   labelBeside('Verbrauch', kwh(household), endX + nodeW + 6, verbrauchTop + verbrauchH / 2, rightLabelW - 4);
