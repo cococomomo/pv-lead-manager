@@ -372,19 +372,19 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
 
   roofs.forEach((roof) => {
     const ring = ringToWorld(roof.ring, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, ring, 232, 234, 238, 55);
-    strokePolygon(png.data, outW, outH, ring, 107, 114, 128, 200, lwRoof);
+    fillPolygon(png.data, outW, outH, ring, 219, 234, 254, 40);
+    strokePolygon(png.data, outW, outH, ring, 126, 182, 232, 220, lwRoof);
   });
   obstacles.forEach((ring) => {
     const ptsR = ringToWorld(ring, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, ptsR, 252, 165, 165, 70);
+    fillPolygon(png.data, outW, outH, ptsR, 252, 165, 165, 60);
     strokePolygon(png.data, outW, outH, ptsR, 185, 28, 28, 200, lwRoof);
   });
 
   modules.forEach((m) => {
     const corners = moduleCornersWorld(m, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, corners, 17, 17, 17, 235);
-    strokePolygon(png.data, outW, outH, corners, 232, 232, 232, 250, lwMod);
+    fillPolygon(png.data, outW, outH, corners, 10, 10, 10, 245);
+    strokePolygon(png.data, outW, outH, corners, 243, 243, 243, 255, lwMod);
 
     const tilt = m.tilt != null ? Number(m.tilt) : ((planObj.meta && planObj.meta.tilt) || 30);
     const c = toImg(latLngToWorldPixel(m.lat, m.lng, zoom));

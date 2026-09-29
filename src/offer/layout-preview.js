@@ -180,42 +180,42 @@ function drawLayoutPreview(doc, plan, box) {
     doc.moveTo(x0, y0 + gy).lineTo(x0 + w, y0 + gy).stroke();
   }
 
-  // Dachflächen — nur sehr dünne Linien (Vorlage: Dachlinien dezent)
+  // Dachflächen — sehr dünne hellblaue Linien (Vorlage Useini)
   roofs.forEach((roof) => {
     const ring = roof.ring || [];
     if (ring.length < 3) return;
     pathRing(ring);
-    doc.fillColor('#e8eaee').fillOpacity(0.35).fill();
+    doc.fillColor('#dbeafe').fillOpacity(0.18).fill();
     pathRing(ring);
-    doc.strokeColor('#6b7280').lineWidth(0.45).strokeOpacity(0.85).stroke();
+    doc.strokeColor('#7eb6e8').lineWidth(0.4).strokeOpacity(0.9).stroke();
   });
 
   // Sperrzonen
   obstacles.forEach((ring) => {
     if (!ring || ring.length < 3) return;
     pathRing(ring);
-    doc.fillColor('#fca5a5').fillOpacity(0.25).fill();
+    doc.fillColor('#fca5a5').fillOpacity(0.22).fill();
     pathRing(ring);
-    doc.strokeColor('#b91c1c').lineWidth(0.6).strokeOpacity(0.9).stroke();
+    doc.strokeColor('#b91c1c').lineWidth(0.55).strokeOpacity(0.85).stroke();
   });
 
-  // Module — schwarz mit hellgrauem/weißem dünnem Rahmen
+  // Module — schwarz mit weißem/hellgrauem dünnem Rahmen (Vorlage)
   modules.forEach((m) => {
     const corners = moduleCorners(m, proj).map(toPage);
     if (corners.length < 3) return;
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.fillColor('#111111').fillOpacity(0.92).fill();
+    doc.fillColor('#0a0a0a').fillOpacity(0.95).fill();
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.strokeColor('#e8e8e8').lineWidth(0.55).strokeOpacity(1).stroke();
+    doc.strokeColor('#f3f3f3').lineWidth(0.45).strokeOpacity(1).stroke();
 
-    // Neigungspfeil (dezent, Geometrie unverändert)
+    // Neigungspfeil dezent
     const tilt = m.tilt != null ? Number(m.tilt) : ((planObj.meta && planObj.meta.tilt) || 30);
     const ref = Math.min(Number(m.widthM) || 1, Number(m.heightM) || 1);
-    const lenM = arrowLenFromTilt(tilt, ref * 0.7);
+    const lenM = arrowLenFromTilt(tilt, ref * 0.55);
     let ux = 0;
     let uy = -1;
     for (const roof of roofs) {
@@ -234,17 +234,17 @@ function drawLayoutPreview(doc, plan, box) {
     const c = proj.toXY(m.lat, m.lng);
     const base = toPage({ x: c.x - ux * lenM * 0.5, y: c.y - uy * lenM * 0.5 });
     const tip = toPage({ x: c.x + ux * lenM * 0.5, y: c.y + uy * lenM * 0.5 });
-    doc.strokeColor('#c4c4c4').lineWidth(0.7).strokeOpacity(0.9);
+    doc.strokeColor('#d1d5db').lineWidth(0.55).strokeOpacity(0.85);
     doc.moveTo(base.x, base.y).lineTo(tip.x, tip.y).stroke();
     const dx = tip.x - base.x;
     const dy = tip.y - base.y;
     const al = Math.hypot(dx, dy) || 1;
-    const hx = (-dy / al) * 2.4;
-    const hy = (dx / al) * 2.4;
-    const bx = tip.x - (dx / al) * 4.2;
-    const by = tip.y - (dy / al) * 4.2;
+    const hx = (-dy / al) * 2.0;
+    const hy = (dx / al) * 2.0;
+    const bx = tip.x - (dx / al) * 3.6;
+    const by = tip.y - (dy / al) * 3.6;
     doc.moveTo(tip.x, tip.y).lineTo(bx + hx, by + hy).lineTo(bx - hx, by - hy).closePath();
-    doc.fillColor('#c4c4c4').fillOpacity(0.9).fill();
+    doc.fillColor('#d1d5db').fillOpacity(0.85).fill();
   });
 
   doc.restore();

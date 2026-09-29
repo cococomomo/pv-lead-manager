@@ -1,18 +1,17 @@
-# Product images for Angebots-PDF
+# Product / template images for Angebots-PDF
 
-Studio/product cutouts used in the offer export. Prefer manufacturer-accurate visuals.
+Assets used by `product-images.js` / `pdf.js` to match the Useini Vorlage look.
 
-| File | Source / product |
-|------|------------------|
-| sigen-gateway.png | Sigenergy Sigen Gateway HomePro TP (Solarfy product cutout) – Umschaltbox / Notstrom |
-| sigen-gateway-max.png | Sigenergy Sigen Gateway HomeMax TP |
-| sigen-inverter.jpg | Sigenergy SigenStor EC hybrid inverter |
-| sigen-battery.png | Sigenergy SigenStor BAT module |
-| sigen-stack.jpg / sigen-hybrid.jpg | Sigenergy marketing CDN |
-| fronius-gen24.jpg | Fronius GEN24 official media |
-| huawei-inverter.png | Huawei SUN2000 product image |
-| pv-module.png | Trina Vertex S+ dual-glass module render (stand-in for Glas-Glas) |
-| wallbox.jpg | Wallbox Pulsar Plus |
-| hero-*.jpg / energy-home.jpg / montage.jpg / klima.jpg | Atmospheric / section photography |
+| File | Role |
+|------|------|
+| cover-hero(-circle).png | Cover circular photo (from Vorlage) |
+| sales-portrait.png | Cover sales badge |
+| house-overview.png | „Auf einen Blick“ house graphic |
+| qr-placeholder.png | Online-Angebot QR placeholder |
+| modul-das-fullblack.png | DAS Glas-Glas module |
+| fronius-*.png | Fronius WR / Reserva / Smartmeter / Umschaltbox |
+| sigen-gateway*.png | Sigenergy Gateway (Umschaltbox) |
+| sigen-*.jpg/png | Sigenergy inverter / battery |
+| unterkonstruktion-*.png, gak-kasten.png | Montage / GAK |
+| hero-*.jpg, montage.jpg, wallbox.jpg, klima.jpg | Section atmosphere |
 
-Replace with official NOORTEC press assets when available.

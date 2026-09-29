@@ -1,8 +1,7 @@
 'use strict';
 
 /**
- * Produkt-/Symbolbilder für Angebots-PDF.
- * Pfade relativ zu src/offer/assets/products/
+ * Produktbilder & Komponenten-Karten für Angebots-PDF (Useini-Vorlage).
  */
 
 const fs = require('fs');
@@ -11,22 +10,37 @@ const path = require('path');
 const DIR = path.join(__dirname, 'assets', 'products');
 
 const FILES = {
-  heroPv: 'hero-pv.jpg',
-  heroHome: 'hero-home.jpg',
-  energyHome: 'energy-home.jpg',
+  coverHero: 'cover-hero-circle.png',
+  coverHeroRaw: 'cover-hero.png',
+  salesPortrait: 'sales-portrait.png',
+  houseOverview: 'house-overview.png',
+  qrPlaceholder: 'qr-placeholder.png',
+  chartMonthly: 'chart-monthly-yield.png',
+  chartFlow: 'chart-energy-flow.png',
+  chartAmort: 'chart-amortisation.png',
+  modulDas: 'modul-das-fullblack.png',
   pvModule: 'pv-module.png',
-  montage: 'montage.jpg',
-  wallbox: 'wallbox.jpg',
-  klima: 'klima.jpg',
+  froniusInverter: 'fronius-gen24-vorlage.png',
+  froniusGen24: 'fronius-gen24.jpg',
+  froniusReserva: 'fronius-reserva.png',
+  froniusSmartmeter: 'fronius-smartmeter.png',
+  froniusUmschalt: 'umschaltbox-fronius.png',
+  sigenGateway: 'sigen-gateway.png',
+  sigenGatewayMax: 'sigen-gateway-max.png',
   sigenInverter: 'sigen-inverter.jpg',
   sigenHybrid: 'sigen-hybrid.jpg',
   sigenBattery: 'sigen-battery.png',
   sigenStack: 'sigen-stack.jpg',
-  /** Sigenergy Gateway HomePro – korrekte Umschaltbox / Notstrom */
-  sigenGateway: 'sigen-gateway.png',
-  sigenGatewayMax: 'sigen-gateway-max.png',
-  froniusInverter: 'fronius-gen24.jpg',
   huaweiInverter: 'huawei-inverter.png',
+  wallbox: 'wallbox.jpg',
+  montage: 'montage.jpg',
+  ukFlach: 'unterkonstruktion-flach.png',
+  ukZiegel: 'unterkonstruktion-ziegel.png',
+  gak: 'gak-kasten.png',
+  klima: 'klima.jpg',
+  heroPv: 'hero-pv.jpg',
+  heroHome: 'hero-home.jpg',
+  energyHome: 'energy-home.jpg',
 };
 
 function abs(key) {
@@ -44,115 +58,103 @@ function firstExisting(...keys) {
   return null;
 }
 
+function guessImageForItem(name, brand) {
+  const n = String(name || '').toLowerCase();
+  const b = String(brand || '').toLowerCase();
+  if (/modul|aiko|das-|neostar|photovoltaik/.test(n) && !/unterkonstruktion|montage/.test(n)) {
+    return firstExisting('modulDas', 'pvModule');
+  }
+  if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|sun2000/.test(n)) {
+    if (b === 'fronius' || /fronius|gen24|symo/.test(n)) return firstExisting('froniusInverter', 'froniusGen24');
+    if (b === 'huawei' || /huawei|sun2000/.test(n)) return firstExisting('huaweiInverter');
+    return firstExisting('sigenInverter', 'sigenHybrid', 'froniusInverter');
+  }
+  if (/reserva|batter|speicher|sigenstor bat|akku/.test(n)) {
+    if (b === 'fronius' || /fronius|reserva/.test(n)) return firstExisting('froniusReserva', 'sigenBattery');
+    return firstExisting('sigenBattery', 'sigenStack', 'froniusReserva');
+  }
+  if (/smart.?meter|zähler|zaehler/.test(n)) return firstExisting('froniusSmartmeter');
+  if (/gateway|umschalt|notstrom|backup|netztren/.test(n)) {
+    if (b === 'fronius' || /fronius/.test(n)) return firstExisting('froniusUmschalt', 'sigenGateway');
+    return firstExisting('sigenGateway', 'sigenGatewayMax', 'froniusUmschalt');
+  }
+  if (/wallbox|ladestation/.test(n)) return firstExisting('wallbox');
+  if (/flachdach|ost-?west/.test(n)) return firstExisting('ukFlach', 'montage');
+  if (/unterkonstruktion|ziegel|gestell|montageprofil/.test(n)) return firstExisting('ukZiegel', 'montage');
+  if (/gak|generatoranschluss|überspannung/.test(n)) return firstExisting('gak');
+  if (/klima|lg standard/.test(n)) return firstExisting('klima');
+  return null;
+}
+
 /**
- * @param {object} offer
- * @returns {Array<{ key: string, title: string, text: string, image: string|null }>}
+ * Flache Liste aller Angebotspositionen mit Bildern (Vorlage: VERBAUTE KOMPONENTEN).
  */
-function buildComponentShowcases(offer) {
-  const cfg = (offer && offer.config) || {};
-  const brand = String(cfg.brand || '').toLowerCase();
-  const pages = [];
-
-  if (cfg.includePv !== false && Number(cfg.moduleCount) > 0) {
-    pages.push({
-      key: 'module',
-      title: 'Photovoltaik-Module',
-      text: `Hochwertige Glas-Glas-Module (${cfg.moduleModel || 'Premium-Modul'}) mit ${cfg.moduleWp || '—'} Wp. Langlebig, ertragsstark und mit langer Leistungsgarantie – die Basis Ihrer persönlichen Energiewende.`,
-      image: firstExisting('pvModule', 'heroPv'),
-    });
-
-    let inverterImg = firstExisting('sigenInverter', 'sigenHybrid');
-    let inverterTitle = 'Wechselrichter';
-    let inverterText = `Ihr Wechselrichter (${cfg.inverter || 'Hybrid-Wechselrichter'}) wandelt den erzeugten Solarstrom zuverlässig in nutzbaren Haushaltsstrom um und steuert Speicher sowie Einspeisung intelligent.`;
-    if (brand === 'fronius') {
-      inverterImg = firstExisting('froniusInverter', 'sigenInverter');
-      inverterTitle = 'Fronius Wechselrichter';
-    } else if (brand === 'huawei') {
-      inverterImg = firstExisting('huaweiInverter', 'sigenInverter');
-      inverterTitle = 'Huawei Wechselrichter';
-    } else if (brand === 'sigenergy') {
-      inverterImg = firstExisting('sigenInverter', 'sigenHybrid', 'sigenStack');
-      inverterTitle = 'Sigenergy Wechselrichter';
-      inverterText = `Der SigenStor-Hybridwechselrichter (${cfg.inverter || 'SigenStor EC'}) ist das Herzstück Ihrer Anlage: kompakt, leistungsstark und optimal auf Speicher und Gateway abgestimmt.`;
-    }
-    pages.push({
-      key: 'inverter',
-      title: inverterTitle,
-      text: inverterText,
-      image: inverterImg,
-    });
-
-    if (cfg.speicher) {
-      let batImg = firstExisting('sigenBattery', 'sigenStack');
-      let batTitle = 'Stromspeicher';
-      let batText = `Mit ${cfg.speicherLabel || `${cfg.speicher} kWh`} speichern Sie Ihren Solarstrom für Abend und Nacht – mehr Unabhängigkeit, weniger Netzbezug.`;
-      if (brand === 'sigenergy') {
-        batImg = firstExisting('sigenBattery', 'sigenStack');
-        batTitle = 'Sigenergy Stromspeicher';
-        batText = `SigenStor BAT (${cfg.speicherLabel || `${cfg.speicher} kWh`}) – modular erweiterbar, sicher und auf Ihren Eigenverbrauch abgestimmt.`;
-      } else if (brand === 'fronius') {
-        batTitle = 'Fronius Reserva Speicher';
-        batImg = firstExisting('sigenBattery', 'sigenStack');
-      }
-      pages.push({
-        key: 'storage',
-        title: batTitle,
-        text: batText,
-        image: batImg,
+function buildComponentCards(offer) {
+  const brand = (offer.config && offer.config.brand) || '';
+  const cards = [];
+  for (const section of offer.sections || []) {
+    const sectionTitle = section.title || '';
+    for (const item of section.items || []) {
+      cards.push({
+        name: item.name,
+        qty: item.qty || '1 Stück',
+        desc: item.desc || '',
+        brandLabel: brandLabelFor(sectionTitle, brand, item.name),
+        image: guessImageForItem(item.name, brand),
+        section: sectionTitle,
+        kind: classifyKind(item.name, sectionTitle),
       });
     }
   }
+  return cards;
+}
 
-  // Zusätzliche inkludierte Komponenten mit Bild
-  const sections = (offer && offer.sections) || [];
-  const extra = sections.find((s) => /zusätzliche/i.test(s.title || ''));
-  const items = (extra && extra.items) || [];
-  const names = items.map((i) => String(i.name || '').toLowerCase()).join(' | ');
+function brandLabelFor(sectionTitle, brand, name) {
+  const n = String(name || '').toLowerCase();
+  if (/installation|netzanschluss|erdung|einreichung|befund|inbetrieb|verdraht|kabelkanal|solarflex|kleinmaterial|mc buchse|mc stecker|leistung/.test(n)) {
+    return '';
+  }
+  if (/modul|das-|aiko/.test(n)) return /aiko/.test(n) || brand === 'aiko' ? 'AIKO' : 'DAS Solar';
+  if (/fronius|gen24|reserva|symo|smart.?meter/.test(n)) return 'Fronius';
+  if (/sigen|sigenergy|gateway|umschalt/.test(n)) return 'Sigenergy';
+  if (/huawei|sun2000/.test(n)) return 'Huawei';
+  if (/klima|lg/.test(n)) return 'LG';
+  if (/wechselrichter|speicher|batter|wallbox/.test(n)) {
+    if (brand === 'fronius') return 'Fronius';
+    if (brand === 'huawei') return 'Huawei';
+    if (brand === 'sigenergy') return 'Sigenergy';
+  }
+  return '';
+}
 
-  if (/gateway|umschalt|notstrom|backup/i.test(names) || /sigenergy|sigen/.test(brand + names)) {
-    if (/gateway|umschalt|notstrom|backup/i.test(names)) {
-      pages.push({
-        key: 'gateway',
-        title: 'Umschaltbox / Notstrom',
-        text: brand === 'sigenergy' || /sigen|sigenergy/i.test(names)
-          ? 'Das Sigenergy Gateway (Umschaltbox) trennt bei Netzausfall sicher vom öffentlichen Netz und versorgt ausgewählte Stromkreise weiter – echte Backup-Fähigkeit für Ihr Zuhause.'
-          : 'Die Umschaltbox ermöglicht Notstrombetrieb und schützt Ihre Anlage bei Netzstörungen.',
-        image: brand === 'fronius'
-          ? firstExisting('sigenGateway', 'sigenGatewayMax')
-          : firstExisting('sigenGateway', 'sigenGatewayMax'),
-      });
+function classifyKind(name, section) {
+  const n = String(name || '').toLowerCase();
+  const s = String(section || '').toLowerCase();
+  if (/modul/.test(n)) return 'Modul';
+  if (/wechselrichter|inverter|gen24|hybrid/.test(n)) return 'Wechselrichter';
+  if (/speicher|reserva|batter|bat /.test(n) || /energiespeicher/.test(s)) return 'Stromspeicher';
+  if (/unterkonstruktion|gestell/.test(n)) return 'Gestellkonstruktion';
+  if (/installation|netzanschluss|erdung|einreichung|befund|inbetrieb|verdraht|leistung/.test(n) || /leistungen/.test(s)) {
+    return 'Serviceleistung';
+  }
+  return 'Andere';
+}
+
+/** PV-Komponenten vor Speicher/Klima für Seitenfluss wie Vorlage. */
+function splitComponentGroups(cards) {
+  const pv = [];
+  const storage = [];
+  const other = [];
+  for (const c of cards) {
+    if (/energiespeicher|stromspeicher|smart.?meter/i.test(c.section) || c.kind === 'Stromspeicher' || /smart.?meter/i.test(c.name)) {
+      storage.push(c);
+    } else if (/klima/i.test(c.section)) {
+      other.push(c);
+    } else {
+      pv.push(c);
     }
   }
-
-  if (/wallbox|ladestation|e-?mobil/i.test(names)) {
-    pages.push({
-      key: 'wallbox',
-      title: 'Wallbox',
-      text: 'Laden Sie Ihr Elektrofahrzeug bequem mit selbst erzeugtem Solarstrom – effizient, zukunftssicher und alltagstauglich.',
-      image: firstExisting('wallbox'),
-    });
-  }
-
-  if (cfg.includePv !== false && Number(cfg.moduleCount) > 0) {
-    pages.push({
-      key: 'montage',
-      title: 'Unterkonstruktion & Montage',
-      text: `Robuste Unterkonstruktion für ${cfg.dach || 'Ihr Dach'}, fachgerechte Installation und Inbetriebnahme durch unser Team – von der Planung bis zur Übergabe aus einer Hand.`,
-      image: firstExisting('montage', 'heroHome'),
-    });
-  }
-
-  const klima = (offer && offer.klima && offer.klima.fix) || [];
-  if (klima.length) {
-    pages.push({
-      key: 'klima',
-      title: 'Klimageräte',
-      text: 'Effiziente Klimatisierung mit LG STANDARD II – abgestimmt auf Ihre Räume und kombiniert mit Ihrer PV-Anlage für niedrige Betriebskosten.',
-      image: firstExisting('klima', 'energyHome'),
-    });
-  }
-
-  return pages;
+  return { pv, storage, other };
 }
 
 module.exports = {
@@ -160,5 +162,8 @@ module.exports = {
   FILES,
   abs,
   firstExisting,
-  buildComponentShowcases,
+  guessImageForItem,
+  buildComponentCards,
+  splitComponentGroups,
+  classifyKind,
 };
