@@ -67,9 +67,11 @@ const { mountLayoutOfferPersistRoutes } = require('./offer/layout-routes');
 const { getDashboardStats } = require('./stats');
 const { transferLeadToReonicById } = require('./reonic-sync');
 const { reonicV2OffersConfigured, testReonicRestV2Connection } = require('./integrations/reonic');
+const { installBasePath } = require('./base-path');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
+const BASE_PATH = installBasePath(app);
 const DATA_DIR = path.join(__dirname, '../data');
 app.set('trust proxy', 1);
 
@@ -120,13 +122,13 @@ app.use(session({
     retries: 0,
     logFn: () => {},
   }),
-  name: 'pvl.sid',
+  name: String(process.env.SESSION_COOKIE_NAME || 'pvl.sid').trim() || 'pvl.sid',
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   rolling: true,
   cookie: {
-    path: '/',
+    path: BASE_PATH || '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     httpOnly: true,
     secure: process.env.SESSION_COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production',
