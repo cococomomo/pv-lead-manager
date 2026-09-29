@@ -14,12 +14,12 @@ Erwartete Dateien (stabile Namen):
   das-dh108nd-440-465.pdf
   lg-standard-ii-single.pdf
   lg-mu2r15-4-1kw.pdf
+  sigen-gateway-home.pdf
+  enwitec-gen24-10015613.pdf
 
-Nicht abgelegt (kein eindeutiges öffentliches Datenblatt):
-  SIG Energy Gateway (Home / HomePro / HomePro TP-L / HomeMax)
-  Fronius Umschaltbox (Notstrom)
-  SigenStor Smart Meter
-  LG Multi-Außengerät 6,3 kW (Typencode fehlt im Katalog)
+Bewusst ohne Datei:
+  SigenStor Smart Meter (kein Datenblatt)
+  LG Multi-Außengerät 6,3 kW (Typ noch offen)
 
 Öffentlich erreichbar unter:
   https://pvl.lifeco.at/datenblaetter/<dateiname>

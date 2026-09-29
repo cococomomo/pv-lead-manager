@@ -127,6 +127,28 @@ const DATASHEET_CATALOG = [
     ],
   },
   {
+    id: 'sigen-gateway-home',
+    slug: 'sigen-gateway-home.pdf',
+    label: 'Sigenergy Gateway Home TP 30K',
+    brands: ['sigenergy'],
+    kind: 'gateway',
+    sourceNames: [
+      'Sigen Energy Gateway Home.pdf',
+    ],
+  },
+  {
+    id: 'enwitec-gen24-10015613',
+    slug: 'enwitec-gen24-10015613.pdf',
+    label: 'Enwitec Netzumschaltbox 10015613 – Fronius GEN24 Plus Full Backup',
+    brands: ['fronius'],
+    kind: 'gateway',
+    // Blatt nennt Symo GEN24 Plus 6.0/8.0/10.0 und 12.0 SC. 3.0–5.0 Plus haben kein Full Backup.
+    minAcKw: 6,
+    sourceNames: [
+      'DB_DE_Enwitec_Netzumschaltbox_Fronius_10015613.pdf',
+    ],
+  },
+  {
     id: 'lg-std2-single-25',
     slug: 'lg-standard-ii-single.pdf',
     label: 'LG STANDARD II Single-Split 2,5 kW (S09EC.NSJS / S09EC.UA3S)',
@@ -263,7 +285,13 @@ function selectDatasheetsForOffer(offer, opts = {}) {
       if (!brand || !entry.brands.includes(brand) || !includePv) ok = false;
       else if (entry.kind === 'storage') ok = hasSpeicher;
       else if (entry.kind === 'meter') ok = hasSpeicher || optionKeys.has('smartmeter');
-      else if (entry.kind === 'gateway') ok = optionKeys.has('notstrom');
+      else if (entry.kind === 'gateway') {
+        ok = optionKeys.has('notstrom');
+        if (ok && Number.isFinite(acKw)) {
+          if (entry.maxAcKw != null && acKw > entry.maxAcKw) ok = false;
+          if (entry.minAcKw != null && acKw < entry.minAcKw) ok = false;
+        }
+      }
       else if (entry.kind === 'inverter') {
         ok = true;
         if (Number.isFinite(acKw)) {
