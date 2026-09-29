@@ -51,7 +51,7 @@ const DATASHEET_CATALOG = [
   {
     id: 'fronius-symo',
     slug: 'fronius-symo.pdf',
-    label: 'Fronius Symo (3–20 kW) – String-Wechselrichter ohne Speicher',
+    label: 'Fronius Symo (3–20 kW, M) – String-Wechselrichter ohne Speicher',
     brands: ['fronius_symo'],
     kind: 'inverter',
     sourceNames: [
@@ -73,7 +73,7 @@ const DATASHEET_CATALOG = [
   {
     id: 'sigen-hybrid',
     slug: 'sigen-hybrid-wechselrichter.pdf',
-    label: 'Sigenergy Sigen Hybrid – Wechselrichter',
+    label: 'Sigenergy Sigen Hybrid Three Phase (5,0–30,0 kW)',
     brands: ['sigenergy'],
     kind: 'inverter',
     sourceNames: [
@@ -84,7 +84,7 @@ const DATASHEET_CATALOG = [
   {
     id: 'sigen-batterie',
     slug: 'sigen-batterie.pdf',
-    label: 'Sigenergy SigenStor – Batterie / Speicher',
+    label: 'Sigenergy SigenStor BAT 6,0 / 9,0 kWh',
     brands: ['sigenergy'],
     kind: 'storage',
     sourceNames: [
@@ -95,7 +95,7 @@ const DATASHEET_CATALOG = [
   {
     id: 'aiko-module',
     slug: 'aiko-mce54mb-460-490w.pdf',
-    label: 'AIKO Neostar 2S – PV-Module (460–490 W)',
+    label: 'AIKO Neostar 3S54 (A-MCE54Mb, 460–490 W)',
     brands: null,
     moduleTypes: ['aiko'],
     kind: 'module',
@@ -115,6 +115,73 @@ const DATASHEET_CATALOG = [
       'DAS-DH108ND_440-465_Schwarzer Rahmen_Datenblatt_DE-1.pdf',
       'DAS-DH108ND_440-465_Schwarzer Rahmen_Datenblatt_DE.pdf',
     ],
+  },
+  {
+    id: 'fronius-smart-meter-ts',
+    slug: 'fronius-smart-meter-ts.pdf',
+    label: 'Fronius Smart Meter TS',
+    brands: ['fronius', 'fronius_symo'],
+    kind: 'meter',
+    sourceNames: [
+      'SE_DS_Fronius_Smart_Meter_TS_DE.pdf',
+    ],
+  },
+  {
+    id: 'sigen-gateway-home',
+    slug: 'sigen-gateway-home.pdf',
+    label: 'Sigenergy Gateway Home TP 30K',
+    brands: ['sigenergy'],
+    kind: 'gateway',
+    sourceNames: [
+      'Sigen Energy Gateway Home.pdf',
+    ],
+  },
+  {
+    id: 'enwitec-gen24-10015613',
+    slug: 'enwitec-gen24-10015613.pdf',
+    label: 'Enwitec Netzumschaltbox 10015613 – Fronius GEN24 Plus Full Backup',
+    brands: ['fronius'],
+    kind: 'gateway',
+    // Blatt nennt Symo GEN24 Plus 6.0/8.0/10.0 und 12.0 SC. 3.0–5.0 Plus haben kein Full Backup.
+    minAcKw: 6,
+    sourceNames: [
+      'DB_DE_Enwitec_Netzumschaltbox_Fronius_10015613.pdf',
+    ],
+  },
+  {
+    id: 'lg-std2-single-25',
+    slug: 'lg-standard-ii-single.pdf',
+    label: 'LG STANDARD II Single-Split 2,5 kW (S09EC.NSJS / S09EC.UA3S)',
+    kind: 'climate',
+    klimaPackages: ['lg-std2-single-25'],
+  },
+  {
+    id: 'lg-std2-single-35',
+    slug: 'lg-standard-ii-single.pdf',
+    label: 'LG STANDARD II Single-Split 3,5 kW (S12EC.NSJS / S12EC.UA3S)',
+    kind: 'climate',
+    klimaPackages: ['lg-std2-single-35'],
+  },
+  {
+    id: 'lg-std2-multi-41-outdoor',
+    slug: 'lg-mu2r15-4-1kw.pdf',
+    label: 'LG Multi-Split Außengerät 4,1 kW (MU2R15)',
+    kind: 'climate',
+    klimaPackages: ['lg-std2-multi-41'],
+  },
+  {
+    id: 'lg-std2-multi-41-indoor',
+    slug: 'lg-standard-ii-single.pdf',
+    label: 'LG STANDARD II Innengerät 2,5 kW (S09EC.NSJS)',
+    kind: 'climate',
+    klimaPackages: ['lg-std2-multi-41'],
+  },
+  {
+    id: 'lg-std2-multi-63-indoor',
+    slug: 'lg-standard-ii-single.pdf',
+    label: 'LG STANDARD II Innengeräte 2,5 / 3,5 kW (S09EC.NSJS, S12EC.NSJS)',
+    kind: 'climate',
+    klimaPackages: ['lg-std2-multi-63'],
   },
 ];
 
@@ -139,9 +206,53 @@ function datasheetPublicUrl(entry, baseUrl, opts = {}) {
   return `${base}/datenblaetter/${entry.slug}`;
 }
 
+const OFFER_KINDS = ['module', 'inverter', 'storage', 'meter', 'gateway', 'climate'];
+/** Diese Arten höchstens einmal (beste / erste passende Zeile). Klima darf mehrere Blätter haben. */
+const SINGLE_KINDS = new Set(['module', 'inverter', 'storage', 'meter', 'gateway']);
+
+function collectKlimaPackageIds(offer) {
+  const ids = [];
+  const push = (id) => {
+    const s = String(id || '').trim();
+    if (s) ids.push(s);
+  };
+  const blocks = [];
+  const klima = offer && offer.klima;
+  if (klima) blocks.push(...(klima.fix || []), ...(klima.optional || []));
+  const raw = offer && offer.config && offer.config.klima;
+  if (Array.isArray(raw)) blocks.push(...raw);
+  else if (raw && typeof raw === 'object') blocks.push(raw);
+  for (const line of blocks) {
+    if (!line || line.enabled === false) continue;
+    push(line.packageId || line.id || (line.package && line.package.id));
+  }
+  return [...new Set(ids)];
+}
+
+/** Fix enthaltene Options-Keys (Notstrom, Smart-Meter-Nachrüstung). Optionale Upsells zählen nicht. */
+function includedOptionKeys(offer) {
+  const keys = new Set();
+  const inkludiert = offer && offer.preis && Array.isArray(offer.preis.inkludiert)
+    ? offer.preis.inkludiert
+    : null;
+  if (inkludiert) {
+    for (const it of inkludiert) {
+      if (it && it.key) keys.add(String(it.key));
+    }
+    return keys;
+  }
+  const cfg = (offer && offer.config) || {};
+  for (const key of cfg.inkludierteOptionen || []) keys.add(String(key));
+  for (const o of cfg.optionen || []) {
+    if (o && o.key && o.mode !== 'optional') keys.add(String(o.key));
+  }
+  return keys;
+}
+
 /**
- * Datenblätter passend zum Angebot – maximal ein Link je Komponente
- * (Module, Wechselrichter, Speicher).
+ * Datenblätter passend zum Angebot.
+ * Module, Wechselrichter, Speicher und Zähler: je ein Link.
+ * Klima: je Paket die passenden Blätter (auch ohne PV).
  */
 function selectDatasheetsForOffer(offer, opts = {}) {
   const cfg = (offer && offer.config) || {};
@@ -152,6 +263,8 @@ function selectDatasheetsForOffer(offer, opts = {}) {
   const moduleType = cfg.moduleType === 'aiko' ? 'aiko' : 'das';
   const includePv = cfg.includePv !== false && Number(cfg.moduleCount) > 0;
   const hasSpeicher = !!(Number(cfg.speicher) || Number(cfg.speicherBasis) || Number(cfg.speicherGesamt));
+  const klimaIds = collectKlimaPackageIds(offer);
+  const optionKeys = includedOptionKeys(offer);
 
   let acKw = Number(cfg.inverterKw);
   if (!Number.isFinite(acKw) && cfg.inverter) {
@@ -159,18 +272,26 @@ function selectDatasheetsForOffer(offer, opts = {}) {
     if (m) acKw = Number(String(m[1]).replace(',', '.'));
   }
   const baseUrl = opts.baseUrl;
-
-  const candidates = { module: null, inverter: null, storage: null };
+  const taken = new Set();
+  const selected = [];
 
   for (const entry of DATASHEET_CATALOG) {
-    if (!includePv && entry.kind !== 'module') continue;
-
     let ok = false;
-    if (entry.moduleTypes) {
+    if (entry.klimaPackages) {
+      ok = klimaIds.some((id) => entry.klimaPackages.includes(id));
+    } else if (entry.moduleTypes) {
       ok = includePv && entry.moduleTypes.includes(moduleType);
     } else if (entry.brands) {
-      if (!brand || !entry.brands.includes(brand)) ok = false;
+      if (!brand || !entry.brands.includes(brand) || !includePv) ok = false;
       else if (entry.kind === 'storage') ok = hasSpeicher;
+      else if (entry.kind === 'meter') ok = hasSpeicher || optionKeys.has('smartmeter');
+      else if (entry.kind === 'gateway') {
+        ok = optionKeys.has('notstrom');
+        if (ok && Number.isFinite(acKw)) {
+          if (entry.maxAcKw != null && acKw > entry.maxAcKw) ok = false;
+          if (entry.minAcKw != null && acKw < entry.minAcKw) ok = false;
+        }
+      }
       else if (entry.kind === 'inverter') {
         ok = true;
         if (Number.isFinite(acKw)) {
@@ -185,27 +306,24 @@ function selectDatasheetsForOffer(offer, opts = {}) {
       }
     }
     if (!ok) continue;
+    if (!OFFER_KINDS.includes(entry.kind)) continue;
+    if (SINGLE_KINDS.has(entry.kind) && taken.has(entry.kind)) continue;
     if (!datasheetExists(entry) && !opts.includeMissing) continue;
 
-    const kind = entry.kind === 'module' || entry.kind === 'inverter' || entry.kind === 'storage'
-      ? entry.kind
-      : null;
-    if (!kind) continue;
-
-    // Pro Komponente nur ein Datenblatt (erste passende / beste Match)
-    if (candidates[kind]) continue;
-    candidates[kind] = {
+    taken.add(entry.kind);
+    selected.push({
       id: entry.id,
       label: entry.label,
       slug: entry.slug,
       url: datasheetPublicUrl(entry, baseUrl, { openPage: true }),
       pdfUrl: datasheetPublicUrl(entry, baseUrl),
       available: datasheetExists(entry),
-      kind,
-    };
+      kind: entry.kind,
+    });
   }
 
-  return ['module', 'inverter', 'storage'].map((k) => candidates[k]).filter(Boolean);
+  selected.sort((a, b) => OFFER_KINDS.indexOf(a.kind) - OFFER_KINDS.indexOf(b.kind));
+  return selected;
 }
 
 /** Alle Katalog-Einträge (Admin/Deploy-Hilfe). */

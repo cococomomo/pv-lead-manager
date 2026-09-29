@@ -5,10 +5,21 @@ Erwartete Dateien (stabile Namen):
   fronius-reserva.pdf
   fronius-symo-gen24-3-10.pdf
   fronius-symo-gen24sc-12.pdf
+  fronius-symo.pdf
+  fronius-smart-meter-ts.pdf
   sigen-hybrid-wechselrichter.pdf
   sigen-batterie.pdf
+  huawei-sun2000-3-10ktl-m1.pdf
   aiko-mce54mb-460-490w.pdf
   das-dh108nd-440-465.pdf
+  lg-standard-ii-single.pdf
+  lg-mu2r15-4-1kw.pdf
+  sigen-gateway-home.pdf
+  enwitec-gen24-10015613.pdf
+
+Bewusst ohne Datei:
+  SigenStor Smart Meter (kein Datenblatt)
+  LG Multi-Außengerät 6,3 kW (Typ noch offen)
 
 Öffentlich erreichbar unter:
   https://pvl.lifeco.at/datenblaetter/<dateiname>
