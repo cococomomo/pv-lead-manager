@@ -86,11 +86,58 @@ function buildOfferFromBody(req, getProfile, body) {
     klima: cfg.klima,
     offerNotes: Array.isArray(cfg.offerNotes) ? cfg.offerNotes : undefined,
     offerNote: cfg.offerNote,
+    layoutPlanId: cfg.layoutPlanId != null ? Number(cfg.layoutPlanId) : null,
     angebotsnummer,
     datum,
     vertrieb,
   };
+  if (!Number.isFinite(config.layoutPlanId)) config.layoutPlanId = null;
   return { offer: catalog.computeOffer(config), angebotsnummer };
+}
+
+/**
+ * Belegungsplan-ID für PDF/Persistenz:
+ * 1) body.layoutPlanId (aktive Variante, top-level)
+ * 2) body.config.layoutPlanId
+ * 3) body.variants[i].layoutPlanId wenn body.activeVariantIndex gesetzt
+ * Kein stiller Lead-Fallback mehr bevorzugt – Varianten besitzen ihren Plan.
+ */
+function resolveLayoutPlanIdFromBody(body) {
+  const b = body || {};
+  const tryNum = (v) => {
+    const n = v != null ? Number(v) : NaN;
+    return Number.isFinite(n) ? n : null;
+  };
+  let id = tryNum(b.layoutPlanId);
+  if (id == null && b.config && typeof b.config === 'object') {
+    id = tryNum(b.config.layoutPlanId);
+  }
+  if (id == null && Array.isArray(b.variants) && b.variants.length) {
+    const idx = Number.isFinite(Number(b.activeVariantIndex))
+      ? Math.max(0, Math.min(b.variants.length - 1, Number(b.activeVariantIndex)))
+      : 0;
+    const v = b.variants[idx];
+    if (v && typeof v === 'object') id = tryNum(v.layoutPlanId);
+  }
+  return id;
+}
+
+/** Varianten für Persistenz: layoutPlanId je Variante als Zahl|null. */
+function normalizeVariantsForPersist(variants, fallbackLayoutPlanId) {
+  const list = Array.isArray(variants) ? variants : [];
+  const fallback = fallbackLayoutPlanId != null && Number.isFinite(Number(fallbackLayoutPlanId))
+    ? Number(fallbackLayoutPlanId)
+    : null;
+  if (!list.length) {
+    return [{ layoutPlanId: fallback }];
+  }
+  return list.map((v, i) => {
+    const o = (v && typeof v === 'object') ? { ...v } : {};
+    let lid = o.layoutPlanId != null ? Number(o.layoutPlanId) : NaN;
+    if (!Number.isFinite(lid) && i === 0 && fallback != null) lid = fallback;
+    o.layoutPlanId = Number.isFinite(lid) ? lid : null;
+    return o;
+  });
 }
 
 function customerFromBody(body) {
@@ -359,12 +406,12 @@ function mountOfferRoutes(app, deps) {
       );
       const fileBase = safeFileBase(customer, angebotsnummer, customerVersion);
 
-      // Optional: Belegungsplan-Snapshot / Plan-JSON fürs PDF
+      // Optional: Belegungsplan-Snapshot / Plan-JSON fürs PDF (pro aktiver Variante)
       let layoutSnapshotAbs = null;
       let layoutPlan = null;
-      let layoutPlanId = body.layoutPlanId != null ? Number(body.layoutPlanId) : null;
-      if (!Number.isFinite(layoutPlanId) && body.leadId != null) {
-        // Fallback: neuestes Layout zum Lead
+      let layoutPlanId = resolveLayoutPlanIdFromBody(body);
+      // Legacy-Fallback nur wenn gar kein Varianten-Plan gesetzt ist
+      if (layoutPlanId == null && body.leadId != null) {
         try {
           const list = persist.listLayoutsForLead(Number(body.leadId));
           if (list && list[0]) layoutPlanId = Number(list[0].id);
@@ -414,6 +461,12 @@ function mountOfferRoutes(app, deps) {
       if (body.finalize || body.saveVersion) {
         try {
           const createdBy = (req.session && req.session.user && req.session.user.username) || '';
+          const variantsNorm = normalizeVariantsForPersist(body.variants, layoutPlanId);
+          // Aktive Config bekommt denselben layoutPlanId wie Variante
+          const configNorm = { ...(body.config || {}) };
+          if (configNorm.layoutPlanId == null && layoutPlanId != null) {
+            configNorm.layoutPlanId = layoutPlanId;
+          }
           savedVersion = persist.saveOfferVersion({
             leadId: Number.isFinite(leadIdNum) ? leadIdNum : null,
             customerEmail: customer.email,
@@ -421,8 +474,8 @@ function mountOfferRoutes(app, deps) {
             customerVersion,
             filenameBase: fileBase,
             status: body.finalize ? 'sent' : 'draft',
-            config: body.config || {},
-            variants: body.variants || [],
+            config: configNorm,
+            variants: variantsNorm,
             emailSubject: body.subject || '',
             emailBody: body.body || '',
             layoutPlanId: Number.isFinite(layoutPlanId) ? layoutPlanId : null,

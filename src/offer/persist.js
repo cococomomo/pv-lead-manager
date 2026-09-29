@@ -451,6 +451,25 @@ function getOfferPdfAbsPath(versionId) {
     : path.join(getProjectRoot(), cur.pdfPath);
 }
 
+/**
+ * Belegungsplan-IDs je Angebotsvariante (für PDF-Export pro Variante).
+ * @param {object|array} offerOrVariants  Angebot (rowOffer) oder variants[]
+ * @returns {(number|null)[]}
+ */
+function layoutPlanIdsByVariant(offerOrVariants) {
+  const variants = Array.isArray(offerOrVariants)
+    ? offerOrVariants
+    : (offerOrVariants && Array.isArray(offerOrVariants.variants) ? offerOrVariants.variants : []);
+  if (!variants.length && offerOrVariants && typeof offerOrVariants === 'object' && !Array.isArray(offerOrVariants)) {
+    const legacy = offerOrVariants.layoutPlanId != null ? Number(offerOrVariants.layoutPlanId) : NaN;
+    return [Number.isFinite(legacy) ? legacy : null];
+  }
+  return variants.map((v) => {
+    const n = v && v.layoutPlanId != null ? Number(v.layoutPlanId) : NaN;
+    return Number.isFinite(n) ? n : null;
+  });
+}
+
 module.exports = {
   LAYOUTS_DIR,
   OFFERS_DIR,
@@ -470,6 +489,7 @@ module.exports = {
   saveOfferVersion,
   saveOfferPdfFile,
   getOfferPdfAbsPath,
+  layoutPlanIdsByVariant,
   peekNextCustomerVersion,
   leadHasSentOffer,
   leadIdsWithSentOffers,

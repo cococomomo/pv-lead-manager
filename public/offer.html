@@ -451,29 +451,35 @@
       </div>
     </div>
 
-    <div class="panel" id="panel-layout">
-      <h2><span class="num">3</span> Belegungsplan <span style="font-weight:400;color:var(--muted);font-size:0.78rem">(optional)</span></h2>
+    <div class="panel">
+      <h2><span class="num">3</span> Konfiguration &amp; Varianten</h2>
+      <div class="tabs" id="variant-tabs"></div>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn secondary" id="btn-add-variant" type="button">+ Variante hinzufügen</button>
+      </div>
+      <div class="hint" id="variant-layout-hint" style="margin-top:0.35rem">Jede Variante hat eigenen Belegungsplan und eigene Preiseinstellungen.</div>
+
+      <label style="margin-top:0.75rem">Belegungsplan dieser Variante <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
       <div class="layout-panel-body" id="layout-panel-body">
         <div class="layout-panel-meta">
-          <div class="hint" id="layout-status">Kein Belegungsplan – Angebot kann auch ohne Plan erstellt werden.</div>
+          <div class="hint" id="layout-status">Kein Belegungsplan – Variante kann auch ohne Plan erstellt werden.</div>
           <div class="btn-row">
             <button type="button" class="btn" id="btn-layout-open">Belegungsplan öffnen</button>
             <button type="button" class="btn secondary" id="btn-layout-apply" style="display:none">Modulanzahl übernehmen</button>
             <button type="button" class="btn secondary" id="btn-layout-clear" style="display:none">Plan trennen</button>
+          </div>
+          <div class="btn-row" id="layout-pick-row" style="display:none;margin-top:0">
+            <select id="layout-pick" style="flex:1;min-width:0" title="Vorhandenen Plan dieser Variante zuordnen">
+              <option value="">Vorhandenen Plan wählen …</option>
+            </select>
+            <button type="button" class="btn secondary" id="btn-layout-pick">Zuordnen</button>
           </div>
         </div>
         <div class="layout-panel-preview">
           <img class="layout-thumb" id="layout-thumb" alt="Belegungsplan" />
         </div>
       </div>
-    </div>
 
-    <div class="panel">
-      <h2><span class="num">4</span> Konfiguration &amp; Varianten</h2>
-      <div class="tabs" id="variant-tabs"></div>
-      <div class="btn-row" style="margin-top:0">
-        <button class="btn secondary" id="btn-add-variant">+ Variante hinzufügen</button>
-      </div>
       <div class="pv-toggle-row">
         <span class="inline"><input type="checkbox" id="f-include-pv" checked /> <label for="f-include-pv" style="margin:0;color:var(--text);font-weight:600">Photovoltaik einbeziehen</label></span>
       </div>
@@ -499,7 +505,6 @@
           <div class="kwp-live" id="f-kwp-live" title="Module × Wp / 1000">—</div>
           <input type="hidden" id="f-kwp" value="" />
         </div>
-        <div><label>Brutto-Override (€)</label><input id="f-brutto" type="number" placeholder="auto" title="Manueller Gesamtpreis brutto – überschreibt die Kalkulation" /></div>
         <div style="grid-column: 1 / -1">
           <label>Wechselrichter <span style="font-weight:400;color:var(--muted)">(manuell wählbar · Fronius / Sigenergy)</span></label>
           <select id="f-inverter"></select>
@@ -540,7 +545,7 @@
     </div>
 
     <div class="panel" id="panel-klima">
-      <h2><span class="num">5</span> Klimageräte · LG STANDARD II</h2>
+      <h2><span class="num">4</span> Klimageräte · LG STANDARD II</h2>
       <div class="pv-toggle-row">
         <span class="inline"><input type="checkbox" id="f-klima-enabled" /> <label for="f-klima-enabled" style="margin:0;color:var(--text);font-weight:600">Klimapaket hinzufügen</label></span>
         <span class="inline">
@@ -567,6 +572,17 @@
         </div>
       </div>
       <div class="hint">Single 2,5 / 3,5 kW oder Multi 4,1 / 6,3 kW. Kombi mit PV möglich (Fix oder optional).</div>
+    </div>
+
+    <div class="panel" id="panel-price-override">
+      <h2><span class="num">5</span> Preis-Override</h2>
+      <label>Brutto-Gesamtpreis (€) <span style="font-weight:400;color:var(--muted)">(optional · überschreibt die Kalkulation)</span></label>
+      <div class="grid2" style="margin-top:0.35rem">
+        <div>
+          <input id="f-brutto" type="number" placeholder="auto" title="Manueller Gesamtpreis brutto – überschreibt die Kalkulation" />
+          <div class="hint">Leer = automatische Kalkulation. Gilt für die aktive Variante (PV + Klima).</div>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
@@ -2094,14 +2110,48 @@ function openVariantModal() {
   const m = $('variant-modal');
   if (!m) return;
   m.hidden = false;
+  m.removeAttribute('hidden');
   m.setAttribute('aria-hidden', 'false');
+  m.style.display = 'flex';
 }
 
 function closeVariantModal() {
   const m = $('variant-modal');
   if (!m) return;
   m.hidden = true;
+  m.setAttribute('hidden', '');
   m.setAttribute('aria-hidden', 'true');
+  m.style.display = '';
+}
+
+function wireVariantUi() {
+  const addBtn = $('btn-add-variant');
+  if (addBtn && !addBtn.dataset.variantWired) {
+    addBtn.dataset.variantWired = '1';
+    addBtn.addEventListener('click', (e) => { e.preventDefault(); addVariant(); });
+  }
+  const dup = $('variant-btn-dup');
+  if (dup && !dup.dataset.variantWired) {
+    dup.dataset.variantWired = '1';
+    dup.addEventListener('click', () => { addVariantDuplicate(); });
+  }
+  const empty = $('variant-btn-empty');
+  if (empty && !empty.dataset.variantWired) {
+    empty.dataset.variantWired = '1';
+    empty.addEventListener('click', () => { addVariantEmpty(); });
+  }
+  const cancel = $('variant-btn-cancel');
+  if (cancel && !cancel.dataset.variantWired) {
+    cancel.dataset.variantWired = '1';
+    cancel.addEventListener('click', closeVariantModal);
+  }
+  const modal = $('variant-modal');
+  if (modal && !modal.dataset.variantWired) {
+    modal.dataset.variantWired = '1';
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeVariantModal();
+    });
+  }
 }
 
 function saveActiveVariant() { variants[activeVariant] = readForm(); }
@@ -2198,8 +2248,20 @@ function customerPayload() {
 function basePayload() {
   saveActiveVariant();
   syncVollmachtUi();
+  // Pro Variante layoutPlanId normalisieren (Zahl oder null) – API-Form für PDF-Export
+  const normalizedVariants = variants.map((v) => {
+    const o = (v && typeof v === 'object') ? { ...v } : emptyVariantConfig();
+    const lid = o.layoutPlanId != null ? Number(o.layoutPlanId) : null;
+    o.layoutPlanId = Number.isFinite(lid) ? lid : null;
+    return o;
+  });
+  variants = normalizedVariants;
+  const active = variants[activeVariant] || {};
+  const activeLayoutId = active.layoutPlanId != null && Number.isFinite(Number(active.layoutPlanId))
+    ? Number(active.layoutPlanId)
+    : (currentLayoutId != null ? Number(currentLayoutId) : null);
   return {
-    config: variants[activeVariant],
+    config: active,
     customer: customerPayload(),
     vertrieb: {
       name: $('v-name').value.trim(),
@@ -2213,7 +2275,8 @@ function basePayload() {
     useAI: true,
     appendVollmacht: shouldAttachVollmacht(),
     leadId: currentLeadId,
-    layoutPlanId: currentLayoutId,
+    layoutPlanId: Number.isFinite(activeLayoutId) ? activeLayoutId : null,
+    activeVariantIndex: activeVariant,
     salutationOverride: customerSalutationOverride,
     subject: ($('m-subject') && $('m-subject').value.trim()) || '',
     body: ($('m-body') && $('m-body').value.trim()) || '',
@@ -2340,17 +2403,23 @@ function updateLayoutPanelUi() {
   const body = $('layout-panel-body');
   const btnApply = $('btn-layout-apply');
   const btnClear = $('btn-layout-clear');
+  const variantLabel = 'Variante ' + (activeVariant + 1);
   if (!currentLayout) {
-    if (status) status.textContent = 'Kein Belegungsplan – Angebot kann auch ohne Plan erstellt werden.';
+    if (status) {
+      status.textContent = variants.length > 1
+        ? (`Kein Belegungsplan für ${variantLabel} – optional.`)
+        : 'Kein Belegungsplan – Variante kann auch ohne Plan erstellt werden.';
+    }
     if (thumb) thumb.removeAttribute('src');
     if (body) body.classList.remove('has-preview');
     if (btnApply) btnApply.style.display = 'none';
     if (btnClear) btnClear.style.display = 'none';
+    refreshLayoutPickList();
     return;
   }
   const n = currentLayout.moduleCount || 0;
   if (status) {
-    status.textContent = `Plan #${currentLayout.id} · ${n} Module`
+    status.textContent = `${variantLabel} · Plan #${currentLayout.id} · ${n} Module`
       + (currentLayout.addressText ? ` · ${currentLayout.addressText}` : '');
   }
   if (thumb && body) {
@@ -2364,6 +2433,64 @@ function updateLayoutPanelUi() {
   }
   if (btnApply) btnApply.style.display = n > 0 ? '' : 'none';
   if (btnClear) btnClear.style.display = '';
+  refreshLayoutPickList();
+}
+
+/** Vorhandene Layouts zum Lead/E-Mail zur Auswahl (pro Variante zuordenbar). */
+async function refreshLayoutPickList() {
+  const row = $('layout-pick-row');
+  const sel = $('layout-pick');
+  if (!row || !sel) return;
+  const email = ($('c-email') && $('c-email').value.trim()) || '';
+  const qs = currentLeadId
+    ? ('leadId=' + encodeURIComponent(currentLeadId))
+    : (email ? ('email=' + encodeURIComponent(email)) : '');
+  if (!qs) {
+    row.style.display = 'none';
+    return;
+  }
+  try {
+    const res = await api('/api/layouts?' + qs);
+    const j = await res.json();
+    const list = Array.isArray(j.layouts) ? j.layouts : [];
+    const usedElsewhere = new Set(
+      variants.map((v, i) => (i !== activeVariant && v && v.layoutPlanId != null ? Number(v.layoutPlanId) : null))
+        .filter((id) => Number.isFinite(id))
+    );
+    const options = list.map((L) => {
+      const id = Number(L.id);
+      const n = Number(L.moduleCount) || 0;
+      const mark = (currentLayoutId != null && Number(currentLayoutId) === id)
+        ? ' (aktiv)'
+        : (usedElsewhere.has(id) ? ' (andere Variante)' : '');
+      const title = (L.title || ('Plan #' + id)).slice(0, 48);
+      return `<option value="${id}">#${id} · ${n} Mod. · ${escHtml(title)}${mark}</option>`;
+    });
+    sel.innerHTML = '<option value="">Vorhandenen Plan wählen …</option>' + options.join('');
+    if (currentLayoutId != null) sel.value = String(currentLayoutId);
+    row.style.display = list.length ? '' : 'none';
+  } catch (_) {
+    row.style.display = 'none';
+  }
+}
+
+async function assignPickedLayout() {
+  const sel = $('layout-pick');
+  if (!sel || !sel.value) {
+    toast('Bitte einen Plan auswählen.', 'error');
+    return;
+  }
+  const id = Number(sel.value);
+  if (!Number.isFinite(id)) return;
+  await loadLayoutForVariant(id);
+  bindLayoutToActiveVariant(currentLayoutId);
+  if (currentLayout) {
+    const n = currentLayout.moduleCount || 0;
+    const mt = moduleTypeFromLayout(currentLayout);
+    if (n > 0 || mt) applyLayoutToOffer(n, mt);
+  }
+  toast('Belegungsplan Variante ' + (activeVariant + 1) + ' zugeordnet.', 'ok');
+  compute();
 }
 
 /** Ortho-Snapshot neu rendern (weiterer Ausschnitt) und Vorschau aktualisieren. */
@@ -2456,6 +2583,7 @@ function openLayoutEditor() {
   const mtSel = $('layout-module-type');
   if (mtSel) mtSel.value = mt;
   if (layoutEditor.setModuleType) layoutEditor.setModuleType(mt);
+  const custName = [($('c-vorname') && $('c-vorname').value.trim()) || '', ($('c-nachname') && $('c-nachname').value.trim()) || ''].filter(Boolean).join(' ');
   layoutEditor.open({
     leadId: currentLeadId,
     customerEmail: $('c-email').value.trim(),
@@ -2465,7 +2593,7 @@ function openLayoutEditor() {
     layoutId: currentLayoutId,
     layout: currentLayout,
     moduleType: mt,
-    title: 'Belegungsplan ' + ([($('c-vorname') && $('c-vorname').value.trim()) || '', ($('c-nachname') && $('c-nachname').value.trim()) || ''].filter(Boolean).join(' ') || ''),
+    title: ('Belegungsplan V' + (activeVariant + 1) + (custName ? (' ' + custName) : '')).slice(0, 120),
   });
 }
 
@@ -2948,9 +3076,11 @@ async function prefillFromLead() {
 
 // ── Init ────────────────────────────────────────────────────────────────────
 async function init() {
+  wireVariantUi();
   await loadCatalog();
   variants = [readForm()];
   renderTabs();
+  wireVariantUi();
   try { const r = await api('/api/offer/next-number'); $('f-nummer').value = (await r.json()).angebotsnummer; } catch (_) {}
   try {
     const rv = await api('/api/offer/vertrieb'); const vv = (await rv.json()).vertrieb || {};
@@ -3044,15 +3174,7 @@ async function init() {
   $('btn-clear').addEventListener('click', () => {
     ['c-vorname','c-nachname','c-street','c-zip','c-city','c-email','c-phone','command','f-extra'].forEach((id) => $(id).value = '');
   });
-  $('btn-add-variant').addEventListener('click', addVariant);
-  if ($('variant-btn-dup')) $('variant-btn-dup').addEventListener('click', () => { addVariantDuplicate(); });
-  if ($('variant-btn-empty')) $('variant-btn-empty').addEventListener('click', () => { addVariantEmpty(); });
-  if ($('variant-btn-cancel')) $('variant-btn-cancel').addEventListener('click', closeVariantModal);
-  if ($('variant-modal')) {
-    $('variant-modal').addEventListener('click', (e) => {
-      if (e.target === $('variant-modal')) closeVariantModal();
-    });
-  }
+  wireVariantUi();
   $('btn-preview').addEventListener('click', refreshPreview);
   $('btn-download').addEventListener('click', downloadPdf);
   $('btn-save-version').addEventListener('click', saveOfferVersionManual);
@@ -3097,13 +3219,19 @@ async function init() {
   if ($('btn-layout-open')) $('btn-layout-open').addEventListener('click', openLayoutEditor);
   if ($('btn-layout-clear')) $('btn-layout-clear').addEventListener('click', () => {
     clearLayoutLink();
-    toast('Belegungsplan vom Angebot getrennt.', 'ok');
+    toast('Belegungsplan von der Variante getrennt.', 'ok');
   });
   if ($('btn-layout-apply')) $('btn-layout-apply').addEventListener('click', () => {
     if (currentLayout) {
       applyLayoutToOffer(currentLayout.moduleCount, moduleTypeFromLayout(currentLayout));
     }
   });
+  if ($('btn-layout-pick')) $('btn-layout-pick').addEventListener('click', () => {
+    assignPickedLayout().catch((e) => toast(e.message || String(e), 'error'));
+  });
+  if ($('c-email')) {
+    $('c-email').addEventListener('change', () => { refreshLayoutPickList(); });
+  }
   populateLayoutModuleSelect();
   updateLayoutPanelUi();
 
@@ -3143,7 +3271,11 @@ async function init() {
   compute();
   await refreshOfferHistory();
 }
-init();
+wireVariantUi();
+init().catch((e) => {
+  console.error('[NOORTEC] offer init:', e);
+  try { toast('Seite unvollständig geladen: ' + (e && e.message ? e.message : e), 'error'); } catch (_) {}
+});
 </script>
 </body>
 </html>
