@@ -345,6 +345,32 @@
   .layout-addr-suggest .empty {
     padding: 0.65rem 0.7rem; font-size: 0.8rem; color: var(--muted);
   }
+  .customer-search-wrap { position: relative; margin-bottom: 0.55rem; }
+  .customer-search-wrap input { width: 100%; }
+  .customer-search-suggest {
+    display: none; position: absolute; left: 0; right: 0; top: calc(100% + 2px);
+    z-index: 40; max-height: 280px; overflow-y: auto;
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(15, 18, 25, 0.14);
+  }
+  .customer-search-suggest.show { display: block; }
+  .customer-search-suggest button {
+    display: block; width: 100%; text-align: left; border: 0; background: transparent;
+    padding: 0.55rem 0.7rem; font-size: 0.82rem; color: var(--text); cursor: pointer;
+    border-bottom: 1px solid #eef0f3; font-family: inherit; line-height: 1.35;
+  }
+  .customer-search-suggest button:last-child { border-bottom: 0; }
+  .customer-search-suggest button:hover,
+  .customer-search-suggest button.active { background: #f3f6fb; }
+  .customer-search-suggest .cs-name { font-weight: 600; display: block; }
+  .customer-search-suggest .cs-meta { font-size: 0.74rem; color: var(--muted); display: block; margin-top: 0.12rem; }
+  .customer-search-suggest .empty {
+    padding: 0.65rem 0.7rem; font-size: 0.8rem; color: var(--muted);
+  }
+  .customer-search-selected {
+    display: none; margin: 0.35rem 0 0.15rem; font-size: 0.74rem; color: var(--good);
+  }
+  .customer-search-selected.show { display: block; }
   #layout-map { flex: 1; min-height: 420px; background: #ddd; }
   .layout-hn-marker {
     background: transparent !important;
@@ -440,6 +466,13 @@
 
     <div class="panel">
       <h2><span class="num">2</span> Kundendaten</h2>
+      <div class="customer-search-wrap">
+        <label for="c-search">Bestehenden Kunden suchen</label>
+        <input id="c-search" type="search" placeholder="Name, E-Mail, Telefon oder Adresse…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="c-search-suggest" />
+        <div class="customer-search-suggest" id="c-search-suggest" role="listbox" hidden></div>
+        <div class="hint">Tippen zum Suchen – Treffer übernehmen Name, Kontakt und Adresse in die Maske.</div>
+        <div class="customer-search-selected" id="c-search-selected"></div>
+      </div>
       <div class="grid2">
         <div><label>Vorname</label><input id="c-vorname" /></div>
         <div><label>Nachname</label><input id="c-nachname" /></div>
@@ -2917,33 +2950,193 @@ function setupMic() {
   });
 }
 
-// ── Prefill aus Lead (?email=) ──────────────────────────────────────────────
+// ── Prefill aus Lead (?email= / ?leadId=) + Kundensuche ─────────────────────
+function applyCustomerToForm(c, { leadId, info, toastMsg } = {}) {
+  c = c || {};
+  $('c-vorname').value = c.vorname || '';
+  $('c-nachname').value = c.nachname || '';
+  if (!c.vorname && !c.nachname && c.name) {
+    const parts = String(c.name).trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 1) $('c-nachname').value = parts[0];
+    else if (parts.length >= 2) {
+      // Lead-API: i. d. R. „Nachname Vorname“; KI oft „Vorname Nachname“ – hier Lead-Konvention
+      $('c-nachname').value = parts[0];
+      $('c-vorname').value = parts.slice(1).join(' ');
+    }
+  }
+  $('c-street').value = c.street || '';
+  $('c-zip').value = c.zip || '';
+  $('c-city').value = c.city || '';
+  $('c-email').value = c.email || '';
+  $('c-phone').value = c.phone || '';
+  if (leadId) currentLeadId = Number(leadId);
+  if (info && !$('command').value.trim()) $('command').value = info;
+  customerSalutationOverride = null;
+  const sel = $('c-search-selected');
+  if (sel) {
+    const name = [c.vorname, c.nachname].filter(Boolean).join(' ') || c.name || c.email || '';
+    sel.textContent = name ? ('Kunde übernommen: ' + name) : '';
+    sel.classList.toggle('show', !!name);
+  }
+  if (toastMsg) toast(toastMsg, 'ok');
+}
+
 async function prefillFromLead() {
   const p = new URLSearchParams(location.search);
   const email = p.get('email');
-  if (!email) return;
+  const leadIdQ = p.get('leadId');
+  if (!email && !leadIdQ) return;
   try {
-    const res = await api('/api/offer/lead?email=' + encodeURIComponent(email));
+    const qs = leadIdQ
+      ? ('leadId=' + encodeURIComponent(leadIdQ))
+      : ('email=' + encodeURIComponent(email));
+    const res = await api('/api/offer/lead?' + qs);
     const j = await res.json();
-    const c = j.customer || {};
-    $('c-vorname').value = c.vorname || '';
-    $('c-nachname').value = c.nachname || '';
-    if (!c.vorname && !c.nachname && c.name) {
-      // Lead-API liefert i. d. R. schon gesplittet; Fallback Nachname Vorname
-      const parts = String(c.name).trim().split(/\s+/).filter(Boolean);
-      if (parts.length === 1) $('c-nachname').value = parts[0];
-      else if (parts.length >= 2) {
-        $('c-nachname').value = parts[0];
-        $('c-vorname').value = parts.slice(1).join(' ');
-      }
-    }
-    $('c-street').value = c.street || '';
-    $('c-zip').value = c.zip || ''; $('c-city').value = c.city || '';
-    $('c-email').value = c.email || ''; $('c-phone').value = c.phone || '';
-    if (j.leadId) currentLeadId = Number(j.leadId);
-    if (j.info) $('command').value = j.info;
-    toast('Kundendaten aus Lead übernommen.', 'ok');
+    applyCustomerToForm(j.customer || {}, {
+      leadId: j.leadId,
+      info: j.info,
+      toastMsg: 'Kundendaten aus Lead übernommen.',
+    });
   } catch (e) { /* still ohne Prefill */ }
+}
+
+// Kundensuche (Typeahead) in Abschnitt Kundendaten
+let custSuggestTimer = null;
+let custSuggestResults = [];
+let custSuggestIndex = -1;
+let custSuggestSeq = 0;
+
+function hideCustomerSuggestions() {
+  const box = $('c-search-suggest');
+  const inp = $('c-search');
+  if (box) {
+    box.classList.remove('show');
+    box.hidden = true;
+    box.innerHTML = '';
+  }
+  if (inp) inp.setAttribute('aria-expanded', 'false');
+  custSuggestResults = [];
+  custSuggestIndex = -1;
+}
+
+function highlightCustomerSuggestion() {
+  const box = $('c-search-suggest');
+  if (!box) return;
+  Array.from(box.querySelectorAll('button[data-idx]')).forEach((btn) => {
+    const i = Number(btn.getAttribute('data-idx'));
+    btn.classList.toggle('active', i === custSuggestIndex);
+  });
+}
+
+function showCustomerSuggestions(results, { emptyMsg } = {}) {
+  const box = $('c-search-suggest');
+  const inp = $('c-search');
+  if (!box) return;
+  custSuggestResults = results || [];
+  custSuggestIndex = custSuggestResults.length ? 0 : -1;
+  box.innerHTML = '';
+  if (!custSuggestResults.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = emptyMsg || 'Keine Kunden gefunden';
+    box.appendChild(empty);
+  } else {
+    custSuggestResults.forEach((hit, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('data-idx', String(idx));
+      const c = hit.customer || {};
+      const name = document.createElement('span');
+      name.className = 'cs-name';
+      name.textContent = c.name || c.email || 'Ohne Name';
+      const meta = document.createElement('span');
+      meta.className = 'cs-meta';
+      const bits = [];
+      if (c.email) bits.push(c.email);
+      if (c.phone) bits.push(c.phone);
+      const addr = [c.street, [c.zip, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+      if (addr) bits.push(addr);
+      meta.textContent = bits.join(' · ');
+      btn.appendChild(name);
+      if (bits.length) btn.appendChild(meta);
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        selectCustomerSuggestion(idx);
+      });
+      box.appendChild(btn);
+    });
+  }
+  box.hidden = false;
+  box.classList.add('show');
+  if (inp) inp.setAttribute('aria-expanded', 'true');
+  highlightCustomerSuggestion();
+}
+
+function selectCustomerSuggestion(idx) {
+  const hit = custSuggestResults[idx];
+  if (!hit) return;
+  applyCustomerToForm(hit.customer || {}, {
+    leadId: hit.leadId,
+    info: hit.info,
+    toastMsg: 'Kundendaten übernommen.',
+  });
+  if ($('c-search')) {
+    const c = hit.customer || {};
+    $('c-search').value = c.name || c.email || '';
+  }
+  hideCustomerSuggestions();
+  refreshOfferHistory().catch(() => {});
+}
+
+function setupCustomerSearch() {
+  const inp = $('c-search');
+  if (!inp) return;
+  inp.addEventListener('input', () => {
+    clearTimeout(custSuggestTimer);
+    const q = inp.value.trim();
+    if (q.length < 2) {
+      hideCustomerSuggestions();
+      return;
+    }
+    const seq = ++custSuggestSeq;
+    custSuggestTimer = setTimeout(async () => {
+      try {
+        const res = await api('/api/offer/customers/search?q=' + encodeURIComponent(q) + '&limit=12');
+        const j = await res.json();
+        if (seq !== custSuggestSeq) return;
+        showCustomerSuggestions(j.results || [], { emptyMsg: 'Keine Kunden gefunden' });
+      } catch (_) {
+        if (seq !== custSuggestSeq) return;
+        showCustomerSuggestions([], { emptyMsg: 'Suche fehlgeschlagen' });
+      }
+    }, 220);
+  });
+  inp.addEventListener('keydown', (e) => {
+    const box = $('c-search-suggest');
+    if (!box || !box.classList.contains('show')) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!custSuggestResults.length) return;
+      custSuggestIndex = (custSuggestIndex + 1) % custSuggestResults.length;
+      highlightCustomerSuggestion();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!custSuggestResults.length) return;
+      custSuggestIndex = (custSuggestIndex - 1 + custSuggestResults.length) % custSuggestResults.length;
+      highlightCustomerSuggestion();
+    } else if (e.key === 'Enter') {
+      if (custSuggestIndex >= 0 && custSuggestResults.length) {
+        e.preventDefault();
+        selectCustomerSuggestion(custSuggestIndex);
+      }
+    } else if (e.key === 'Escape') {
+      hideCustomerSuggestions();
+    }
+  });
+  inp.addEventListener('blur', () => {
+    setTimeout(hideCustomerSuggestions, 150);
+  });
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────
@@ -3042,8 +3235,15 @@ async function init() {
 
   $('btn-parse').addEventListener('click', parseCommand);
   $('btn-clear').addEventListener('click', () => {
-    ['c-vorname','c-nachname','c-street','c-zip','c-city','c-email','c-phone','command','f-extra'].forEach((id) => $(id).value = '');
+    ['c-vorname','c-nachname','c-street','c-zip','c-city','c-email','c-phone','command','f-extra','c-search'].forEach((id) => {
+      if ($(id)) $(id).value = '';
+    });
+    currentLeadId = null;
+    const sel = $('c-search-selected');
+    if (sel) { sel.textContent = ''; sel.classList.remove('show'); }
+    hideCustomerSuggestions();
   });
+  setupCustomerSearch();
   $('btn-add-variant').addEventListener('click', addVariant);
   if ($('variant-btn-dup')) $('variant-btn-dup').addEventListener('click', () => { addVariantDuplicate(); });
   if ($('variant-btn-empty')) $('variant-btn-empty').addEventListener('click', () => { addVariantEmpty(); });
