@@ -19,24 +19,24 @@ const { PNG } = require('pngjs');
 const BASE = path.join(__dirname, 'assets', 'products', 'house-system-diagram.png');
 
 /**
- * Normalized regions [x0,y0,x1,y1] on the 1536×1024 reference graphic.
- * Boxes include nearby labels / local feed arrows.
+ * Tight icon+label boxes only (no surrounding arrows / house lines).
+ * Pixel filter additionally protects blue Stromfluss arrows & house shell.
  */
 const REGIONS = {
   // Always-on context — never muted
-  netz: [0.01, 0.20, 0.14, 0.56],
-  smartMeter: [0.13, 0.26, 0.27, 0.56], // utility/grid Zähler (≠ SigenStor product)
-  verteiler: [0.52, 0.28, 0.69, 0.60],
-  hausverbraucher: [0.60, 0.66, 0.88, 0.96],
+  netz: [0.02, 0.24, 0.12, 0.52],
+  smartMeter: [0.145, 0.30, 0.255, 0.52],
+  verteiler: [0.54, 0.32, 0.67, 0.56],
+  hausverbraucher: [0.66, 0.72, 0.84, 0.94],
 
-  // Offer-dependent sellable products
-  notstrom: [0.24, 0.18, 0.40, 0.54],
-  pv: [0.30, 0.00, 0.64, 0.30],
-  inverter: [0.35, 0.26, 0.54, 0.54],
-  battery: [0.34, 0.48, 0.56, 0.80],
-  waermepumpe: [0.68, 0.08, 0.94, 0.44],
-  wallbox: [0.66, 0.40, 0.86, 0.70],
-  ev: [0.80, 0.36, 0.99, 0.74],
+  // Sellable products — tight around glyph + caption
+  notstrom: [0.275, 0.28, 0.375, 0.50],
+  pv: [0.34, 0.02, 0.58, 0.26],
+  inverter: [0.38, 0.30, 0.51, 0.50],
+  battery: [0.38, 0.52, 0.52, 0.74],
+  waermepumpe: [0.74, 0.14, 0.91, 0.40],
+  wallbox: [0.72, 0.44, 0.84, 0.66],
+  ev: [0.84, 0.40, 0.97, 0.68],
 };
 
 /** Sellable product keys muted when not in the offer. */
@@ -142,15 +142,30 @@ function resolveHouseDiagramSelection(offer) {
 }
 
 /**
- * True pale black-and-white: full desaturate + lighten so missing products
- * read as obviously „not in this offer“.
+ * Pale black-and-white for component pixels only.
  */
 function mutePixel(r, g, b) {
   const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-  // Blend grayscale toward light grey (~#d0d0d0) — blass / schwarz-weiß
   const pale = Math.min(235, gray * 0.35 + 210 * 0.65);
   const v = Math.round(pale);
   return { r: v, g: v, b: v };
+}
+
+/** Skip arrows, house shell, and page background — mute only icon/label ink. */
+function shouldProtectInfrastructure(r, g, b) {
+  // Page white
+  if (r >= 250 && g >= 250 && b >= 250) return true;
+  // Stromfluss arrows (diagram blue ~ rgb(46,110,185))
+  if (b > r + 16 && b > g + 6 && b > 75) return true;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const sat = max - min;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  // Light house outline / soft fill (neutral, bright)
+  if (sat < 22 && lum > 200) return true;
+  // Soft house shadow wash
+  if (sat < 16 && lum > 185) return true;
+  return false;
 }
 
 function applyGreyRegions(png, greyKeys) {
@@ -169,8 +184,7 @@ function applyGreyRegions(png, greyKeys) {
         const r = png.data[i];
         const g = png.data[i + 1];
         const b = png.data[i + 2];
-        // Keep pure page white clean
-        if (r >= 252 && g >= 252 && b >= 252) continue;
+        if (shouldProtectInfrastructure(r, g, b)) continue;
         const { r: nr, g: ng, b: nb } = mutePixel(r, g, b);
         png.data[i] = nr;
         png.data[i + 1] = ng;
