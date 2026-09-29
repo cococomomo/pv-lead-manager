@@ -74,6 +74,29 @@ function prefixRedirect(url, base) {
   return base + url;
 }
 
+function publicRewriteMiddleware(publicDir) {
+  const root = path.resolve(publicDir);
+  return function rewritePublicAssets(req, res, next) {
+    if (!getBasePath()) return next();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    let rel = req.path || '';
+    try { rel = decodeURIComponent(rel); } catch (_) { return next(); }
+    if (!rel.startsWith('/') || rel.includes('\0')) return next();
+    const ext = path.extname(rel).toLowerCase();
+    if (!REWRITE_EXT.has(ext)) return next();
+    const abs = path.resolve(root, `.${rel}`);
+    if (abs !== root && !abs.startsWith(root + path.sep)) return next();
+    fs.readFile(abs, 'utf8', (err, text) => {
+      if (err) return next();
+      res.setHeader('Content-Type', MIME[ext]);
+      res.setHeader('Cache-Control', 'no-store');
+      if (req.method === 'HEAD') return res.end();
+      // res.send (patched by installBasePath) rewrites once. Do not rewrite here too.
+      res.send(text);
+    });
+  };
+}
+
 function installBasePath(app) {
   const base = getBasePath();
   if (!base) return base;
@@ -140,4 +163,5 @@ module.exports = {
   rewritePublicText,
   prefixRedirect,
   installBasePath,
+  publicRewriteMiddleware,
 };

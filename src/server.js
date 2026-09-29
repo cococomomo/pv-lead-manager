@@ -67,7 +67,7 @@ const { mountLayoutOfferPersistRoutes } = require('./offer/layout-routes');
 const { getDashboardStats } = require('./stats');
 const { transferLeadToReonicById } = require('./reonic-sync');
 const { reonicV2OffersConfigured, testReonicRestV2Connection } = require('./integrations/reonic');
-const { installBasePath } = require('./base-path');
+const { installBasePath, publicRewriteMiddleware } = require('./base-path');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3080;
@@ -265,9 +265,18 @@ function buildSafeLoginNext(req) {
   return combined;
 }
 
+function withBasePath(urlPath) {
+  if (!BASE_PATH || !urlPath) return urlPath;
+  if (urlPath === BASE_PATH || urlPath.startsWith(`${BASE_PATH}/`) || urlPath.startsWith(`${BASE_PATH}?`)) {
+    return urlPath;
+  }
+  if (urlPath.startsWith('/')) return BASE_PATH + urlPath;
+  return urlPath;
+}
+
 function requireWebSession(req, res, next) {
   if (req.session && req.session.user) return next();
-  const target = buildSafeLoginNext(req);
+  const target = withBasePath(buildSafeLoginNext(req));
   const q = target ? `?next=${encodeURIComponent(target)}` : '';
   return res.redirect(302, `/login.html${q}`);
 }
@@ -1452,6 +1461,7 @@ app.get(['/admin/users', '/admin/users/'], (req, res) => {
 mountOfferRoutes(app, { getProfile, getLeadByEmail, getLeadById, searchLeads });
 mountLayoutOfferPersistRoutes(app);
 
+app.use(publicRewriteMiddleware(path.join(__dirname, '../public')));
 app.use(express.static(path.join(__dirname, '../public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) {
