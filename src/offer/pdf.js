@@ -1136,16 +1136,22 @@ function drawBestandteileList(doc, y, offer, startContentPage, opts = {}) {
 
   for (const section of sections) {
     openSectionTitle = section.title || '';
-    // Abschnitt nur beginnen, wenn Titel + mind. eine Zeile Platz haben
-    // (sonst leerer Sektionskopf am Seitenende)
-    const brokeBeforeSection = ensureRowSpace(52 + 36, true);
+    const items = section.items || [];
+    // Abschnitt nur beginnen, wenn Titel + erste Zeile (ggf. mehrzeilig) Platz haben
+    let firstNeed = 40;
+    if (items[0]) {
+      const fh = doc.font(F.regular).fontSize(11)
+        .heightOfString(items[0].name || '', { width: CONTENT_W * 0.52 });
+      firstNeed = Math.max(26, fh + 14) + 10;
+    }
+    const brokeBeforeSection = ensureRowSpace(52 + firstNeed, true);
     if (!brokeBeforeSection) {
       doc.font(F.bold).fontSize(12).fillColor(COLORS.text).text(openSectionTitle, MARGIN, y);
       y = doc.y + 10;
       y = drawColumnHeaders(doc, y);
     }
 
-    for (const item of section.items || []) {
+    for (const item of items) {
       const name = item.name || '';
       const kind = classifyKind(name, section.title);
       const nameH = doc.font(F.regular).fontSize(11).heightOfString(name, { width: CONTENT_W * 0.52 });
