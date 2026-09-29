@@ -59,10 +59,17 @@ function formatOfferNumber(c) {
 function resolveVertrieb(req, getProfile, override = {}) {
   let prof = {};
   try { prof = getProfile(req.session.user.username) || {}; } catch (_) { /* ignore */ }
+  const o = override && typeof override === 'object' ? override : {};
+  // Sibling sales-photo upload: photoPath (fs) / photoUrl (HTTP). Accept either from body or profile.
+  const photoPath = (o.photoPath != null ? o.photoPath : prof.photoPath) || null;
+  const photoUrl = (o.photoUrl != null ? o.photoUrl : prof.photoUrl) || null;
   return {
-    name: (override.name || prof.voller_name || process.env.MY_NAME || 'Cosimo Lippe').trim(),
-    email: (override.email || prof.email_kontakt || process.env.MY_EMAIL || 'vertrieb@noortec.at').trim(),
-    phone: (override.phone || prof.telefon || process.env.MY_PHONE || '+43 676 707 55 25').trim(),
+    name: (o.name || prof.voller_name || process.env.MY_NAME || 'Cosimo Lippe').trim(),
+    email: (o.email || prof.email_kontakt || process.env.MY_EMAIL || 'vertrieb@noortec.at').trim(),
+    phone: (o.phone || prof.telefon || process.env.MY_PHONE || '+43 676 707 55 25').trim(),
+    photoPath: photoPath ? String(photoPath).trim() : null,
+    photoUrl: photoUrl ? String(photoUrl).trim() : null,
+    username: (o.username || prof.username || (req.session && req.session.user && req.session.user.username) || '').trim() || null,
   };
 }
 

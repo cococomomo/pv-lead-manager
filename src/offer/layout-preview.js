@@ -166,28 +166,25 @@ function drawLayoutPreview(doc, plan, box) {
     doc.closePath();
   }
 
-  // Hintergrund (Orthofoto-Ersatz)
+  // Hintergrund (Orthofoto-ähnlich: weiches Grün/Beige, kein hartes Raster)
   doc.save();
-  doc.roundedRect(x0, y0, w, h, 6).fill('#d8dce2');
+  doc.roundedRect(x0, y0, w, h, 6).fill('#c9d4c0');
   doc.roundedRect(x0, y0, w, h, 6).clip();
+  // leichte Geländevariation
+  doc.fillColor('#b7c6a8').fillOpacity(0.45);
+  doc.circle(x0 + w * 0.22, y0 + h * 0.3, Math.min(w, h) * 0.28).fill();
+  doc.fillColor('#d6cbb6').fillOpacity(0.35);
+  doc.circle(x0 + w * 0.72, y0 + h * 0.62, Math.min(w, h) * 0.34).fill();
+  doc.fillOpacity(1);
 
-  // dezentes Raster
-  doc.strokeColor('#c5cad1').lineWidth(0.4);
-  for (let gx = 0; gx < w; gx += 18) {
-    doc.moveTo(x0 + gx, y0).lineTo(x0 + gx, y0 + h).stroke();
-  }
-  for (let gy = 0; gy < h; gy += 18) {
-    doc.moveTo(x0, y0 + gy).lineTo(x0 + w, y0 + gy).stroke();
-  }
-
-  // Dachflächen — sehr dünne hellblaue Linien (Vorlage Useini)
+  // Dachflächen — dünne hellblaue Linien auf Ortho-Grund (Vorlage Useini)
   roofs.forEach((roof) => {
     const ring = roof.ring || [];
     if (ring.length < 3) return;
     pathRing(ring);
-    doc.fillColor('#dbeafe').fillOpacity(0.18).fill();
+    doc.fillColor('#e8eef5').fillOpacity(0.72).fill();
     pathRing(ring);
-    doc.strokeColor('#7eb6e8').lineWidth(0.4).strokeOpacity(0.9).stroke();
+    doc.strokeColor('#6aa8de').lineWidth(0.55).strokeOpacity(0.95).stroke();
   });
 
   // Sperrzonen

@@ -41,6 +41,8 @@ const FILES = {
   heroPv: 'hero-pv.jpg',
   heroHome: 'hero-home.jpg',
   energyHome: 'energy-home.jpg',
+  energyFlow: 'energy-flow.png',
+  sigenSmartmeter: 'sigen-smartmeter.jpg',
 };
 
 function abs(key) {
@@ -61,7 +63,12 @@ function firstExisting(...keys) {
 function guessImageForItem(name, brand) {
   const n = String(name || '').toLowerCase();
   const b = String(brand || '').toLowerCase();
-  if (/modul|aiko|das-|neostar|photovoltaik/.test(n) && !/unterkonstruktion|montage/.test(n)) {
+  // Service / Kleinmaterial: kein Produktfoto
+  if (/installation|netzanschluss|erdung|einreichung|befund|inbetrieb|verdrahtung|kabelkanal|solarflex|mc buchse|mc stecker|kleinmaterial/.test(n)) {
+    return null;
+  }
+  if ((/modul|aiko|das-|neostar|dh\d|fullblack/.test(n) || /^das-/.test(n))
+    && !/unterkonstruktion|montage/.test(n)) {
     return firstExisting('modulDas', 'pvModule');
   }
   if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|sun2000/.test(n)) {
@@ -73,7 +80,13 @@ function guessImageForItem(name, brand) {
     if (b === 'fronius' || /fronius|reserva/.test(n)) return firstExisting('froniusReserva', 'sigenBattery');
     return firstExisting('sigenBattery', 'sigenStack', 'froniusReserva');
   }
-  if (/smart.?meter|zähler|zaehler/.test(n)) return firstExisting('froniusSmartmeter');
+  if (/smart.?meter|zähler|zaehler|sigen.?sensor|energy.?meter|stromsensor/.test(n)) {
+    if (/fronius/.test(n) || b === 'fronius') return firstExisting('froniusSmartmeter');
+    if (/sigen|sigenergy/.test(n) || b === 'sigenergy') return firstExisting('sigenSmartmeter');
+    // Generic „Smart Meter“: prefer offer brand
+    if (b === 'huawei') return firstExisting('froniusSmartmeter', 'sigenSmartmeter');
+    return firstExisting('sigenSmartmeter', 'froniusSmartmeter');
+  }
   if (/gateway|umschalt|notstrom|backup|netztren/.test(n)) {
     if (b === 'fronius' || /fronius/.test(n)) return firstExisting('froniusUmschalt', 'sigenGateway');
     return firstExisting('sigenGateway', 'sigenGatewayMax', 'froniusUmschalt');
@@ -115,9 +128,18 @@ function brandLabelFor(sectionTitle, brand, name) {
     return '';
   }
   if (/modul|das-|aiko/.test(n)) return /aiko/.test(n) || brand === 'aiko' ? 'AIKO' : 'DAS Solar';
-  if (/fronius|gen24|reserva|symo|smart.?meter/.test(n)) return 'Fronius';
-  if (/sigen|sigenergy|gateway|umschalt/.test(n)) return 'Sigenergy';
+  if (/sigen|sigenergy/.test(n)) return 'Sigenergy';
+  if (/fronius|gen24|reserva|symo/.test(n)) return 'Fronius';
   if (/huawei|sun2000/.test(n)) return 'Huawei';
+  if (/smart.?meter|zähler|zaehler|stromsensor/.test(n)) {
+    if (brand === 'fronius') return 'Fronius';
+    if (brand === 'huawei') return 'Huawei';
+    return 'Sigenergy';
+  }
+  if (/gateway|umschalt|notstrom/.test(n)) {
+    if (brand === 'fronius') return 'Fronius';
+    return 'Sigenergy';
+  }
   if (/klima|lg/.test(n)) return 'LG';
   if (/wechselrichter|speicher|batter|wallbox/.test(n)) {
     if (brand === 'fronius') return 'Fronius';
@@ -130,31 +152,64 @@ function brandLabelFor(sectionTitle, brand, name) {
 function classifyKind(name, section) {
   const n = String(name || '').toLowerCase();
   const s = String(section || '').toLowerCase();
-  if (/modul/.test(n)) return 'Modul';
-  if (/wechselrichter|inverter|gen24|hybrid/.test(n)) return 'Wechselrichter';
-  if (/speicher|reserva|batter|bat /.test(n) || /energiespeicher/.test(s)) return 'Stromspeicher';
-  if (/unterkonstruktion|gestell/.test(n)) return 'Gestellkonstruktion';
-  if (/installation|netzanschluss|erdung|einreichung|befund|inbetrieb|verdraht|leistung/.test(n) || /leistungen/.test(s)) {
+  // Services first – „… Module“ in Installationszeilen nicht als Modul werten
+  if (/leistungen/.test(s) || /^(installation|netzanschluss|erdung|einreichung|e-?befund|erstinbetrieb|verdrahtung)/.test(n)
+    || /netzanschluss|erdung|einreichung|befund|inbetriebnahme|verdrahtung verteiler/.test(n)) {
     return 'Serviceleistung';
   }
+  if (/wechselrichter|inverter|gen24|hybrid|sigenstor ec|sun2000/.test(n)) return 'Wechselrichter';
+  if (/smart.?meter|zähler|zaehler|stromsensor/.test(n)) return 'Smart Meter';
+  if (/speicher|reserva|batter|\bbat\b|sigenstor bat/.test(n) || (/energiespeicher/.test(s) && !/smart.?meter/.test(n))) {
+    return 'Stromspeicher';
+  }
+  if (/unterkonstruktion|gestell/.test(n)) return 'Gestellkonstruktion';
+  if (/modul|das-|aiko|neostar|dh\d|fullblack|photovoltaikmodul/.test(n)) return 'Modul';
+  if (/gak|generatoranschluss|kabelkanal|solarflex|mc |kleinmaterial/.test(n)) return 'Zubehör';
+  if (/gateway|umschalt|notstrom|wallbox|klima/.test(n) || /zusätzliche|klima/.test(s)) return 'Zusatz';
   return 'Andere';
 }
 
-/** PV-Komponenten vor Speicher/Klima für Seitenfluss wie Vorlage. */
+/**
+ * Gruppen für Komponenten-Seiten + Gesamtübersicht.
+ * Übersicht-Reihenfolge: PV → Energiespeicher → weitere → Leistungen.
+ */
 function splitComponentGroups(cards) {
   const pv = [];
   const storage = [];
-  const other = [];
+  const extras = [];
+  const services = [];
   for (const c of cards) {
-    if (/energiespeicher|stromspeicher|smart.?meter/i.test(c.section) || c.kind === 'Stromspeicher' || /smart.?meter/i.test(c.name)) {
+    const section = String(c.section || '');
+    if (c.kind === 'Serviceleistung' || /leistungen/i.test(section)) {
+      services.push(c);
+    } else if (
+      /energiespeicher/i.test(section)
+      || c.kind === 'Stromspeicher'
+      || c.kind === 'Smart Meter'
+      || /smart.?meter/i.test(c.name)
+    ) {
       storage.push(c);
-    } else if (/klima/i.test(c.section)) {
-      other.push(c);
-    } else {
+    } else if (/photovoltaik/i.test(section) || ['Modul', 'Wechselrichter', 'Gestellkonstruktion', 'Zubehör'].includes(c.kind)) {
       pv.push(c);
+    } else {
+      extras.push(c);
     }
   }
-  return { pv, storage, other };
+  return { pv, storage, other: extras, extras, services };
+}
+
+/** Sortierte Abschnitte für die Gesamtübersichtstabelle. */
+function orderedOverviewSections(offer) {
+  const sections = Array.isArray(offer && offer.sections) ? offer.sections.slice() : [];
+  const rank = (title) => {
+    const t = String(title || '').toLowerCase();
+    if (/photovoltaik/.test(t)) return 1;
+    if (/energiespeicher|stromspeicher/.test(t)) return 2;
+    if (/zusätzliche|klima/.test(t)) return 3;
+    if (/leistung/.test(t)) return 4;
+    return 5;
+  };
+  return sections.sort((a, b) => rank(a.title) - rank(b.title));
 }
 
 module.exports = {
@@ -165,5 +220,7 @@ module.exports = {
   guessImageForItem,
   buildComponentCards,
   splitComponentGroups,
+  orderedOverviewSections,
   classifyKind,
+  brandLabelFor,
 };
