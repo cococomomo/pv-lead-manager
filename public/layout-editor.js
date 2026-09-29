@@ -195,13 +195,25 @@
 
   /**
    * Leitet widthM/heightM (Kartenmaß) aus physischen Maßen × cos(Neigung/Quer) ab.
-   * opts: { tilt, tiltCross, landscape, catalogDims }
+   * opts: { tilt, tiltCross, landscape, catalogDims, fallbackTilt, fallbackTiltCross }
+   * Fehlende Neigung wird NICHT still auf 0 gesetzt (sonst „Default-Größe“ ohne Foreshortening).
    */
   function syncModuleProjectedSize(m, opts) {
     if (!m) return m;
     const o = opts || {};
-    const tilt = o.tilt != null ? Number(o.tilt) : (Number(m.tilt) || 0);
-    const tiltCross = o.tiltCross != null ? Number(o.tiltCross) : (Number(m.tiltCross) || 0);
+    let tilt;
+    if (o.tilt != null && Number.isFinite(Number(o.tilt))) tilt = Number(o.tilt);
+    else if (m.tilt != null && Number.isFinite(Number(m.tilt))) tilt = Number(m.tilt);
+    else if (o.fallbackTilt != null && Number.isFinite(Number(o.fallbackTilt))) tilt = Number(o.fallbackTilt);
+    else tilt = 0;
+
+    let tiltCross;
+    if (o.tiltCross != null && Number.isFinite(Number(o.tiltCross))) tiltCross = Number(o.tiltCross);
+    else if (m.tiltCross != null && Number.isFinite(Number(m.tiltCross))) tiltCross = Number(m.tiltCross);
+    else if (o.fallbackTiltCross != null && Number.isFinite(Number(o.fallbackTiltCross))) {
+      tiltCross = Number(o.fallbackTiltCross);
+    } else tiltCross = 0;
+
     ensureModulePhysDims(m, o.catalogDims, o.landscape != null ? o.landscape : m.landscape);
     m.tilt = tilt;
     m.tiltCross = tiltCross;
@@ -210,6 +222,85 @@
     m.widthM = Number(m.physWidthM) * cosX;
     m.heightM = Number(m.physHeightM) * cosY;
     return m;
+  }
+
+  /**
+   * Effektive Modul-Neigung für Ertrag/Audit: Modulwert, sonst Dachfläche am Zentrum, sonst meta.
+   * Rein datenorientiert (kein DOM) – für Multi-Dach / Multi-Neigung.
+   */
+  function resolveModuleTiltForYield(module, roofs, planMeta) {
+    const meta = planMeta || {};
+    const fallback = meta.tilt != null && Number.isFinite(Number(meta.tilt)) ? Number(meta.tilt) : 30;
+    if (!module) return { tilt: fallback, tiltCross: Number(meta.tiltCross) || 0, source: 'meta' };
+    if (module.tilt != null && Number.isFinite(Number(module.tilt))) {
+      return {
+        tilt: Number(module.tilt),
+        tiltCross: module.tiltCross != null ? Number(module.tiltCross) : (Number(meta.tiltCross) || 0),
+        source: 'module',
+      };
+    }
+    const list = Array.isArray(roofs) ? roofs : [];
+    if (list.length && module.lat != null && module.lng != null) {
+      const lat0 = list.reduce((s, r) => {
+        const ring = r && r.ring;
+        if (!ring || !ring.length) return s;
+        return s + ring.reduce((a, p) => a + p.lat, 0) / ring.length;
+      }, 0) / Math.max(1, list.filter((r) => r && r.ring && r.ring.length).length);
+      const lng0 = list.reduce((s, r) => {
+        const ring = r && r.ring;
+        if (!ring || !ring.length) return s;
+        return s + ring.reduce((a, p) => a + p.lng, 0) / ring.length;
+      }, 0) / Math.max(1, list.filter((r) => r && r.ring && r.ring.length).length);
+      const proj = makeProjector(lat0 || module.lat, lng0 || module.lng);
+      const c = proj.toXY(module.lat, module.lng);
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        if (!r || !r.ring || r.ring.length < 3) continue;
+        const pts = r.ring.map((p) => proj.toXY(p.lat, p.lng));
+        if (pointInPoly(c, pts)) {
+          const t = r.tilt != null && Number.isFinite(Number(r.tilt)) ? Number(r.tilt) : fallback;
+          return {
+            tilt: t,
+            tiltCross: Number(meta.tiltCross) || 0,
+            source: 'roof',
+            roofIndex: i,
+          };
+        }
+      }
+    }
+    return {
+      tilt: fallback,
+      tiltCross: Number(meta.tiltCross) || 0,
+      source: 'meta',
+    };
+  }
+
+  /** Aggregiert Module nach Neigung (für Multi-Dach-Ertragsrechnung / Audit). */
+  function summarizeLayoutTilts(plan) {
+    const p = plan || {};
+    const meta = p.meta || {};
+    const roofs = Array.isArray(p.roofs) && p.roofs.length
+      ? p.roofs
+      : (p.roof && p.roof.length >= 3
+        ? [{ ring: p.roof, tilt: meta.tilt != null ? meta.tilt : 30 }]
+        : []);
+    const modules = Array.isArray(p.modules) ? p.modules : [];
+    const byTilt = new Map();
+    const rows = modules.map((m, index) => {
+      const resolved = resolveModuleTiltForYield(m, roofs, meta);
+      const key = resolved.tilt.toFixed(2);
+      const prev = byTilt.get(key) || { tilt: resolved.tilt, count: 0, sources: {} };
+      prev.count += 1;
+      prev.sources[resolved.source] = (prev.sources[resolved.source] || 0) + 1;
+      byTilt.set(key, prev);
+      return { index, tilt: resolved.tilt, tiltCross: resolved.tiltCross, source: resolved.source };
+    });
+    return {
+      moduleCount: modules.length,
+      roofCount: roofs.length,
+      distinctTilts: Array.from(byTilt.values()).sort((a, b) => a.tilt - b.tilt),
+      modules: rows,
+    };
   }
 
   /**
@@ -539,7 +630,8 @@
 
     function pushUndo() {
       if (suppressUndo) return;
-      undoStack.push(JSON.stringify(serializePlan()));
+      // Reines Snapshot – kein applyFormMeta (sonst Neigung/Größe als Side-Effect)
+      undoStack.push(JSON.stringify(capturePlanSnapshot()));
       if (undoStack.length > MAX_UNDO) undoStack.shift();
       redoStack = [];
       updateUndoRedoUi();
@@ -548,7 +640,7 @@
     function undo() {
       if (!undoStack.length) return;
       suppressUndo = true;
-      redoStack.push(JSON.stringify(serializePlan()));
+      redoStack.push(JSON.stringify(capturePlanSnapshot()));
       const prev = JSON.parse(undoStack.pop());
       loadPlan(prev);
       suppressUndo = false;
@@ -558,7 +650,7 @@
     function redo() {
       if (!redoStack.length) return;
       suppressUndo = true;
-      undoStack.push(JSON.stringify(serializePlan()));
+      undoStack.push(JSON.stringify(capturePlanSnapshot()));
       if (undoStack.length > MAX_UNDO) undoStack.shift();
       const next = JSON.parse(redoStack.pop());
       loadPlan(next);
@@ -1088,6 +1180,20 @@
       });
     }
 
+    /** Dachfläche, deren Polygon das Modulzentrum enthält (erste Treffer). */
+    function findRoofLayerAt(lat, lng) {
+      if (!polyLayer || lat == null || lng == null) return null;
+      let found = null;
+      polyLayer.eachLayer((layer) => {
+        if (found || layer._pvlKind !== 'roof') return;
+        const info = getRoofEavePitch(layer);
+        if (!info) return;
+        const c = info.proj.toXY(lat, lng);
+        if (pointInPoly(c, info.pts)) found = layer;
+      });
+      return found;
+    }
+
     /**
      * Module auf einer Dachfläche: Neigung + projizierte Maße syncen (Zentrum bleibt).
      */
@@ -1113,6 +1219,39 @@
           landscape: m.landscape,
           catalogDims,
         });
+      });
+    }
+
+    /**
+     * Nach Verschieben: Neigung + projizierte Größe an die Ziel-Dachfläche anbinden.
+     * Azimut (freie Drehung) bleibt erhalten. Außerhalb jeder Fläche: Maße nur neu projizieren.
+     */
+    function syncMovedModulesToContainingRoofs(moduleIdxs) {
+      const catalogDims = dims();
+      const tiltCross = planMeta.tiltCross != null ? Number(planMeta.tiltCross) : 0;
+      const idxs = Array.isArray(moduleIdxs) ? moduleIdxs : [];
+      idxs.forEach((i) => {
+        const m = modules[i];
+        if (!m) return;
+        const layer = findRoofLayerAt(m.lat, m.lng);
+        if (layer && layer._pvlMeta) {
+          const roofTilt = layer._pvlMeta.tilt != null ? Number(layer._pvlMeta.tilt) : planMeta.tilt;
+          syncModuleProjectedSize(m, {
+            tilt: roofTilt,
+            tiltCross,
+            landscape: m.landscape,
+            catalogDims,
+          });
+        } else {
+          syncModuleProjectedSize(m, {
+            tilt: m.tilt != null ? m.tilt : planMeta.tilt,
+            tiltCross: m.tiltCross != null ? m.tiltCross : tiltCross,
+            landscape: m.landscape,
+            catalogDims,
+            fallbackTilt: planMeta.tilt,
+            fallbackTiltCross: tiltCross,
+          });
+        }
       });
     }
 
@@ -1464,7 +1603,14 @@
     }
 
     function moduleRectLatLngs(m) {
-      syncModuleProjectedSize(m, { catalogDims: dims() });
+      syncModuleProjectedSize(m, {
+        catalogDims: dims(),
+        tilt: m.tilt != null ? m.tilt : planMeta.tilt,
+        tiltCross: m.tiltCross != null ? m.tiltCross : planMeta.tiltCross,
+        landscape: m.landscape != null ? m.landscape : planMeta.landscape,
+        fallbackTilt: planMeta.tilt,
+        fallbackTiltCross: planMeta.tiltCross,
+      });
       const proj = makeProjector(m.lat, m.lng);
       const angle = deg2rad(m.azimuth || 0);
       const corners = rectCorners(0, 0, m.widthM, m.heightM, angle);
@@ -1475,7 +1621,14 @@
     }
 
     function moduleCornersXY(m, proj) {
-      syncModuleProjectedSize(m, { catalogDims: dims() });
+      syncModuleProjectedSize(m, {
+        catalogDims: dims(),
+        tilt: m.tilt != null ? m.tilt : planMeta.tilt,
+        tiltCross: m.tiltCross != null ? m.tiltCross : planMeta.tiltCross,
+        landscape: m.landscape != null ? m.landscape : planMeta.landscape,
+        fallbackTilt: planMeta.tilt,
+        fallbackTiltCross: planMeta.tiltCross,
+      });
       const p = proj || makeProjector(m.lat, m.lng);
       const center = p.toXY(m.lat, m.lng);
       const angle = deg2rad(m.azimuth || 0);
@@ -1828,15 +1981,31 @@
       const snapped = applyEdgeSnap(modules[primaryIdx], exclude, { skipAngle: true });
       const dLat = snapped.lat - before.lat;
       const dLng = snapped.lng - before.lng;
+      const movedIdxs = [];
       drag.originals.forEach(({ i }) => {
         if (!modules[i]) return;
         if (i === primaryIdx) {
-          modules[i] = { ...snapped, azimuth: before.azimuth };
+          // Geometrie/Neigung explizit behalten – Snap liefert nur lat/lng/azimuth
+          modules[i] = {
+            ...modules[i],
+            ...snapped,
+            azimuth: before.azimuth,
+            tilt: modules[i].tilt,
+            tiltCross: modules[i].tiltCross,
+            physWidthM: modules[i].physWidthM,
+            physHeightM: modules[i].physHeightM,
+            landscape: modules[i].landscape,
+            widthM: modules[i].widthM,
+            heightM: modules[i].heightM,
+          };
         } else {
           modules[i].lat += dLat;
           modules[i].lng += dLng;
         }
+        movedIdxs.push(i);
       });
+      // Ziel-Dachfläche: Neigung + projizierte Größe anbinden (sonst bleibt Quell-Neigung)
+      syncMovedModulesToContainingRoofs(movedIdxs);
       renderModules();
     }
 
@@ -1868,7 +2037,19 @@
         moduleDrag.originals.forEach(({ i, azimuth }) => {
           if (!modules[i]) return;
           if (i === primaryIdx) {
-            modules[i] = { ...snapped, azimuth };
+            const prev = modules[i];
+            modules[i] = {
+              ...prev,
+              ...snapped,
+              azimuth,
+              tilt: prev.tilt,
+              tiltCross: prev.tiltCross,
+              physWidthM: prev.physWidthM,
+              physHeightM: prev.physHeightM,
+              landscape: prev.landscape,
+              widthM: prev.widthM,
+              heightM: prev.heightM,
+            };
           } else {
             modules[i].lat += sLat;
             modules[i].lng += sLng;
@@ -2283,9 +2464,8 @@
       renderModules();
     }
 
-    function serializePlan() {
-      readMetaFromForm();
-      applyFormMetaToSelectedRoof();
+    /** Reines Plan-Snapshot ohne Form→Dach-Mutation (für Undo/Redo). */
+    function capturePlanSnapshot() {
       const roofs = getRoofPolygons();
       return {
         version: 2,
@@ -2293,9 +2473,19 @@
         roofs,
         roof: roofs.length ? roofs[0].ring : null,
         obstacles: getObstacleLatLngs(),
-        modules: modules.slice(),
+        modules: modules.map((m) => (m ? { ...m } : m)),
         center: map ? { lat: map.getCenter().lat, lng: map.getCenter().lng, zoom: map.getZoom() } : null,
       };
+    }
+
+    function serializePlan() {
+      readMetaFromForm();
+      applyFormMetaToSelectedRoof();
+      // Multi-Dach: jedes Modul an die Neigung seiner Dachfläche binden (Persistenz / Ertrag)
+      syncMovedModulesToContainingRoofs(
+        modules.map((_, i) => i).filter((i) => modules[i])
+      );
+      return capturePlanSnapshot();
     }
 
     function loadPlan(plan) {
@@ -3240,5 +3430,7 @@
     projectedModuleFootprint,
     syncModuleProjectedSize,
     ensureModulePhysDims,
+    resolveModuleTiltForYield,
+    summarizeLayoutTilts,
   };
 })(window);
