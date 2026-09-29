@@ -42,6 +42,7 @@ const FILES = {
   heroHome: 'hero-home.jpg',
   energyHome: 'energy-home.jpg',
   energyFlow: 'energy-flow.png',
+  energyFlowReference: 'energy-flow-reference.png',
   sigenSmartmeter: 'sigen-smartmeter.jpg',
 };
 

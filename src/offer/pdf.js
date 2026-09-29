@@ -63,15 +63,18 @@ function resolveSalesPhotoPath(vertrieb) {
   return productAbs('salesPortrait');
 }
 
-/** Fit image into box without letterbox bars (contain, centered on light fill). */
-function drawFittedImage(doc, imgPath, x, y, boxW, boxH, bg = '#ffffff') {
+/**
+ * Fit product image into box (contain, centered).
+ * Default: no backdrop plate — freigestellt on the page white (no grey/black bars).
+ */
+function drawFittedImage(doc, imgPath, x, y, boxW, boxH, bg = null) {
   if (!imgPath || !fs.existsSync(imgPath)) return false;
   try {
     if (bg) {
       doc.save().roundedRect(x, y, boxW, boxH, 4).fill(bg).restore();
     }
     const img = doc.openImage(imgPath);
-    const scale = Math.min(boxW / img.width, boxH / img.height);
+    const scale = Math.min(boxW / Math.max(1, img.width), boxH / Math.max(1, img.height));
     const dw = img.width * scale;
     const dh = img.height * scale;
     doc.image(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, { width: dw, height: dh });
@@ -221,44 +224,16 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       y = startContentPage();
       y = drawWirtschaftPage(doc, y, eco);
 
-      // ── 11 Gesamtübersicht: PV → Speicher → weitere → Leistungen → Preis → Unterschrift ──
+      // ── 11 Gesamtübersicht: PV → Speicher → weitere → Leistungen → Preis (ohne Unterschrift) ──
       y = startContentPage();
       y = drawBestandteilePage(doc, y, offer, startContentPage);
       y += 14;
-      if (y > CONTENT_BOTTOM - 140) y = startContentPage();
+      if (y > CONTENT_BOTTOM - 120) y = startContentPage();
       y = drawPriceBlock(doc, y, offer.preis);
-      y += 32;
-      if (y > CONTENT_BOTTOM - 56) y = startContentPage();
-      doc.save().lineWidth(0.8).strokeColor('#c8c8c8')
-        .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-      y += 8;
-      doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
-        .text('Ort, Datum, Name, Unterschrift', MARGIN, y);
 
-      // Optionals AFTER total price + signature
-      if (offer.optionaleKomponenten && offer.optionaleKomponenten.length) {
-        y = startContentPage();
-        doc.font('Helvetica-Bold').fontSize(22).fillColor(COLORS.text).text('Optionale Komponenten', MARGIN, y);
-        y = doc.y + 12;
-        doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
-          .text('Nicht im Gesamtpreis enthalten – auf Wunsch beauftragbar.', MARGIN, y);
-        y = doc.y + 14;
-        for (const opt of offer.optionaleKomponenten) {
-          if (y > CONTENT_BOTTOM - 36) y = startContentPage();
-          const rowY = y;
-          doc.save().lineWidth(1).strokeColor(COLORS.yellow)
-            .roundedRect(MARGIN, rowY + 2, 11, 11, 2).stroke().restore();
-          doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
-            .text(opt.label, MARGIN + 20, rowY, { width: CONTENT_W - 130 });
-          doc.font('Helvetica-Bold').fontSize(10.5).fillColor(COLORS.text)
-            .text(formatEUR(opt.price), MARGIN, rowY, { width: CONTENT_W, align: 'right' });
-          y = Math.max(doc.y, rowY + 18) + 8;
-        }
-      }
-
-      // ── Angebot akzeptieren (nach Optionals) ──
+      // ── Angebot akzeptieren: Optionals + genau eine Unterschrift ──
       y = startContentPage();
-      y = drawAcceptPage(doc, y);
+      y = drawAcceptPage(doc, y, offer.optionaleKomponenten || []);
 
       // ── Datenblätter ──
       const sheets = selectDatasheetsForOffer(offer, {
@@ -680,7 +655,8 @@ function drawComponentCard(doc, y, index, card) {
     .text(desc, MARGIN, y, { width: textW, lineGap: 1.2, height: 58, ellipsis: true });
   const textBottom = doc.y;
   if (hasImg) {
-    drawFittedImage(doc, card.image, PAGE.width - MARGIN - imgBoxW, y, imgBoxW, imgBoxH, '#f7f7f7');
+    // Freigestellt auf Seitenweiß – kein graues/schwarzes Bildplättchen
+    drawFittedImage(doc, card.image, PAGE.width - MARGIN - imgBoxW, y, imgBoxW, imgBoxH, null);
     return Math.max(textBottom, y + imgBoxH) + 2;
   }
   return Math.max(textBottom, titleY + 54) + 2;
@@ -797,16 +773,11 @@ function drawHaushaltPage(doc, y, eco) {
     .text(eco.flowText, MARGIN, y, { width: CONTENT_W, lineGap: 2 });
   y = doc.y + 12;
 
-  const flowH = 168;
-  doc.save().roundedRect(MARGIN, y, CONTENT_W, flowH, 8).fill(COLORS.cardBg).restore();
-  const flowImg = firstExisting('energyFlow', 'chartFlow');
-  let flowDrawn = false;
-  if (flowImg) {
-    flowDrawn = drawFittedImage(doc, flowImg, MARGIN + 10, y + 8, CONTENT_W - 20, flowH - 16, null);
-  }
-  if (!flowDrawn) {
-    drawEnergyFlowDiagram(doc, MARGIN + 16, y + 14, CONTENT_W - 32, flowH - 28, eco);
-  }
+  // Sankey mit echten Angebotszahlen (Vorlage-Stil, siehe energy-flow-reference.png)
+  const flowH = 200;
+  doc.save().roundedRect(MARGIN, y, CONTENT_W, flowH, 8)
+    .lineWidth(0.8).strokeColor('#d0d0d0').fillAndStroke('#fafafa', '#d0d0d0').restore();
+  drawEnergyFlowDiagram(doc, MARGIN + 12, y + 10, CONTENT_W - 24, flowH - 20, eco);
   y += flowH + 14;
 
   y = drawKeyValueRow(doc, y,
@@ -824,65 +795,125 @@ function drawHaushaltPage(doc, y, eco) {
   return doc.y;
 }
 
-/** Vector Sankey-ähnliches Energieflussdiagramm (Fallback ohne Asset). */
+/**
+ * Energiefluss wie Vorlagen-Referenz:
+ * links Photovoltaik+kWh, Mitte Netz (Einsp./Bezug) + Speicher+kWh, rechts Verbrauch+kWh.
+ */
 function drawEnergyFlowDiagram(doc, x, y, w, h, eco) {
-  const pv = Math.max(1, eco.annualYield || 1);
-  const toHome = Math.max(0, eco.directToHome || eco.selfConsumed || 0);
-  const toStore = Math.max(0, eco.toStorage || 0);
-  const feed = Math.max(0, eco.feedInKwh || 0);
-  const fromStore = Math.max(0, eco.fromStorage || 0);
-  const fromGrid = Math.max(0, eco.gridRemain || 0);
-  const totalOut = Math.max(1, toHome + toStore + feed);
+  const pv = Math.max(1, Math.round(eco.annualYield || 1));
+  const feed = Math.max(0, Math.round(eco.feedInKwh || 0));
+  const toStore = Math.max(0, Math.round(eco.toStorage || 0));
+  const toHome = Math.max(0, Math.round(eco.directToHome || Math.max(0, (eco.selfConsumed || 0) - toStore * 0.9)));
+  const fromStore = Math.max(0, Math.round(eco.fromStorage || 0));
+  const fromGrid = Math.max(0, Math.round(eco.gridRemain || 0));
+  const household = Math.max(1, Math.round(eco.household || fromGrid + toHome + fromStore));
 
-  const nodeW = 14;
-  const pvX = x + 8;
-  const midX = x + w * 0.45;
-  const endX = x + w - 22;
-  const pvTop = y + 8;
-  const pvH = h - 28;
+  const ORANGE = '#e8a317';
+  const ORANGE_SOFT = '#f0c96a';
+  const YELLOW_SOFT = '#f3e2a8';
+  const GRAY = '#5a5a5a';
+  const GRAY_SOFT = '#b8b8b8';
 
-  function band(x0, y0, x1, y1, thickness, color) {
-    const t = Math.max(3, thickness);
+  const labelW = 72;
+  const nodeW = 16;
+  const pvX = x + labelW;
+  const midX = x + w * 0.48;
+  const endX = x + w - labelW - nodeW;
+  const topPad = 8;
+  const botPad = 8;
+  const usableH = h - topPad - botPad;
+  const pvTop = y + topPad;
+  const pvH = usableH;
+
+  const totalOut = Math.max(1, feed + toHome + toStore);
+  const scaleBand = (v) => Math.max(v > 0 ? 10 : 0, (v / totalOut) * (pvH * 0.9));
+
+  function band(x0, yC0, x1, yC1, thickness, color) {
+    const t = Math.max(4, thickness);
     doc.save();
-    doc.fillColor(color).fillOpacity(0.55);
-    doc.moveTo(x0, y0 - t / 2)
-      .bezierCurveTo((x0 + x1) / 2, y0 - t / 2, (x0 + x1) / 2, y1 - t / 2, x1, y1 - t / 2)
-      .lineTo(x1, y1 + t / 2)
-      .bezierCurveTo((x0 + x1) / 2, y1 + t / 2, (x0 + x1) / 2, y0 + t / 2, x0, y0 + t / 2)
+    doc.fillColor(color).fillOpacity(0.72);
+    doc.moveTo(x0, yC0 - t / 2)
+      .bezierCurveTo((x0 + x1) * 0.5, yC0 - t / 2, (x0 + x1) * 0.5, yC1 - t / 2, x1, yC1 - t / 2)
+      .lineTo(x1, yC1 + t / 2)
+      .bezierCurveTo((x0 + x1) * 0.5, yC1 + t / 2, (x0 + x1) * 0.5, yC0 + t / 2, x0, yC0 + t / 2)
       .closePath()
       .fill();
-    doc.restore();
+    doc.fillOpacity(1).restore();
   }
 
+  // Stack outgoing bands on PV bar (top→bottom: Einspeisung, Direktverbrauch, Speicher)
   let cursor = pvTop;
-  const hFeed = (feed / totalOut) * pvH;
-  const hHome = (toHome / totalOut) * pvH;
-  const hStore = (toStore / totalOut) * pvH;
+  const tFeed = scaleBand(feed);
+  const tHome = scaleBand(toHome);
+  const tStore = scaleBand(toStore);
 
-  band(pvX + nodeW, cursor + hFeed / 2, midX, y + 28, hFeed * 0.85, '#c8b06a');
-  cursor += hFeed;
-  band(pvX + nodeW, cursor + hHome / 2, endX, y + 70, hHome * 0.85, COLORS.yellowSoft);
-  cursor += hHome;
-  band(pvX + nodeW, cursor + hStore / 2, midX, y + h - 50, Math.max(8, hStore * 0.85), COLORS.yellowPale);
-  if (fromGrid > 0) {
-    band(midX + nodeW, y + 36, endX, y + h * 0.55, 18, '#9a9a9a');
-  }
-  if (fromStore > 0) {
-    band(midX + nodeW, y + h - 50, endX, y + h - 40, 16, COLORS.yellowSoft);
-  }
+  const netzH = Math.max(36, Math.min(pvH * 0.38, tFeed + 28));
+  const netzTop = pvTop + 4;
+  const speicherH = Math.max(28, Math.min(pvH * 0.28, tStore + 20));
+  const speicherTop = y + h - botPad - speicherH - 4;
+  const verbrauchH = pvH * 0.92;
+  const verbrauchTop = pvTop + (pvH - verbrauchH) / 2;
 
-  doc.save().roundedRect(pvX, pvTop, nodeW, pvH, 3).fill(COLORS.yellow).restore();
-  doc.save().roundedRect(midX, y + 16, nodeW, 48, 3).fill('#4a4a4a').restore();
+  // Destinations for band centers
+  const feedCenter = cursor + tFeed / 2;
+  cursor += tFeed;
+  const homeCenter = cursor + tHome / 2;
+  cursor += tHome;
+  const storeCenter = cursor + tStore / 2;
+
+  const netzInCenter = netzTop + netzH * 0.35;
+  const netzOutCenter = netzTop + netzH * 0.65;
+  const speicherInCenter = speicherTop + speicherH * 0.4;
+  const speicherOutCenter = speicherTop + speicherH * 0.65;
+
+  // Incoming stack on Verbrauch (top→bottom: Direkt, Netzbezug, Speicher)
+  const inTotal = Math.max(1, toHome + fromGrid + fromStore);
+  const vHome = Math.max(toHome > 0 ? 10 : 0, (toHome / inTotal) * verbrauchH * 0.85);
+  const vGrid = Math.max(fromGrid > 0 ? 10 : 0, (fromGrid / inTotal) * verbrauchH * 0.85);
+  const vStore = Math.max(fromStore > 0 ? 10 : 0, (fromStore / inTotal) * verbrauchH * 0.85);
+  let vCursor = verbrauchTop + (verbrauchH - (vHome + vGrid + vStore)) / 2;
+  const verbrauchHomeC = vCursor + vHome / 2; vCursor += vHome;
+  const verbrauchGridC = vCursor + vGrid / 2; vCursor += vGrid;
+  const verbrauchStoreC = vCursor + vStore / 2;
+
+  if (feed > 0) band(pvX + nodeW, feedCenter, midX, netzInCenter, tFeed, GRAY_SOFT);
+  if (toHome > 0) band(pvX + nodeW, homeCenter, endX, verbrauchHomeC, tHome, ORANGE_SOFT);
+  if (toStore > 0 && eco.hasStorage) band(pvX + nodeW, storeCenter, midX, speicherInCenter, tStore, YELLOW_SOFT);
+  if (fromGrid > 0) band(midX + nodeW, netzOutCenter, endX, verbrauchGridC, vGrid, GRAY);
+  if (fromStore > 0 && eco.hasStorage) band(midX + nodeW, speicherOutCenter, endX, verbrauchStoreC, vStore, YELLOW_SOFT);
+
+  // Nodes
+  doc.save().roundedRect(pvX, pvTop, nodeW, pvH, 3).fill(ORANGE).restore();
+  doc.save().roundedRect(midX, netzTop, nodeW, netzH, 3).fill(GRAY).restore();
   if (eco.hasStorage) {
-    doc.save().roundedRect(midX, y + h - 70, nodeW, 52, 3).fill(COLORS.yellowSoft).restore();
+    doc.save().roundedRect(midX, speicherTop, nodeW, speicherH, 3).fill(YELLOW_SOFT).restore();
   }
-  doc.save().roundedRect(endX, y + 24, nodeW, h - 48, 3).fill('#4a4a4a').restore();
+  doc.save().roundedRect(endX, verbrauchTop, nodeW, verbrauchH, 3).fill(GRAY).restore();
 
-  doc.font('Helvetica').fontSize(8).fillColor(COLORS.dark)
-    .text('Photovoltaik', pvX - 2, y + h - 14, { width: 70 })
-    .text('Netz', midX - 8, y + 4, { width: 40 })
-    .text(eco.hasStorage ? 'Speicher' : '', midX - 10, y + h - 16, { width: 50 })
-    .text('Verbrauch', endX - 30, y + 8, { width: 60 });
+  // Labels + kWh (Vorlage)
+  const kwh = (n) => `${formatNum(Math.round(n))} kWh`;
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
+    .text('Photovoltaik', x, pvTop + pvH / 2 - 14, { width: labelW - 4, align: 'left' });
+  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
+    .text(kwh(pv), x, pvTop + pvH / 2 + 2, { width: labelW - 4, align: 'left' });
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
+    .text('Netz', midX + nodeW + 6, netzTop - 2, { width: 90 });
+  doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
+    .text(`Einsp. ${formatNum(feed)}`, midX + nodeW + 6, netzTop + 12, { width: 90 })
+    .text(`Bezug ${formatNum(fromGrid)}`, midX + nodeW + 6, netzTop + 24, { width: 90 });
+
+  if (eco.hasStorage) {
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
+      .text('Speicher', midX + nodeW + 6, speicherTop + 4, { width: 90 });
+    doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
+      .text(kwh(toStore), midX + nodeW + 6, speicherTop + 18, { width: 90 });
+  }
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
+    .text('Verbrauch', endX + nodeW + 6, verbrauchTop + verbrauchH / 2 - 14, { width: labelW - 2 });
+  doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
+    .text(kwh(household), endX + nodeW + 6, verbrauchTop + verbrauchH / 2 + 2, { width: labelW - 2 });
 }
 
 function drawWirtschaftPage(doc, y, eco) {
@@ -890,35 +921,26 @@ function drawWirtschaftPage(doc, y, eco) {
   y = doc.y + 6;
   doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
     .text('Hier sehen Sie die Wirtschaftlichkeit Ihrer geplanten Komponenten über den Betrachtungszeitraum.', MARGIN, y, { width: CONTENT_W });
-  y = doc.y + 12;
+  y = doc.y + 14;
   doc.font('Helvetica-Bold').fontSize(11).fillColor(COLORS.softMuted)
     .text('AMORTISATION', MARGIN, y, { characterSpacing: 0.4 });
-  y = doc.y + 10;
+  y = doc.y + 12;
 
-  const chartH = 200;
+  const chartH = 280;
   doc.save().roundedRect(MARGIN, y, CONTENT_W, chartH, 8).fill(COLORS.cardBg).restore();
-  drawAmortBars(doc, MARGIN + 36, y + 12, CONTENT_W - 52, chartH - 36, eco.yearly);
-  y += chartH + 12;
-
-  // Mehrjahres-Kennzahlen (nicht nur erstes/letztes Jahr)
-  y = drawYearlySnapshotTable(doc, y, eco);
-  y += 10;
+  drawAmortBars(doc, MARGIN + 36, y + 16, CONTENT_W - 52, chartH - 44, eco.yearly);
+  y += chartH + 20;
 
   y = drawKeyValueRow(doc, y,
     'Gesamte Einsparungen',
     `Auf eine Sicht von ${eco.years} Jahren sparen Sie ${eco.labels.totalSavings}.`,
     eco.labels.totalSavings);
-  y += 4;
+  y += 8;
   const beSub = eco.paybackYears != null
     ? `Die Amortisation wird nach ${eco.paybackYears} Jahren${eco.paybackYearLabel ? ` im Jahr ${eco.paybackYearLabel}` : ''} erwartet`
     : 'Amortisation außerhalb des Betrachtungszeitraums';
   y = drawKeyValueRow(doc, y, 'Break-Even', beSub, eco.labels.payback);
-  y += 4;
-  y = drawKeyValueRow(doc, y,
-    'Einsparung Jahr 1',
-    'Geschätzte Ersparnis im ersten Betriebsjahr (Eigenverbrauch + Einspeisung).',
-    `${formatNum(Math.round(eco.savingsYear1))} €`);
-  y += 8;
+  y += 12;
   doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.muted)
     .text('Die Berechnungsergebnisse dienen der Orientierung und können im Einzelfall abweichen. Einflussfaktoren wie Wetterbedingungen, Strompreisänderungen, Degradation der PV-Module und individuelles Verbrauchsverhalten können zu Abweichungen führen.', MARGIN, y, { width: CONTENT_W });
   return doc.y;
@@ -928,38 +950,11 @@ function pickYearIndices(yearly) {
   if (!yearly.length) return [];
   const n = yearly.length;
   const targets = [0];
-  if (n > 1) targets.push(Math.min(4, n - 1)); // Jahr 5
-  if (n > 5) targets.push(Math.min(9, n - 1)); // Jahr 10
-  if (n > 10) targets.push(Math.min(14, n - 1)); // Jahr 15
+  if (n > 1) targets.push(Math.min(4, n - 1));
+  if (n > 5) targets.push(Math.min(9, n - 1));
+  if (n > 10) targets.push(Math.min(14, n - 1));
   targets.push(n - 1);
-  // unique sorted
   return [...new Set(targets)].sort((a, b) => a - b);
-}
-
-function drawYearlySnapshotTable(doc, y, eco) {
-  const yearly = eco.yearly || [];
-  const idxs = pickYearIndices(yearly);
-  if (!idxs.length) return y;
-
-  doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.softMuted)
-    .text('ENTWICKLUNG ÜBER DIE JAHRE', MARGIN, y, { characterSpacing: 0.3 });
-  y = doc.y + 8;
-
-  const cols = idxs.length;
-  const colW = CONTENT_W / cols;
-  idxs.forEach((i, ci) => {
-    const r = yearly[i];
-    const cx = MARGIN + ci * colW;
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
-      .text(String(r.calendarYear), cx, y, { width: colW - 6 });
-    doc.font('Helvetica').fontSize(8).fillColor(COLORS.muted)
-      .text(`Jahr ${r.year}`, cx, y + 12, { width: colW - 6 });
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.text)
-      .text(`${formatNum(Math.round(r.cumulative))} €`, cx, y + 26, { width: colW - 6 });
-    doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.softMuted)
-      .text(`+${formatNum(Math.round(r.savings))} € / Jahr`, cx, y + 40, { width: colW - 6 });
-  });
-  return y + 58;
 }
 
 function drawAmortBars(doc, x, y, w, h, yearly) {
@@ -983,14 +978,14 @@ function drawAmortBars(doc, x, y, w, h, yearly) {
       doc.save().rect(bx, zeroY, barW, Math.max(1, bh)).fill('#4a4a4a').restore();
     }
   });
-  // Mehrjahres-Beschriftung (alle 5 Jahre + Start/Ende)
+  // Jahresbeschriftung an der Achse (ohne Extra-€-Tabelle)
   doc.font('Helvetica').fontSize(7).fillColor(COLORS.muted);
   const labelIdx = pickYearIndices(yearly);
   labelIdx.forEach((i) => {
     const bx = x + i * (barW + gap);
     const label = String(yearly[i].calendarYear);
     const tw = doc.widthOfString(label);
-    doc.text(label, bx + barW / 2 - tw / 2, y + h + 3, { lineBreak: false });
+    doc.text(label, bx + barW / 2 - tw / 2, y + h + 4, { lineBreak: false });
   });
 }
 
@@ -1067,21 +1062,48 @@ function drawPricePage(doc, y, preis) {
   return drawPriceBlock(doc, y, preis);
 }
 
-function drawAcceptPage(doc, y) {
-  doc.font('Helvetica-Bold').fontSize(26).fillColor(COLORS.text).text('Angebot akzeptieren', MARGIN, y);
-  y = doc.y + 28;
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+/**
+ * Akzeptieren-Seite: optionale Komponenten (falls vorhanden) + genau eine Unterschriftszeile.
+ */
+function drawAcceptPage(doc, y, optionals = []) {
+  doc.font('Helvetica-Bold').fontSize(24).fillColor(COLORS.text).text('Angebot akzeptieren', MARGIN, y);
+  y = doc.y + 16;
+  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
     .text('Zahlungskonditionen : 100% nach Fertigstellung der Installation und Inbetriebnahme', MARGIN, y);
-  y = doc.y + 12;
-  doc.font('Helvetica').fontSize(11).fillColor(COLORS.text)
+  y = doc.y + 8;
+  doc.font('Helvetica').fontSize(10.5).fillColor(COLORS.text)
     .text('Liefer- und Montagetermin : ca. 10-14 Wochen nach Bestellung', MARGIN, y);
-  y = doc.y + 80;
+  y = doc.y + 18;
+
+  const opts = Array.isArray(optionals) ? optionals : [];
+  if (opts.length) {
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.text).text('Optionale Komponenten', MARGIN, y);
+    y = doc.y + 6;
+    doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.muted)
+      .text('Nicht im Gesamtpreis enthalten – auf Wunsch beauftragbar.', MARGIN, y);
+    y = doc.y + 12;
+    for (const opt of opts) {
+      const rowY = y;
+      doc.save().lineWidth(1).strokeColor(COLORS.yellow)
+        .roundedRect(MARGIN, rowY + 2, 11, 11, 2).stroke().restore();
+      doc.font('Helvetica').fontSize(10).fillColor(COLORS.text)
+        .text(opt.label || '', MARGIN + 20, rowY, { width: CONTENT_W - 130 });
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.text)
+        .text(formatEUR(opt.price), MARGIN, rowY, { width: CONTENT_W, align: 'right' });
+      y = Math.max(doc.y, rowY + 16) + 6;
+    }
+    y += 16;
+  } else {
+    y += 40;
+  }
+
+  // Genau eine Unterschriftszeile (auf derselben Seite wie Optionals)
+  const sigY = Math.max(y, CONTENT_BOTTOM - 70);
   doc.save().lineWidth(0.8).strokeColor('#c8c8c8')
-    .moveTo(MARGIN, y).lineTo(PAGE.width - MARGIN, y).stroke().restore();
-  y += 8;
+    .moveTo(MARGIN, sigY).lineTo(PAGE.width - MARGIN, sigY).stroke().restore();
   doc.font('Helvetica').fontSize(10).fillColor(COLORS.muted)
-    .text('Ort, Datum, Name, Unterschrift', MARGIN, y);
-  return y + 40;
+    .text('Ort, Datum, Name, Unterschrift', MARGIN, sigY + 8);
+  return sigY + 36;
 }
 
 function drawDatasheetsPage(doc, y, sheets) {
