@@ -31,8 +31,8 @@ copy_match '*10015613*.pdf' 'enwitec-gen24-10015613.pdf'
 copy_match '*SUN2000*M1*.pdf' 'huawei-sun2000-3-10ktl-m1.pdf'
 copy_match '*AIKO*MCE54*.pdf' 'aiko-mce54mb-460-490w.pdf'
 copy_match '*DAS-DH108ND*.pdf' 'das-dh108nd-440-465.pdf'
-copy_match '*S09EC*S12EC*.pdf' 'lg-standard-ii-single.pdf'
-copy_match '*MU2R15*.pdf' 'lg-mu2r15-4-1kw.pdf'
+copy_match '*single-split*.pdf' 'lg-single-split.pdf'
+copy_match '*multisplit*.pdf' 'lg-multisplit.pdf'
 
 echo "---"
 ls -lh "$DEST"
