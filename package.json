@@ -20,7 +20,8 @@
     "compare-csv-sqlite": "node scripts/compare-csv-sqlite.js",
     "fix-missing-coords": "node scripts/fix-missing-coords.js",
     "renumber-leads-anfrage": "node scripts/renumber-leads-anfrage.js",
-    "test:layout-tilt": "node scripts/test-layout-tilt.js"
+    "test:layout-tilt": "node scripts/test-layout-tilt.js",
+    "test:yield-orientation": "node scripts/test-yield-orientation.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

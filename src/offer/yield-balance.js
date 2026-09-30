@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const h0Tables = require('./h0-profile.json');
+const { resolveModuleTiltForYield } = require('./layout-tilt');
 
 const PVGIS_URL = 'https://re.jrc.ec.europa.eu/api/v5_3/seriescalc';
 const LOSS_PCT = 14;
@@ -451,19 +452,160 @@ function norm360(d) {
   return x < 0 ? x + 360 : x;
 }
 
+function deg2radLocal(d) {
+  return (Number(d) * Math.PI) / 180;
+}
+
+function angDist(a, b) {
+  return Math.abs(mod(Number(a) - Number(b) + 180, 360) - 180);
+}
+
+/** Lokale Meter: +x Ost, +y Nord. Gleicher Maßstab wie der Belegungsplan. */
+function yieldProjector(lat0, lng0) {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos(deg2radLocal(lat0));
+  return {
+    toXY(lat, lng) {
+      return { x: (Number(lng) - lng0) * mPerDegLng, y: (Number(lat) - lat0) * mPerDegLat };
+    },
+  };
+}
+
+function pointInRing(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x;
+    const yi = poly[i].y;
+    const xj = poly[j].x;
+    const yj = poly[j].y;
+    const intersect = ((yi > pt.y) !== (yj > pt.y))
+      && (pt.x < ((xj - xi) * (pt.y - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function planRoofs(plan) {
+  const meta = (plan && plan.meta) || {};
+  if (plan && Array.isArray(plan.roofs) && plan.roofs.length) {
+    return plan.roofs.filter((r) => r && Array.isArray(r.ring) && r.ring.length >= 3);
+  }
+  if (plan && Array.isArray(plan.roof) && plan.roof.length >= 3) {
+    return [{
+      ring: plan.roof,
+      tilt: meta.tilt != null ? meta.tilt : 30,
+      edgeAngleDeg: meta.edgeAngleDeg,
+    }];
+  }
+  return [];
+}
+
+/**
+ * Traufenrichtung wie getRoofEavePitch: vom Inneren zur ersten Kante.
+ * Editor-Winkel, Ost = 0°, gegen den Uhrzeigersinn. Das ist die Hangseite,
+ * nicht die Traufkante und nicht Kante minus 90.
+ */
+function downslopeEditorDeg(ring) {
+  if (!ring || ring.length < 3) return null;
+  const lat0 = ring.reduce((s, p) => s + Number(p.lat), 0) / ring.length;
+  const lng0 = ring.reduce((s, p) => s + Number(p.lng), 0) / ring.length;
+  if (!Number.isFinite(lat0) || !Number.isFinite(lng0)) return null;
+  const proj = yieldProjector(lat0, lng0);
+  const pts = ring.map((p) => proj.toXY(p.lat, p.lng));
+  const p0 = pts[0];
+  const p1 = pts[1];
+  const edx = p1.x - p0.x;
+  const edy = p1.y - p0.y;
+  const elen = Math.hypot(edx, edy);
+  if (!(elen > 1e-6)) return null;
+  const ex = edx / elen;
+  const ey = edy / elen;
+  let nx = -ey;
+  let ny = ex;
+  const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+  if (!pointInRing({ x: mid.x + nx * 0.4, y: mid.y + ny * 0.4 }, pts)) {
+    nx = -nx;
+    ny = -ny;
+  }
+  return Math.atan2(-ny, -nx) * 180 / Math.PI;
+}
+
+function moduleInRoof(module, roof) {
+  if (!module || module.lat == null || module.lng == null || !roof || !roof.ring) return false;
+  const ring = roof.ring;
+  const lat0 = ring.reduce((s, p) => s + Number(p.lat), 0) / ring.length;
+  const lng0 = ring.reduce((s, p) => s + Number(p.lng), 0) / ring.length;
+  const proj = yieldProjector(lat0, lng0);
+  const pts = ring.map((p) => proj.toXY(p.lat, p.lng));
+  return pointInRing(proj.toXY(module.lat, module.lng), pts);
+}
+
+/** Senkrecht zur Traufe, die Seite näher an der gezeichneten Hangrichtung. */
+function perpendicularToward(eaveDeg, targetDeg) {
+  const plus = Number(eaveDeg) + 90;
+  const minus = Number(eaveDeg) - 90;
+  return angDist(plus, targetDeg) <= angDist(minus, targetDeg) ? plus : minus;
+}
+
+function moduleEaveDeg(module, roof) {
+  if (module && Number.isFinite(Number(module.azimuth))) return Number(module.azimuth);
+  if (roof && Number.isFinite(Number(roof.edgeAngleDeg))) return Number(roof.edgeAngleDeg);
+  return null;
+}
+
+/**
+ * Blickrichtung eines Moduls (Editor-Winkel): hangabwärts, senkrecht zur Traufe.
+ * Ost-West behält die gespeicherte Modulrichtung (die beiden Seiten bleiben entgegengesetzt).
+ * Sonst gewinnt die gezeichnete Traufenseite des Daches, auch wenn facingAzimuth fehlt
+ * oder als Kante minus 90 gespiegelt gespeichert ist.
+ */
+function moduleFacingEditorDeg(module, roofs) {
+  if (module && module.eastWest && Number.isFinite(Number(module.facingAzimuth))) {
+    return Number(module.facingAzimuth);
+  }
+  const list = Array.isArray(roofs) ? roofs : [];
+  let roof = null;
+  for (let i = 0; i < list.length; i += 1) {
+    if (moduleInRoof(module, list[i])) {
+      roof = list[i];
+      break;
+    }
+  }
+  if (!roof && list.length === 1) roof = list[0];
+  if (roof) {
+    const down = downslopeEditorDeg(roof.ring);
+    if (down != null) {
+      const eave = moduleEaveDeg(module, roof);
+      if (eave == null) return down;
+      return perpendicularToward(eave, down);
+    }
+  }
+  if (module && Number.isFinite(Number(module.facingAzimuth))) return Number(module.facingAzimuth);
+  const eave = module ? Number(module.azimuth) : 0;
+  // Ohne Dach: Pfeilfallback des Editors (lokales +y), nicht Traufe minus 90.
+  return (Number.isFinite(eave) ? eave : 0) + 90;
+}
+
 function groupsFromPlan(plan, moduleWp) {
   const modules = plan && Array.isArray(plan.modules) ? plan.modules : [];
   if (!modules.length) return [];
   const wp = Number(moduleWp) > 0 ? Number(moduleWp) : 455;
+  const roofs = planRoofs(plan);
+  const meta = (plan && plan.meta) || {};
   const map = new Map();
   modules.forEach((m) => {
     if (!m) return;
-    const tilt = Number.isFinite(Number(m.tilt)) ? Number(m.tilt) : 30;
-    const editorAz = Number.isFinite(Number(m.facingAzimuth))
-      ? Number(m.facingAzimuth)
-      : norm360((Number(m.azimuth) || 0) - 90);
-    const key = `${tilt.toFixed(1)}|${Math.round(editorAz)}`;
-    const prev = map.get(key) || { tilt, editorAzimuth: editorAz, kwp: 0, count: 0 };
+    const resolved = resolveModuleTiltForYield(m, roofs, meta);
+    const tilt = Number(resolved.tilt);
+    const editorAz = norm360(moduleFacingEditorDeg(m, roofs));
+    const key = `${Number(tilt).toFixed(1)}|${Math.round(editorAz)}`;
+    const prev = map.get(key) || {
+      tilt,
+      editorAzimuth: editorAz,
+      kwp: 0,
+      count: 0,
+      source: 'layout',
+    };
     prev.kwp += wp / 1000;
     prev.count += 1;
     map.set(key, prev);
@@ -489,15 +631,36 @@ function groupsFromOffer(offer) {
     const flat = /flach|freifl/.test(label);
     const eastWest = /ost-?\s*west/.test(label);
     if (eastWest) {
-      groups.push({ tilt: 10, editorAzimuth: 0, kwp: segKwp / 2 });
-      groups.push({ tilt: 10, editorAzimuth: 180, kwp: segKwp / 2 });
+      groups.push({
+        tilt: 10, editorAzimuth: 0, kwp: segKwp / 2, source: 'fallback',
+        label: 'Ohne Belegungsplan: Ost-West, Ost 10°',
+      });
+      groups.push({
+        tilt: 10, editorAzimuth: 180, kwp: segKwp / 2, source: 'fallback',
+        label: 'Ohne Belegungsplan: Ost-West, West 10°',
+      });
     } else if (flat) {
-      groups.push({ tilt: 10, editorAzimuth: 270, kwp: segKwp });
+      groups.push({
+        tilt: 10, editorAzimuth: 270, kwp: segKwp, source: 'fallback',
+        label: 'Ohne Belegungsplan: Flachdach Süd 10°',
+      });
     } else {
-      groups.push({ tilt: 30, editorAzimuth: 270, kwp: segKwp });
+      groups.push({
+        tilt: 30, editorAzimuth: 270, kwp: segKwp, source: 'fallback',
+        label: 'Ohne Belegungsplan: Ziegel Süd 30°',
+      });
     }
   });
   return groups;
+}
+
+const FALLBACK_ORIENTATION_NOTE = 'Ohne Module im Belegungsplan: angenommene Ausrichtung (Ziegel Süd 30°, Flachdach Süd 10°, Ost-West je Ost und West 10°). Ein Belegungsplan mit Modulen ersetzt diese Annahme, auch bei reiner Nordausrichtung.';
+
+/** Belegungsplan mit Modulen gewinnt immer, auch reine Nordlage. Sonst die beschriftete Annahme. */
+function selectYieldGroups(plan, offer, moduleWp) {
+  const fromPlan = groupsFromPlan(plan, moduleWp);
+  if (fromPlan.length) return { groups: fromPlan, source: 'layout' };
+  return { groups: groupsFromOffer(offer), source: 'fallback' };
 }
 
 function unavailable(note) {
@@ -549,8 +712,9 @@ async function geocodeCustomer(customer) {
 async function computeOfferBalance({ offer, customer, layoutPlan, layoutRow, householdKwh } = {}) {
   const cfg = (offer && offer.config) || {};
   const moduleWp = Number(cfg.moduleWp) || 455;
-  let groups = groupsFromPlan(layoutPlan, moduleWp);
-  if (!groups.length) groups = groupsFromOffer(offer);
+  const selected = selectYieldGroups(layoutPlan, offer, moduleWp);
+  const groups = selected.groups;
+  const orientationSource = selected.source;
   if (!groups.length) {
     return unavailable('Keine Modulleistung für die Stundenberechnung.');
   }
@@ -620,11 +784,15 @@ async function computeOfferBalance({ offer, customer, layoutPlan, layoutRow, hou
       ? `PVGIS war kurz nicht erreichbar. Verwendet wurde der letzte gespeicherte Datensatz dieser Gegend (etwa ${Math.round(maxKm)} km).`
       : 'PVGIS war kurz nicht erreichbar. Verwendet wurde der gespeicherte Datensatz für diesen Standort.';
   }
+  if (orientationSource === 'fallback') {
+    note = note ? `${note} ${FALLBACK_ORIENTATION_NOTE}` : FALLBACK_ORIENTATION_NOTE;
+  }
 
   return {
     available: true,
     source,
     note,
+    orientationSource,
     site: site || null,
     ...sim,
     monthly,
@@ -634,6 +802,8 @@ async function computeOfferBalance({ offer, customer, layoutPlan, layoutRow, hou
       editorAzimuth: g.editorAzimuth,
       pvgisAspect: editorAzimuthToPvgis(g.editorAzimuth),
       kwp: Math.round(g.kwp * 100) / 100,
+      source: g.source || orientationSource,
+      label: g.label || null,
     })),
   };
 }
@@ -646,6 +816,10 @@ module.exports = {
   computeOfferBalance,
   groupsFromPlan,
   groupsFromOffer,
+  selectYieldGroups,
+  moduleFacingEditorDeg,
+  downslopeEditorDeg,
+  FALLBACK_ORIENTATION_NOTE,
   unavailable,
   MONTH_LABELS,
   ETA,
