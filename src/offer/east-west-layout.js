@@ -2,8 +2,9 @@
 
 /**
  * Ost-West-Flachdach: Querformat, Neigung 10°, lange Seite entlang der Reihe.
- * Auf der langen Seite Paare mit 2 cm innen, dann 20 cm bis zum nächsten Paar.
- * Kurze Seite durchgehend 2 cm. Gegenüberliegende Blickrichtung, beide 10°.
+ * Die zwei Module eines Paares treffen sich an der langen Kante (2 cm),
+ * danach 20 cm bis zum nächsten Paar. Entlang der kurzen Kante überall 2 cm.
+ * Gegenüberliegende Blickrichtung, beide 10°.
  * Dieselbe Teilung wie public/layout-editor.js (autoLayoutModules eastWest).
  */
 
@@ -119,8 +120,10 @@ function placeEastWestModules(roofLatLngs, opts) {
 
   const facePlus = norm360(edgeAngleDeg + 90);
   const faceMinus = norm360(edgeAngleDeg - 90);
-  const pairStep = w + PAIR_INNER_M + w + PAIR_PITCH_M;
-  const stepV = h + ROW_GAP_M;
+  // u = lange Kante. Dort nur 2 cm (kurze Kanten liegen aneinander).
+  // v = über die lange Kante: Paar mit 2 cm, dann 20 cm bis zum nächsten Paar.
+  const stepU = w + ROW_GAP_M;
+  const pairStepV = h + PAIR_INNER_M + h + PAIR_PITCH_M;
   const modules = [];
 
   function tryPlace(u, v, slot) {
@@ -153,14 +156,14 @@ function placeEastWestModules(roofLatLngs, opts) {
     });
   }
 
-  for (let v = minV + h / 2; v <= maxV - h / 2 + 1e-6; v += stepV) {
+  for (let u = minU + w / 2; u <= maxU - w / 2 + 1e-6; u += stepU) {
     let pair = 0;
     for (;;) {
-      const u0 = minU + w / 2 + pair * pairStep;
-      if (u0 > maxU - w / 2 + 1e-6) break;
-      tryPlace(u0, v, 0);
-      const u1 = u0 + w + PAIR_INNER_M;
-      if (u1 <= maxU - w / 2 + 1e-6) tryPlace(u1, v, 1);
+      const v0 = minV + h / 2 + pair * pairStepV;
+      if (v0 > maxV - h / 2 + 1e-6) break;
+      tryPlace(u, v0, 0);
+      const v1 = v0 + h + PAIR_INNER_M;
+      if (v1 <= maxV - h / 2 + 1e-6) tryPlace(u, v1, 1);
       pair += 1;
       if (pair > 500) break;
     }

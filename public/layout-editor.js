@@ -367,13 +367,15 @@
 
     const modules = [];
     const eastWest = !!o.eastWest;
-    // Ost-West: Paare auf der langen Seite (u). Innen 2 cm, dann 20 cm, kurze Seite 2 cm.
+    // Ost-West: Paare über die lange Kante (v). Innen 2 cm, dann 20 cm.
+    // Entlang der langen Kante (u, kurze Kanten) durchgehend 2 cm.
     // Gleicher Raster wie src/offer/east-west-layout.js.
     const innerGap = eastWest ? 0.02 : gap;
     const pairPitch = eastWest ? 0.20 : gap;
     const rowGap = eastWest ? 0.02 : gap;
     const stepV = h + rowGap;
-    const pairStep = eastWest ? (w + innerGap + w + pairPitch) : (w + innerGap);
+    const pairStep = w + (eastWest ? rowGap : innerGap);
+    const pairStepV = eastWest ? (h + innerGap + h + pairPitch) : stepV;
     const facePlus = ((edgeAngleDeg + 90) % 360 + 360) % 360;
     const faceMinus = ((edgeAngleDeg - 90) % 360 + 360) % 360;
     const faceDown = faceMinus;
@@ -410,20 +412,22 @@
       modules.push(mod);
     }
 
-    for (let v = minV + h / 2; v <= maxV - h / 2 + 1e-6; v += stepV) {
-      if (!eastWest) {
+    if (!eastWest) {
+      for (let v = minV + h / 2; v <= maxV - h / 2 + 1e-6; v += stepV) {
         for (let u = minU + w / 2; u <= maxU - w / 2 + 1e-6; u += pairStep) tryPlace(u, v, 0);
-        continue;
       }
-      let pair = 0;
-      for (;;) {
-        const u0 = minU + w / 2 + pair * pairStep;
-        if (u0 > maxU - w / 2 + 1e-6) break;
-        tryPlace(u0, v, 0);
-        const u1 = u0 + w + innerGap;
-        if (u1 <= maxU - w / 2 + 1e-6) tryPlace(u1, v, 1);
-        pair += 1;
-        if (pair > 500) break;
+    } else {
+      for (let u = minU + w / 2; u <= maxU - w / 2 + 1e-6; u += pairStep) {
+        let pair = 0;
+        for (;;) {
+          const v0 = minV + h / 2 + pair * pairStepV;
+          if (v0 > maxV - h / 2 + 1e-6) break;
+          tryPlace(u, v0, 0);
+          const v1 = v0 + h + innerGap;
+          if (v1 <= maxV - h / 2 + 1e-6) tryPlace(u, v1, 1);
+          pair += 1;
+          if (pair > 500) break;
+        }
       }
     }
     return modules;
