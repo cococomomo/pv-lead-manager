@@ -2,7 +2,8 @@
 
 /**
  * NOORTEC PV-Angebotsgenerator — Katalog, Preislogik & Stückliste.
- * Preisliste Q1/2025 (brutto). Alle Regeln laut Vertriebsvorgabe.
+ * Preisliste brutto. Sigenergy: aktuelle Liste (Sigen Hybrid TP2, Speicher 6,0/10,0).
+ * Fronius, Huawei und Symo bleiben auf der bisherigen Liste.
  */
 
 const MWST_RATE = 0.20;
@@ -94,15 +95,13 @@ function buildPvOnlyPricelist() {
 // brand -> kWp -> { speicherKWh: bruttoPreis }  (0 = ohne Speicher)
 const PRICELIST = {
   sigenergy: {
-    5.01: { 6: 13200, 9: 14700, 12: 16500 },
-    5.92: { 6: 14400, 9: 15900, 12: 17700 },
-    7.28: { 6: 15000, 9: 16000, 12: 18300 },
-    8.19: { 6: 15650, 9: 16250, 12: 18950 },
-    10.01: { 6: 16400, 9: 17000, 12: 19700 },
-    12.29: { 9: 18500, 12: 20500 },
-    13.2: { 9: 19000, 12: 21000 },
-    15.02: { 9: 21000, 12: 23000 },
-    17.8: { 9: 23000, 12: 25000 },
+    5.01: { 6: 12500, 10: 13500 },
+    5.92: { 6: 13000, 10: 14000 },
+    7.28: { 10: 14700 },
+    9.10: { 10: 15400 },
+    10.01: { 10: 15800 },
+    11.83: { 10: 16700 },
+    15.02: { 10: 18000 },
   },
   fronius: {
     5.01: { 6.4: 14400, 9.5: 15720, 12.6: 17040, 15.8: 18360 },
@@ -124,7 +123,7 @@ PRICELIST.fronius_symo = buildPvOnlyPricelist();
 
 // Speicherelemente / Erweiterungsblöcke
 const SPEICHERBLOCK = {
-  sigenergy: { 6: 3300, 9: 3960 },
+  sigenergy: { 6: 2400, 10: 3600 },
   fronius: { 3.2: 1320 },
   huawei: {},
   fronius_symo: {},
@@ -152,8 +151,8 @@ const FRONIUS_TOWER_KWH = Object.freeze({
 // Sigenergy: stapelbare 6er-/9er-Blöcke. Fronius: einzelne 3,2-kWh-Elemente.
 const STORAGE_EXTENSIONS = {
   sigenergy: [
-    { kwh: 6, price: 3300, label: '+6 kWh Speicherblock (SigenStor BAT)' },
-    { kwh: 9, price: 3960, label: '+9 kWh Speicherblock (SigenStor BAT)' },
+    { kwh: 6, price: 2400, label: '+6,0 kWh Speicherblock (SigenStor BAT)' },
+    { kwh: 10, price: 3600, label: '+10,0 kWh Speicherblock (SigenStor BAT)' },
   ],
   fronius: [
     { kwh: 3.2, price: 1320, label: '+3,2 kWh Speicherelement (Fronius Reserva)' },
@@ -165,8 +164,8 @@ const STORAGE_EXTENSIONS = {
 // Module je Anlagengröße (kWp -> Anzahl Module) – Hybrid + PV-only
 const MODULES_PER_KWP = {
   // Hybrid (Sigenergy / Fronius GEN24)
-  5.01: 11, 5.92: 13, 7.28: 16, 8.19: 18, 10.01: 22,
-  12.29: 27, 13.2: 29, 15.02: 33, 17.8: 41, 18.2: 40,
+  5.01: 11, 5.92: 13, 7.28: 16, 8.19: 18, 9.10: 20, 10.01: 22,
+  11.83: 26, 12.29: 27, 13.2: 29, 15.02: 33, 17.8: 41, 18.2: 40,
   // PV ohne Speicher (Huawei / Fronius Symo)
   3.1: 7, 4.4: 10, 5.2: 12, 6.1: 14, 7.0: 16, 8.7: 20,
   10.0: 23, 12.3: 28, 13.6: 32, 14.8: 34,
@@ -211,7 +210,7 @@ const DACH_LABELS = [
 const OPTIONS = {
   notstrom: { label: 'Notstrom / Gateway / Umschaltbox', price: 1500 },
   wallbox: { label: 'Wallbox 11 kW', price: 1800 },
-  speichererweiterung: { label: 'Speichererweiterung (Sigenergy +6/+9 kWh · Fronius +3,2 kWh)', price: 3300 },
+  speichererweiterung: { label: 'Speichererweiterung (Sigenergy +6,0/+10,0 kWh · Fronius +3,2 kWh)', price: 2400 },
   optimierer: { label: 'Optimierer Huawei (1 pro Modul)', price: 50, perModule: true },
   ueberspannungsschutz: { label: 'Überspannungsschutz', price: 400 },
   lasttrennschalter: { label: 'Lasttrennschalter', price: 150 },
@@ -227,6 +226,19 @@ const OPTIONS = {
 
 /** Brutto-Preis pro Optimierer (wenn nicht manuell gesetzt). */
 const OPTIMIERER_UNIT_PRICE = 50;
+
+/**
+ * Marken-Defaults. Sigenergy: Gateway 1.200 €, Wallbox 1.500 €.
+ * Fronius / Huawei / Symo behalten Gateway 1.500 € und Wallbox 1.800 €.
+ */
+function brandOptionPrice(brand, key) {
+  const b = normalizeBrand(brand);
+  if (key === 'notstrom') return b === 'sigenergy' ? 1200 : 1500;
+  if (key === 'wallbox') return b === 'sigenergy' ? 1500 : 1800;
+  if (key === 'speichererweiterung') return speichererweiterungOption(b).price;
+  const base = OPTIONS[key];
+  return base ? base.price : 0;
+}
 
 // Komponentennamen für die Stückliste, wenn eine Option FIX ins Angebot kommt.
 const OPTION_COMPONENT_NAMES = {
@@ -530,8 +542,8 @@ function kwpFromModuleCount(brand, modules) {
   return best != null ? best : resolved.kwpPackage;
 }
 
-/** Physische Sigenergy-BAT-Module – es gibt nur 6- und 9-kWh-Blöcke (beliebig kombinierbar). */
-const SIGENERGY_PHYSICAL_KWH = [6, 9];
+/** Physische Sigenergy-BAT-Module – nur 6,0- und 10,0-kWh-Blöcke. */
+const SIGENERGY_PHYSICAL_KWH = [6, 10];
 
 function isSigenergyPhysicalBase(kwh) {
   return SIGENERGY_PHYSICAL_KWH.some((t) => Math.abs(t - Number(kwh)) < 0.05);
@@ -664,7 +676,7 @@ function planStorageFronius(kwp, desiredKWh) {
 
 /**
  * Zerlegt eine gewünschte Speichergröße in Tabellen-Basis + stapelbare Blöcke.
- * Sigenergy: nur physische 6-/9-kWh-Module. 12 in der Preisliste = 6+6 (gleicher Preis).
+ * Sigenergy: nur physische 6,0-/10,0-kWh-Module. Legacy-12 bleibt 2×6.
  * Fronius Reserva: 3,2-kWh-Module, Tower 6,4/9,5/12,6/15,8, max. 3 Tower.
  * @returns {{ baseKwh: number, blocks: Array<{kwh:number,price:number,label:string}>, totalKwh: number, exact: boolean }}
  */
@@ -729,7 +741,7 @@ function planStorage(brand, kwp, desiredKWh) {
 
 /**
  * Physische Modulaufschlüsselung.
- * Sigenergy: 6-/9-kWh-BAT (12 → 2×6). Fronius: alles in 3,2-kWh-Reserva-Elemente.
+ * Sigenergy: 6,0-/10,0-kWh-BAT (Legacy-12 → 2×6). Fronius: alles in 3,2-kWh-Reserva-Elemente.
  * @returns {Array<{kwh:number, qty:number}>}
  */
 function storageModuleBreakdown(brand, baseKwh, blocks) {
@@ -1003,31 +1015,27 @@ function isOptimiererOption(o) {
 
 // ── Wechselrichter-Katalog (Datenblatt-Parameter) ─────────────────────────
 /**
- * Sigenergy Sigen Hybrid Three Phase – Max. PV / MPPT laut Herstellerdatenblatt.
- * Fronius Symo GEN24 Plus 3–10 kW + GEN24 Plus SC 12.0 – Max. PV-Generatorleistung laut Datenblatt.
+ * Sigen Hybrid TP2 3,0–12,0 kW – Max. PV laut Datenblatt
+ * „Sigen Hybrid Wechselrichter 3,0–12,0 kW TP2“ (6/8/10/12/16/20/24 kW).
+ * 3,0–8,0: 2 MPPT × 16 A. 10,0–12,0: ein MPPT mit 2 Strängen (16/32 A).
+ * Fronius Symo GEN24 Plus 3–10 kW + GEN24 Plus SC 12.0 bleiben unverändert.
  */
 const INVERTER_CATALOG = {
   sigenergy: [
-    { id: 'sigen-5', acKw: 5, maxPvW: 8000, mppt: 2, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 5.0 TP' },
-    { id: 'sigen-6', acKw: 6, maxPvW: 9600, mppt: 2, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 6.0 TP' },
-    { id: 'sigen-8', acKw: 8, maxPvW: 12800, mppt: 2, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 8.0 TP' },
-    { id: 'sigen-10', acKw: 10, maxPvW: 16000, mppt: 2, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 10.0 TP' },
-    { id: 'sigen-12', acKw: 12, maxPvW: 19200, mppt: 3, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 12.0 TP' },
-    { id: 'sigen-15', acKw: 15, maxPvW: 24000, mppt: 3, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 15.0 TP' },
-    { id: 'sigen-17', acKw: 17, maxPvW: 27200, mppt: 3, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 17.0 TP' },
-    { id: 'sigen-20', acKw: 20, maxPvW: 32000, mppt: 4, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 20.0 TP' },
-    { id: 'sigen-25', acKw: 25, maxPvW: 40000, mppt: 4, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 25.0 TP' },
-    { id: 'sigen-30', acKw: 30, maxPvW: 48000, mppt: 4, imaxMppt: 16, iscMppt: 20, vmaxDc: 1100,
-      label: 'Sigen Hybrid Three Phase 30.0 TP' },
+    { id: 'sigen-tp2-3', acKw: 3, maxPvW: 6000, mppt: 2, imaxMppt: 16, iscMppt: 22, vmaxDc: 1100,
+      label: 'Sigen Hybrid 3.0 TP2' },
+    { id: 'sigen-tp2-4', acKw: 4, maxPvW: 8000, mppt: 2, imaxMppt: 16, iscMppt: 22, vmaxDc: 1100,
+      label: 'Sigen Hybrid 4.0 TP2' },
+    { id: 'sigen-tp2-5', acKw: 5, maxPvW: 10000, mppt: 2, imaxMppt: 16, iscMppt: 22, vmaxDc: 1100,
+      label: 'Sigen Hybrid 5.0 TP2' },
+    { id: 'sigen-tp2-6', acKw: 6, maxPvW: 12000, mppt: 2, imaxMppt: 16, iscMppt: 22, vmaxDc: 1100,
+      label: 'Sigen Hybrid 6.0 TP2' },
+    { id: 'sigen-tp2-8', acKw: 8, maxPvW: 16000, mppt: 2, imaxMppt: 16, iscMppt: 22, vmaxDc: 1100,
+      label: 'Sigen Hybrid 8.0 TP2' },
+    { id: 'sigen-tp2-10', acKw: 10, maxPvW: 20000, mppt: 2, imaxMppt: 32, iscMppt: 44, vmaxDc: 1100,
+      label: 'Sigen Hybrid 10.0 TP2' },
+    { id: 'sigen-tp2-12', acKw: 12, maxPvW: 24000, mppt: 2, imaxMppt: 32, iscMppt: 44, vmaxDc: 1100,
+      label: 'Sigen Hybrid 12.0 TP2' },
   ],
   fronius: [
     { id: 'gen24-3', acKw: 3, maxPvW: 4500, mppt: 2, imaxMppt: 12.5, iscMppt: 18.75, vmaxDc: 1000,
@@ -1198,7 +1206,7 @@ function inverterModel(brand, kwp, opts = {}) {
   if (b === 'fronius') return `Fronius Symo GEN24 ${Number(kwp).toFixed(1)} Plus`;
   if (b === 'huawei') return `Huawei SUN2000-${Number(kwp).toFixed(0)}KTL-M1`;
   if (b === 'fronius_symo') return `Fronius Symo ${Number(kwp).toFixed(1)}-3-M`;
-  return `Sigen Hybrid Three Phase ${Number(kwp).toFixed(1)} TP`;
+  return `Sigen Hybrid ${Number(kwp).toFixed(1)} TP2`;
 }
 
 function inverterMetaLine(inv) {
@@ -1263,12 +1271,12 @@ function speichererweiterungOption(brand) {
   if (brand === 'fronius') {
     return { label: '+3,2 kWh Speicherelement – Fronius Reserva', price: 1320, kwh: 3.2 };
   }
-  return { label: '+6 kWh Speicherblock – SigenStor BAT', price: 3300, kwh: 6 };
+  return { label: '+6,0 kWh Speicherblock – SigenStor BAT', price: 2400, kwh: 6 };
 }
 
 /**
  * Markenabhängige Speichererweiterung aus Option/KI auflösen.
- * Fronius: immer +3,2 (1320). Sigenergy: +6 (3300) oder +9 (3960) je nach Angabe.
+ * Fronius: immer +3,2 (1320). Sigenergy: +6,0 (2400) oder +10,0 (3600) je nach Angabe.
  */
 function resolveSpeicherErweiterungOption(brand, opt = {}) {
   const exts = listStorageExtensionOptions(brand);
@@ -1289,8 +1297,8 @@ function resolveSpeicherErweiterungOption(brand, opt = {}) {
   if (Number.isFinite(wantKwh) && wantKwh > 0) {
     hit = exts.find((e) => Math.abs(e.kwh - wantKwh) < 0.15);
   }
-  if (!hit && /9/.test(label) && brand === 'sigenergy') {
-    hit = exts.find((e) => Math.abs(e.kwh - 9) < 0.05);
+  if (!hit && brand === 'sigenergy' && /10(?:[.,]0)?\s*kwh/.test(label)) {
+    hit = exts.find((e) => Math.abs(e.kwh - 10) < 0.05);
   }
   if (!hit) hit = exts[0];
 
@@ -1637,8 +1645,7 @@ function computeOffer(config) {
         if (key === 'wallbox') label = wallboxLabelOption(brand);
         let price = Number(o.price);
         if (o.price == null || o.price === '' || !Number.isFinite(price)) {
-          if (key === 'wallbox') price = 1800;
-          else if (key === 'notstrom') price = 1500;
+          if (key === 'wallbox' || key === 'notstrom') price = brandOptionPrice(brand, key);
           else if (key === 'optimierer') price = OPTIMIERER_UNIT_PRICE * moduleCount;
           else price = base ? (base.perModule ? base.price * moduleCount : base.price) : 0;
         }
@@ -1658,13 +1665,14 @@ function computeOffer(config) {
       for (const key of inkl) {
         const opt = OPTIONS[key];
         if (!opt || opt.alwaysIncluded) continue;
-        const label = key === 'notstrom' ? notstromLabelOption(brand) : opt.label;
-        optionenSumme += opt.price;
-        inkludiert.push({ key, label, price: opt.price, hint: null });
+        const label = key === 'notstrom' ? notstromLabelOption(brand) : (key === 'wallbox' ? wallboxLabelOption(brand) : opt.label);
+        const price = (key === 'notstrom' || key === 'wallbox') ? brandOptionPrice(brand, key) : opt.price;
+        optionenSumme += price;
+        inkludiert.push({ key, label, price, hint: null });
       }
       if (config.standardOptionen !== false) {
-        if (!inkl.includes('notstrom')) optionaleKomponenten.push({ key: 'notstrom', label: notstromLabelOption(brand), price: 1500, hint: null });
-        if (!inkl.includes('wallbox')) optionaleKomponenten.push({ key: 'wallbox', label: wallboxLabelOption(brand), price: 1800, hint: null });
+        if (!inkl.includes('notstrom')) optionaleKomponenten.push({ key: 'notstrom', label: notstromLabelOption(brand), price: brandOptionPrice(brand, 'notstrom'), hint: null });
+        if (!inkl.includes('wallbox')) optionaleKomponenten.push({ key: 'wallbox', label: wallboxLabelOption(brand), price: brandOptionPrice(brand, 'wallbox'), hint: null });
         if (brandHasStorage(brand)) {
           const se = speichererweiterungOption(brand);
           optionaleKomponenten.push({ key: 'speichererweiterung', label: se.label, price: se.price, hint: null });
@@ -1750,7 +1758,7 @@ function computeOffer(config) {
     const speicherItems = [];
     if (speicherGesamt) {
       if (brand === 'sigenergy') {
-        // Nur physische 6-/9-kWh-BAT-Module ausweisen (keine fiktive „12 kWh“-Einheit)
+        // Nur physische 6,0-/10,0-kWh-BAT-Module ausweisen (Legacy-12 = 2×6)
         const breakdown = storageModuleBreakdown(brand, speicher, speicherBloecke);
         for (const m of breakdown) {
           speicherItems.push({
@@ -1992,6 +2000,7 @@ module.exports = {
   formatKlimaIndoorSummary,
   countKlimaIndoorUnits,
   notstromLabelOption,
+  brandOptionPrice,
   speichererweiterungOption,
   resolveSpeicherErweiterungOption,
   storagePackagePrice,

@@ -31,6 +31,8 @@ const FILES = {
   sigenInverter: 'sigen-inverter.jpg',
   sigenEcTp: 'sigen-ec-tp.jpg',
   sigenHybrid: 'sigen-hybrid.jpg',
+  sigenHybridTp2: 'sigen-hybrid-tp2.png',
+  sigenEvAc: 'sigen-ev-ac-wallbox.png',
   sigenBattery: 'sigen-battery.png',
   sigenStack: 'sigen-stack.jpg',
   huaweiInverter: 'huawei-inverter.png',
@@ -77,8 +79,9 @@ function guessImageForItem(name, brand) {
   if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|\btp\b|tp2|sun2000/.test(n)) {
     if (b === 'fronius' || /fronius|gen24|symo/.test(n)) return firstExisting('froniusInverter', 'froniusGen24');
     if (b === 'huawei' || /huawei|sun2000/.test(n)) return firstExisting('huaweiInverter');
-    // Sigenergy SigenStor EC / Hybrid Three Phase TP (studio cutout)
-    return firstExisting('sigenEcTp', 'sigenInverter', 'sigenHybrid', 'froniusInverter');
+    // Sigenergy: freigestellter Sigen Hybrid TP2 (Wandgerät), nicht das EC-/Stack-Foto
+    if (b === 'sigenergy' || /sigen|sigenergy|tp2/.test(n)) return firstExisting('sigenHybridTp2');
+    return firstExisting('sigenHybridTp2', 'froniusInverter');
   }
   if (/reserva|batter|speicher|sigenstor bat|akku/.test(n)) {
     if (b === 'fronius' || /fronius|reserva/.test(n)) return firstExisting('froniusReserva', 'sigenBattery');
@@ -95,7 +98,11 @@ function guessImageForItem(name, brand) {
     if (b === 'fronius' || /fronius/.test(n)) return firstExisting('froniusUmschalt', 'sigenGateway');
     return firstExisting('sigenGateway', 'sigenGatewayMax', 'froniusUmschalt');
   }
-  if (/wallbox|ladestation/.test(n)) return firstExisting('wallbox');
+  if (/wallbox|ladestation|wattpilot|ev\s*ac/.test(n)) {
+    if (b === 'fronius' || /wattpilot|fronius/.test(n)) return firstExisting('wallbox');
+    if (b === 'sigenergy' || /sigen/.test(n)) return firstExisting('sigenEvAc');
+    return firstExisting('wallbox');
+  }
   if (/flachdach|ost-?west/.test(n)) return firstExisting('ukFlach', 'montage');
   if (/unterkonstruktion|ziegel|gestell|montageprofil/.test(n)) return firstExisting('ukZiegel', 'montage');
   if (/gak|generatoranschluss|überspannung/.test(n)) return firstExisting('gak');

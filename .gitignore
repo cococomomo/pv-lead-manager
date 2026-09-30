@@ -15,6 +15,7 @@ data/leads.db.*
 data/pvl.db
 data/pvl.db-*
 data/sessions/
+data/pvgis-cache/
 data/layouts/
 data/offers/
 data/app-settings.json

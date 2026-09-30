@@ -840,8 +840,14 @@ function drawErtragPage(doc, y, eco) {
     eco.labels.annualYield);
   y += 16;
   doc.font(F.regular).fontSize(8).fillColor(COLORS.muted)
-    .text('Die in dieser Simulation berechneten Ertragswerte basieren auf dem spezifischen Standort, der Neigung und der Ausrichtung der PV-Module. Sie stellen eine näherungsweise Schätzung dar und können im Individualfall abweichen. Die Ergebnisse sind nicht als verbindliche Zusage für die tatsächliche Leistung der Anlage zu verstehen.', MARGIN, y, { width: CONTENT_W, lineGap: 1 });
+    .text(yieldDisclaimer(eco), MARGIN, y, { width: CONTENT_W, lineGap: 1 });
   return doc.y;
+}
+
+function yieldDisclaimer(eco) {
+  const base = 'Die in dieser Simulation berechneten Ertragswerte basieren auf dem spezifischen Standort, der Neigung und der Ausrichtung der PV-Module (PVGIS-SARAH3, stündlich, 14 % Systemverlust, Haushaltsprofil H0). Sie stellen eine näherungsweise Schätzung dar und können im Individualfall abweichen. Die Ergebnisse sind nicht als verbindliche Zusage für die tatsächliche Leistung der Anlage zu verstehen.';
+  const extra = eco && eco.yieldNote ? ` ${eco.yieldNote}` : '';
+  return base + extra;
 }
 
 function drawMonthlyBars(doc, x, y, w, h, monthly) {
@@ -910,7 +916,14 @@ function drawHaushaltPage(doc, y, eco) {
     .lineWidth(0.7).strokeColor('#e0e0e0').fillAndStroke('#fcfcfc', '#e0e0e0').restore();
   // Innenrand ≈ H/φ³ → ruhiger Weißraum um die Flüsse
   const inset = Math.max(10, Math.round(flowH / (PHI * PHI * PHI)));
-  drawEnergyFlowDiagram(doc, MARGIN + inset, y + inset, CONTENT_W - inset * 2, flowH - inset * 2, eco);
+  if (eco.yieldAvailable) {
+    drawEnergyFlowDiagram(doc, MARGIN + inset, y + inset, CONTENT_W - inset * 2, flowH - inset * 2, eco);
+  } else {
+    doc.font(F.regular).fontSize(10).fillColor(COLORS.muted)
+      .text(eco.yieldNote || 'Stundenberechnung nicht verfügbar.', MARGIN + inset, y + inset, {
+        width: CONTENT_W - inset * 2,
+      });
+  }
   y += flowH + 14;
 
   y = drawKeyValueRow(doc, y,
@@ -924,7 +937,7 @@ function drawHaushaltPage(doc, y, eco) {
     eco.labels.selfRate);
   y += 10;
   doc.font(F.regular).fontSize(8).fillColor(COLORS.muted)
-    .text('Die in dieser Simulation berechneten Ertragswerte basieren auf dem spezifischen Standort, der Neigung und der Ausrichtung der PV-Module. Sie stellen eine näherungsweise Schätzung dar und können im Individualfall abweichen.', MARGIN, y, { width: CONTENT_W });
+    .text(yieldDisclaimer(eco), MARGIN, y, { width: CONTENT_W });
   return doc.y;
 }
 

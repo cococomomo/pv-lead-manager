@@ -163,7 +163,7 @@ Regeln:
   Nur wenn klar getrennt von der Basis, z. B. "Basis 9 kWh, optional plus 6 kWh nachrüsten",
   "optional +3,2 kWh Fronius", "Fronius +3,2 nachrüsten" → optionen.speichererweiterung=true
   bzw. optionDetails key=speichererweiterung (bei Sigenergy +6 oder +9 im Label/kwh angeben).
-  Sigenergy: +6 (3300) oder +9 (3960); Fronius: immer +3,2 (1320).
+  Sigenergy: +6,0 kWh (2400) oder +10,0 kWh (3600); Fronius: immer +3,2 (1320). Gateway Sigenergy 1200, Wallbox Sigenergy 1500.
   WICHTIG: "6+9 kWh Speicher" / "15 kWh" / "Reserva 12,6" / "18 kWh" ist KEINE speichererweiterung – das ist speicher (Gesamt).
 - Weitere freie Hinweise ohne Preisposition → offerNotes[].
 - Unbekannte Extrawünsche als customOptions (mit hint) oder offerNotes – nichts erfinden, nur Übernehmen was gesagt wurde.

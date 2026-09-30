@@ -366,42 +366,64 @@
     if (maxU <= minU || maxV <= minV) return [];
 
     const modules = [];
-    const stepU = w + gap;
-    const stepV = h + gap;
+    const eastWest = !!o.eastWest;
+    // Ost-West: Paare auf der langen Seite (u). Innen 2 cm, dann 20 cm, kurze Seite 2 cm.
+    // Gleicher Raster wie src/offer/east-west-layout.js.
+    const innerGap = eastWest ? 0.02 : gap;
+    const pairPitch = eastWest ? 0.20 : gap;
+    const rowGap = eastWest ? 0.02 : gap;
+    const stepV = h + rowGap;
+    const pairStep = eastWest ? (w + innerGap + w + pairPitch) : (w + innerGap);
+    const facePlus = ((edgeAngleDeg + 90) % 360 + 360) % 360;
+    const faceMinus = ((edgeAngleDeg - 90) % 360 + 360) % 360;
+    const faceDown = faceMinus;
+
+    function tryPlace(u, v, slot) {
+      const cornersE = [
+        { x: u - w / 2, y: v - h / 2 },
+        { x: u + w / 2, y: v - h / 2 },
+        { x: u + w / 2, y: v + h / 2 },
+        { x: u - w / 2, y: v + h / 2 },
+      ];
+      const okRoof = cornersE.every((c) => pointInPoly(c, roofE)) && pointInPoly({ x: u, y: v }, roofE);
+      if (!okRoof) return;
+      for (const obs of obstaclesE) {
+        if (cornersE.some((c) => pointInPoly(c, obs)) || pointInPoly({ x: u, y: v }, obs)) return;
+      }
+      const xy = fromEdge({ x: u, y: v });
+      const ll = proj.toLatLng(xy.x, xy.y);
+      const mod = {
+        lat: ll.lat,
+        lng: ll.lng,
+        physWidthM: foot.alongEave,
+        physHeightM: foot.alongSlope,
+        azimuth: edgeAngleDeg,
+        bearingDeg,
+        facingAzimuth: eastWest ? (slot % 2 === 0 ? facePlus : faceMinus) : faceDown,
+        tilt,
+        tiltCross,
+        landscape,
+        tiltLock: !!o.tiltLock,
+        eastWest: eastWest || undefined,
+      };
+      syncModuleProjectedSize(mod);
+      modules.push(mod);
+    }
+
     for (let v = minV + h / 2; v <= maxV - h / 2 + 1e-6; v += stepV) {
-      for (let u = minU + w / 2; u <= maxU - w / 2 + 1e-6; u += stepU) {
-        const cornersE = [
-          { x: u - w / 2, y: v - h / 2 },
-          { x: u + w / 2, y: v - h / 2 },
-          { x: u + w / 2, y: v + h / 2 },
-          { x: u - w / 2, y: v + h / 2 },
-        ];
-        const okRoof = cornersE.every((c) => pointInPoly(c, roofE)) && pointInPoly({ x: u, y: v }, roofE);
-        if (!okRoof) continue;
-        let hitObs = false;
-        for (const obs of obstaclesE) {
-          if (cornersE.some((c) => pointInPoly(c, obs)) || pointInPoly({ x: u, y: v }, obs)) {
-            hitObs = true;
-            break;
-          }
-        }
-        if (hitObs) continue;
-        const xy = fromEdge({ x: u, y: v });
-        const ll = proj.toLatLng(xy.x, xy.y);
-        const mod = {
-          lat: ll.lat,
-          lng: ll.lng,
-          physWidthM: foot.alongEave,
-          physHeightM: foot.alongSlope,
-          azimuth: edgeAngleDeg,
-          bearingDeg,
-          tilt,
-          tiltCross,
-          landscape,
-          tiltLock: !!o.tiltLock,
-        };
-        syncModuleProjectedSize(mod);
-        modules.push(mod);
+      if (!eastWest) {
+        for (let u = minU + w / 2; u <= maxU - w / 2 + 1e-6; u += pairStep) tryPlace(u, v, 0);
+        continue;
+      }
+      let pair = 0;
+      for (;;) {
+        const u0 = minU + w / 2 + pair * pairStep;
+        if (u0 > maxU - w / 2 + 1e-6) break;
+        tryPlace(u0, v, 0);
+        const u1 = u0 + w + innerGap;
+        if (u1 <= maxU - w / 2 + 1e-6) tryPlace(u1, v, 1);
+        pair += 1;
+        if (pair > 500) break;
       }
     }
     return modules;
@@ -1369,7 +1391,7 @@
     function applyDrawModeUi() {
       const mode = currentDrawMode();
       const isObs = mode === 'obstacle';
-      document.querySelectorAll('.layout-mode-btn').forEach((btn) => {
+      document.querySelectorAll('.layout-mode-btn[data-mode]').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
       });
       const hint = isObs
@@ -2357,12 +2379,12 @@
     function autoOrientMode() {
       const active = document.querySelector('.layout-auto-orient .layout-mode-btn.active');
       const mode = active && active.getAttribute('data-auto-orient');
-      if (mode === 'landscape' || mode === 'flat') return mode;
+      if (mode === 'landscape' || mode === 'flat' || mode === 'eastwest') return mode;
       return 'portrait';
     }
 
     function setAutoOrientMode(mode) {
-      const m = mode === 'landscape' || mode === 'flat' ? mode : 'portrait';
+      const m = mode === 'landscape' || mode === 'flat' || mode === 'eastwest' ? mode : 'portrait';
       planMeta.autoOrient = m;
       document.querySelectorAll('.layout-auto-orient .layout-mode-btn').forEach((btn) => {
         const on = btn.getAttribute('data-auto-orient') === m;
@@ -2424,12 +2446,13 @@
       const all = [];
       const orient = autoOrientMode();
       planMeta.autoOrient = orient;
-      const flat = orient === 'flat';
-      // Hochformat: lange Seite zum First. Querformat und Flachdach: lange Seite // Traufe.
+      const eastWest = orient === 'eastwest';
+      const flat = orient === 'flat' || eastWest;
+      // Hochformat: lange Seite zum First. Querformat, Flachdach und Ost-West: lange Seite // Traufe.
       const autoLandscape = orient === 'landscape' || flat;
       roofs.forEach((roof) => {
         const tilt = flat ? 10 : (roof.tilt != null ? Number(roof.tilt) : planMeta.tilt);
-        const tiltCross = planMeta.tiltCross != null ? Number(planMeta.tiltCross) : 0;
+        const tiltCross = eastWest ? 0 : (planMeta.tiltCross != null ? Number(planMeta.tiltCross) : 0);
         const placed = autoLayoutModules(roof.ring, obstacles, {
           widthM: d.widthM,
           heightM: d.heightM,
@@ -2440,8 +2463,9 @@
           landscape: autoLandscape,
           tilt,
           tiltCross,
-          // Flachdach: 10°, Reihen entlang der Traufe (u = erste Kante). Nur diese Auto-Belegung.
+          // Flachdach und Ost-West: 10°. Ost-West zusätzlich Paarabstand auf der langen Seite.
           tiltLock: flat,
+          eastWest,
         });
         all.push(...placed);
       });
@@ -3131,12 +3155,17 @@
             || ctx.moduleType;
           if (savedMt) setModuleType(savedMt);
           writeMetaToForm();
+          const hadOrient = ctx.layout.plan.meta && ctx.layout.plan.meta.autoOrient;
+          if (!hadOrient && ctx.preferAutoOrient) setAutoOrientMode(ctx.preferAutoOrient);
         } else if (addr) {
           try {
             let hit = await goToAddress(addr, { silent: true });
             if (!hit) hit = await goToAddress(addr + ', Österreich', { silent: true });
             if (!hit) showSuggestions([], { emptyMsg: 'Adresse nicht gefunden – bitte suchen' });
           } catch (_) { /* ignore */ }
+          if (ctx.preferAutoOrient) setAutoOrientMode(ctx.preferAutoOrient);
+        } else if (ctx.preferAutoOrient) {
+          setAutoOrientMode(ctx.preferAutoOrient);
         }
         refreshPitchArrows();
         updateCountUi();
@@ -3215,7 +3244,7 @@
       if (drawMode) {
         drawMode.addEventListener('change', syncDrawOptions);
       }
-      document.querySelectorAll('.layout-mode-btn').forEach((btn) => {
+      document.querySelectorAll('.layout-mode-btn[data-mode]').forEach((btn) => {
         btn.addEventListener('click', () => {
           if (editorStep !== 'building') setEditorStep('building');
           const mode = btn.getAttribute('data-mode') || 'roof';

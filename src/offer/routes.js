@@ -14,6 +14,7 @@ const klimaLeads = require('../klima-leads');
 const persist = require('./persist');
 const mapProviders = require('./map-providers');
 const { renderLayoutOrthoPng } = require('./layout-ortho-render');
+const { computeOfferBalance } = require('./yield-balance');
 const {
   resolveExportLayout,
   loadLayoutAssets,
@@ -312,6 +313,12 @@ function mountOfferRoutes(app, deps) {
         alwaysIncluded: !!catalog.OPTIONS[k].alwaysIncluded,
         perModule: !!catalog.OPTIONS[k].perModule,
       })),
+      optionPricesByBrand: {
+        sigenergy: { notstrom: catalog.brandOptionPrice('sigenergy', 'notstrom'), wallbox: catalog.brandOptionPrice('sigenergy', 'wallbox') },
+        fronius: { notstrom: catalog.brandOptionPrice('fronius', 'notstrom'), wallbox: catalog.brandOptionPrice('fronius', 'wallbox') },
+        huawei: { notstrom: catalog.brandOptionPrice('huawei', 'notstrom'), wallbox: catalog.brandOptionPrice('huawei', 'wallbox') },
+        fronius_symo: { notstrom: catalog.brandOptionPrice('fronius_symo', 'notstrom'), wallbox: catalog.brandOptionPrice('fronius_symo', 'wallbox') },
+      },
       optimiererUnitPrice: catalog.OPTIMIERER_UNIT_PRICE,
       moduleTypes: Object.keys(catalog.MODULE_TYPES).map((k) => ({
         id: k, label: `${catalog.MODULE_TYPES[k].model} (${catalog.MODULE_TYPES[k].wp} Wp)`,
@@ -532,13 +539,36 @@ function mountOfferRoutes(app, deps) {
         layoutVariantLabel = idx >= 0 ? `Variante ${idx + 1}` : 'Aktive Variante';
       }
 
+      const econIn = {
+        ...(body.economics || body.ertrag || {}),
+      };
+      const householdKwh = body.jahresverbrauch != null
+        ? body.jahresverbrauch
+        : (econIn.jahresverbrauch != null ? econIn.jahresverbrauch : econIn.householdKwhYear);
+      let balance;
+      try {
+        balance = await computeOfferBalance({
+          offer,
+          customer,
+          layoutPlan,
+          layoutRow,
+          householdKwh,
+        });
+      } catch (e) {
+        console.warn('[NOORTEC] Ertragsbilanz:', e.message);
+        balance = {
+          available: false,
+          source: 'unavailable',
+          note: 'Die stündliche Ertragsberechnung (PVGIS-SARAH3) war nicht verfügbar und es liegt kein gespeicherter Datensatz für diese Gegend vor. Es wird kein pauschaler Jahresertrag angesetzt.',
+        };
+      }
       let pdf = await generateOfferPdf(offer, customer, body.texts || {}, {
         layoutSnapshotPath: layoutSnapshotAbs,
         layoutPlan,
         layoutPlanId: Number.isFinite(layoutPlanId) ? layoutPlanId : null,
         layoutVariantLabel,
         variantLayouts,
-        economics: body.economics || body.ertrag || undefined,
+        economics: { ...econIn, balance },
         jahresverbrauch: body.jahresverbrauch,
         baseUrl: process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`,
       });

@@ -782,6 +782,7 @@
           <button type="button" class="layout-mode-btn active" id="layout-auto-portrait" data-auto-orient="portrait" aria-pressed="true" title="Hochformat: lange Seite zum First">Hochformat</button>
           <button type="button" class="layout-mode-btn" id="layout-auto-landscape" data-auto-orient="landscape" aria-pressed="false" title="Querformat: lange Seite parallel zur Traufe">Querformat</button>
           <button type="button" class="layout-mode-btn" id="layout-auto-flat" data-auto-orient="flat" aria-pressed="false" title="Flachdachbelegung: Querformat, Neigung 10°, Reihen entlang der Traufe">Flachdachbelegung</button>
+          <button type="button" class="layout-mode-btn" id="layout-auto-eastwest" data-auto-orient="eastwest" aria-pressed="false" title="Ost-West: Querformat, 10°, Paare mit 2 cm innen und 20 cm zwischen den Paaren">Ost-West</button>
         </div>
         <button type="button" class="btn secondary icon-btn" id="layout-btn-select-rect" title="Rechteck-Auswahl" aria-label="Rechteck-Auswahl">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -889,6 +890,7 @@ async function loadCatalog() {
     layoutEditor.setModuleDimensions(CATALOG.moduleDimensions || {});
   }
   renderOptionRows();
+  updateBrandDependentOptionDefaults();
   applyDachSegments(null);
   refreshStorageExtSelect();
   refreshInverterSelect(null);
@@ -1163,7 +1165,13 @@ function applyOptionsToRows(optionen) {
   });
 }
 
-/** Speichererweiterung-Default je Marke (nur wenn Zeile nicht aktiv). */
+function brandOptPrice(brand, key) {
+  const table = (CATALOG && CATALOG.optionPricesByBrand && CATALOG.optionPricesByBrand[brand]) || {};
+  if (table[key] != null) return table[key];
+  const cat = ((CATALOG && CATALOG.options) || []).find((o) => o.key === key);
+  return cat ? cat.price : null;
+}
+
 /** Speichererweiterung-Default je Marke + Upgrade-Select. */
 function updateBrandDependentOptionDefaults() {
   const brand = currentBrandId();
@@ -1175,9 +1183,10 @@ function updateBrandDependentOptionDefaults() {
       const mode = rowSe.querySelector('.opt-mode');
       if (mode) mode.value = 'off';
     } else {
-      const se = brand === 'fronius'
+      const exts = ((CATALOG && CATALOG.storageExtensions) || {})[brand] || [];
+      const se = exts[0] || (brand === 'fronius'
         ? { label: '+3,2 kWh Speicherelement – Fronius Reserva', price: 1320 }
-        : { label: '+6 kWh Speicherblock – SigenStor BAT', price: 3300 };
+        : { label: '+6,0 kWh Speicherblock – SigenStor BAT', price: 2400 });
       const nameEl = rowSe.querySelector('.opt-name');
       if (nameEl && nameEl.textContent !== undefined) {
         nameEl.textContent = se.label;
@@ -1197,6 +1206,19 @@ function updateBrandDependentOptionDefaults() {
       else if (brand === 'fronius_symo' || brand === 'huawei') label = 'Notstrom / Backup (falls verfügbar)';
       nameEl.textContent = label;
       nameEl.title = label;
+    }
+    const modeNs = rowNs.querySelector('.opt-mode');
+    if (modeNs && modeNs.value === 'off') {
+      const price = brandOptPrice(brand, 'notstrom');
+      if (price != null) rowNs.querySelector('.opt-price').value = price;
+    }
+  }
+  const rowWb = document.querySelector('#opts .optrow[data-key="wallbox"]');
+  if (rowWb) {
+    const modeWb = rowWb.querySelector('.opt-mode');
+    if (modeWb && modeWb.value === 'off') {
+      const price = brandOptPrice(brand, 'wallbox');
+      if (price != null) rowWb.querySelector('.opt-price').value = price;
     }
   }
   const rowUp = document.querySelector('#opts .optrow[data-key="speicher_upgrade"]');
@@ -1414,7 +1436,7 @@ function refreshSpeicherSelect() {
   syncStorageUiForBrand();
 }
 
-/** Kurzhinweis: physische Module je Marke (Sigenergy 6/9 · Fronius 3,2). */
+/** Kurzhinweis: physische Module je Marke (Sigenergy 6,0/10,0 · Fronius 3,2). */
 function updateSpeicherCompositionHint() {
   const el = $('speicher-comp-hint');
   if (!el) return;
@@ -1466,9 +1488,9 @@ function updateSpeicherCompositionHint() {
     const ks = fmt(k);
     return q > 1 ? `${q}×${ks}` : ks;
   });
-  if (!parts.length) { el.textContent = 'Sigenergy: Module nur 6 oder 9 kWh – kombinierbar über Zusatzblöcke.'; return; }
+  if (!parts.length) { el.textContent = 'Sigenergy: Module nur 6,0 oder 10,0 kWh – kombinierbar über Zusatzblöcke.'; return; }
   if (parts.length === 1 && !String(parts[0]).includes('×') && extra <= 0) {
-    el.textContent = `Sigenergy BAT ${parts[0]} kWh (physisches Modul). Weitere 6-/9-Blöcke unten stapelbar.`;
+    el.textContent = `Sigenergy BAT ${parts[0]} kWh (physisches Modul). Weitere 6,0-/10,0-Blöcke unten stapelbar.`;
   } else {
     el.textContent = `Gesamt ${fmt(total)} kWh aus BAT-Modulen: ${parts.join(' + ')} kWh.`;
   }
@@ -2678,6 +2700,7 @@ function openLayoutEditor() {
   if (mtSel) mtSel.value = mt;
   if (layoutEditor.setModuleType) layoutEditor.setModuleType(mt);
   const custName = [($('c-vorname') && $('c-vorname').value.trim()) || '', ($('c-nachname') && $('c-nachname').value.trim()) || ''].filter(Boolean).join(' ');
+  const ostWestDach = readDachSegments().some((s) => /ost-?\s*west/i.test(String(s.dach || '')));
   layoutEditor.open({
     leadId: currentLeadId,
     customerEmail: $('c-email').value.trim(),
@@ -2687,6 +2710,7 @@ function openLayoutEditor() {
     layoutId: currentLayoutId,
     layout: currentLayout,
     moduleType: mt,
+    preferAutoOrient: ostWestDach ? 'eastwest' : null,
     title: ('Belegungsplan V' + (activeVariant + 1) + (custName ? (' ' + custName) : '')).slice(0, 120),
   });
 }

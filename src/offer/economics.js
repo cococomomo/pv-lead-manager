@@ -8,14 +8,9 @@
 const { formatEUR, formatNum } = require('./catalog');
 
 const DEFAULTS = {
-  specificYieldKwhPerKwp: 1050,
   householdKwhYear: 4500,
   gridPriceCt: 33,
   priceInflation: 0.03,
-  selfConsumptionNoStorage: 0.30,
-  selfConsumptionWithStorage: 0.59,
-  autarkyNoStorage: 0.35,
-  autarkyWithStorage: 0.69,
   feedInEur: 0.06,
   degradationPerYear: 0.005,
   analysisYears: 20,
@@ -47,16 +42,25 @@ function computeEconomics(offer, overrides = {}) {
   const kwp = num(cfg.kwpCalculated, num(cfg.kwp, 0)) || 0;
   const speicherKwh = num(cfg.speicher, 0) || 0;
   const hasStorage = speicherKwh > 0;
+  const balance = o.balance && typeof o.balance === 'object' ? o.balance : null;
+  const yieldAvailable = !!(balance && balance.available);
 
-  const specificYield = num(o.specificYieldKwhPerKwp, DEFAULTS.specificYieldKwhPerKwp);
-  const annualYield = num(o.annualYieldKwh, Math.round(kwp * specificYield));
-  const household = num(o.householdKwhYear, num(o.jahresverbrauch, DEFAULTS.householdKwhYear));
-  const selfRate = pct(o.selfConsumptionRate) != null
-    ? pct(o.selfConsumptionRate)
-    : (hasStorage ? DEFAULTS.selfConsumptionWithStorage : DEFAULTS.selfConsumptionNoStorage);
-  const autarky = pct(o.autarkyRate) != null
-    ? pct(o.autarkyRate)
-    : (hasStorage ? DEFAULTS.autarkyWithStorage : DEFAULTS.autarkyNoStorage);
+  const householdInput = num(o.householdKwhYear, num(o.jahresverbrauch, null));
+  const household = yieldAvailable
+    ? num(balance.household, householdInput != null ? householdInput : DEFAULTS.householdKwhYear)
+    : (householdInput != null ? householdInput : DEFAULTS.householdKwhYear);
+  const annualYield = yieldAvailable ? num(balance.annualYield, 0) : 0;
+  const directToHome = yieldAvailable ? num(balance.direct, 0) : 0;
+  const toStorage = yieldAvailable ? num(balance.charge, 0) : 0;
+  const fromStorage = yieldAvailable ? num(balance.discharge, 0) : 0;
+  const feedInKwh = yieldAvailable ? num(balance.feedIn, 0) : 0;
+  const gridRemain = yieldAvailable ? num(balance.grid, 0) : 0;
+  const selfConsumedBalanced = directToHome + fromStorage;
+  const autarkyActual = yieldAvailable ? num(balance.autarky, household > 0 ? selfConsumedBalanced / household : 0) : null;
+  const selfRateActual = yieldAvailable ? num(balance.selfConsumption, annualYield > 0 ? selfConsumedBalanced / annualYield : 0) : null;
+  const yieldNote = (balance && balance.note) || (yieldAvailable
+    ? ''
+    : 'Die stündliche Ertragsberechnung (PVGIS-SARAH3) war nicht verfügbar und es liegt kein gespeicherter Datensatz für diese Gegend vor. Es wird kein pauschaler Jahresertrag angesetzt.');
 
   const gridPriceCt = num(o.gridPriceCt, num(o.strompreisCt, DEFAULTS.gridPriceCt));
   const gridPrice = num(o.gridPriceEur, gridPriceCt / 100);
@@ -65,33 +69,7 @@ function computeEconomics(offer, overrides = {}) {
   const years = Math.max(1, Math.round(num(o.analysisYears, DEFAULTS.analysisYears)));
   const degradation = num(o.degradationPerYear, DEFAULTS.degradationPerYear);
 
-  // Energy-balance (kWh/a) for Sankey — respect both Autarkie- and Eigenverbrauchsziele.
-  // selfConsumed ≤ min(Haushalt·Autarkie, Ertrag·Eigenverbrauch, Haushalt, Ertrag)
-  const selfConsumed = Math.round(Math.min(
-    household * autarky,
-    annualYield * selfRate,
-    household,
-    annualYield,
-  ));
-  let toStorage = 0;
-  let fromStorage = 0;
-  let directToHome = selfConsumed;
-  if (hasStorage && selfConsumed > 0) {
-    // ~half of self-consumed solar arrives via battery (round-trip ~90 %).
-    fromStorage = Math.round(selfConsumed * 0.45);
-    toStorage = Math.round(fromStorage / 0.9);
-    directToHome = Math.max(0, selfConsumed - fromStorage);
-  }
-  // PV = Direktverbrauch + Speicherladung + Einspeisung
-  const feedInKwh = Math.max(0, Math.round(annualYield - directToHome - toStorage));
-  // Household = Direkt + aus Speicher + Netzbezug
-  const gridRemain = Math.max(0, Math.round(household - directToHome - fromStorage));
-  const selfConsumedBalanced = directToHome + fromStorage;
-  // Display rates from the closed balance (matches diagram + copy)
-  const autarkyActual = household > 0 ? selfConsumedBalanced / household : autarky;
-  const selfRateActual = annualYield > 0 ? selfConsumedBalanced / annualYield : selfRate;
-
-  const savingsYear1 = selfConsumedBalanced * gridPrice + feedInKwh * feedIn;
+  const savingsYear1 = yieldAvailable ? (selfConsumedBalanced * gridPrice + feedInKwh * feedIn) : 0;
   const investment = num(o.investmentBrutto, num(preis.brutto, 0)) || 0;
 
   let cumulative = -investment;
@@ -111,26 +89,31 @@ function computeEconomics(offer, overrides = {}) {
     }
   }
 
-  const monthly = MONTHLY_SHARE.map((share, i) => ({
-    month: MONTH_LABELS[i],
-    kwh: Math.round(annualYield * share),
-  }));
+  const monthly = (yieldAvailable && Array.isArray(balance.monthly) && balance.monthly.length === 12)
+    ? balance.monthly.map((row, i) => ({
+      month: row.month || MONTH_LABELS[i],
+      kwh: Math.round(Number(row.kwh) || 0),
+    }))
+    : MONTH_LABELS.map((month) => ({ month, kwh: 0 }));
 
   const totalSavings = yearly.reduce((s, r) => s + r.savings, 0);
 
-  const flowText = hasStorage
-    ? `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt und ${formatNum(toStorage)} kWh in den Speicher. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Aus Ihrem Speicher fließen ${formatNum(fromStorage)} kWh weiter in Ihren Haushalt. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`
-    : `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`;
+  const flowText = !yieldAvailable
+    ? yieldNote
+    : (hasStorage
+      ? `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt und ${formatNum(toStorage)} kWh in den Speicher. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Aus Ihrem Speicher fließen ${formatNum(fromStorage)} kWh weiter in Ihren Haushalt. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`
+      : `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`);
 
   return {
     kwp,
     speicherKwh,
     hasStorage,
-    specificYield,
     annualYield,
     household,
     selfRate: selfRateActual,
     autarky: autarkyActual,
+    yieldAvailable,
+    yieldNote,
     selfConsumed: selfConsumedBalanced,
     feedInKwh,
     gridRemain,
@@ -150,14 +133,14 @@ function computeEconomics(offer, overrides = {}) {
     yearly,
     monthly,
     flowText,
-    source: o.source || (o.annualYieldKwh != null ? 'override' : 'estimate'),
+    source: (balance && balance.source) || 'unavailable',
     labels: {
-      annualYield: `${formatNum(Math.round(annualYield))} kWh`,
+      annualYield: yieldAvailable ? `${formatNum(Math.round(annualYield))} kWh` : '—',
       household: `${formatNum(Math.round(household))} kWh`,
       gridPriceCt: `${formatNum(gridPriceCt.toFixed ? Number(gridPriceCt).toFixed(2) : gridPriceCt)} ct/kWh`,
       inflation: `${formatNum((inflation * 100).toFixed(2))} % pro Jahr`,
-      autarky: `${formatNum(Math.round(autarkyActual * 100))} %`,
-      selfRate: `${formatNum(Math.round(selfRateActual * 100))} %`,
+      autarky: yieldAvailable ? `${formatNum(Math.round(autarkyActual * 100))} %` : '—',
+      selfRate: yieldAvailable ? `${formatNum(Math.round(selfRateActual * 100))} %` : '—',
       totalSavings: `${formatNum(Math.round(totalSavings))} €`,
       payback: paybackYears != null ? `${paybackYears} Jahre` : '—',
       investment: formatEUR(investment),

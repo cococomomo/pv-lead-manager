@@ -71,14 +71,14 @@ const DATASHEET_CATALOG = [
     ],
   },
   {
-    id: 'sigen-hybrid',
-    slug: 'sigen-hybrid-wechselrichter.pdf',
-    label: 'Sigenergy Sigen Hybrid Three Phase (5,0–30,0 kW)',
+    id: 'sigen-hybrid-tp2',
+    slug: 'sigen-hybrid-tp2.pdf',
+    label: 'Sigen Hybrid Wechselrichter 3,0–12,0 kW TP2',
     brands: ['sigenergy'],
     kind: 'inverter',
     sourceNames: [
-      'Energielösung für Zuhause - Sigen Hybrid Wechselrichter.pdf',
-      'Energielösung für Zuhause - Sigen Hybrid Wechselrichter (1).pdf',
+      'Hybrid-Inverter-TP2-Datasheet.pdf',
+      'Sigen Hybrid Wechselrichter 3,0-12,0 kW TP2.pdf',
     ],
   },
   {
