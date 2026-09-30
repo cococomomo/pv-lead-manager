@@ -398,6 +398,7 @@
           tilt,
           tiltCross,
           landscape,
+          tiltLock: !!o.tiltLock,
         };
         syncModuleProjectedSize(mod);
         modules.push(mod);
@@ -444,6 +445,7 @@
       setbackM: 0.3,
       gapM: 0.02,
       landscape: false,
+      autoOrient: 'portrait',
       moduleType: 'das',
     };
     let layoutId = null;
@@ -1212,7 +1214,18 @@
         if (!m) return;
         const c = info.proj.toXY(m.lat, m.lng);
         if (!pointInPoly(c, info.pts)) return;
-        // Quer/Hoch pro Modul behalten (nicht planMeta überschreiben)
+        // Quer/Hoch pro Modul behalten (nicht planMeta überschreiben).
+        // Flachdach-Auto setzt tiltLock, damit Speichern die 10° nicht auf die Formularneigung zurücksetzt.
+        if (m.tiltLock && !(opts && opts.forceTilt)) {
+          syncModuleProjectedSize(m, {
+            tilt: m.tilt,
+            tiltCross: m.tiltCross != null ? m.tiltCross : tiltCross,
+            landscape: m.landscape,
+            catalogDims,
+          });
+          return;
+        }
+        if (opts && opts.forceTilt) m.tiltLock = false;
         syncModuleProjectedSize(m, {
           tilt,
           tiltCross,
@@ -1234,6 +1247,15 @@
         const m = modules[i];
         if (!m) return;
         const layer = findRoofLayerAt(m.lat, m.lng);
+        if (m.tiltLock) {
+          syncModuleProjectedSize(m, {
+            tilt: m.tilt,
+            tiltCross: m.tiltCross != null ? m.tiltCross : tiltCross,
+            landscape: m.landscape,
+            catalogDims,
+          });
+          return;
+        }
         if (layer && layer._pvlMeta) {
           const roofTilt = layer._pvlMeta.tilt != null ? Number(layer._pvlMeta.tilt) : planMeta.tilt;
           syncModuleProjectedSize(m, {
@@ -1255,7 +1277,7 @@
       });
     }
 
-    function applyFormMetaToSelectedRoof() {
+    function applyFormMetaToSelectedRoof(opts) {
       if (!selectedPoly || selectedPoly._pvlKind !== 'roof') return;
       readMetaFromForm();
       selectedPoly._pvlMeta = selectedPoly._pvlMeta || {};
@@ -1265,6 +1287,7 @@
       syncModulesOnRoofLayer(selectedPoly, {
         tilt: planMeta.tilt,
         tiltCross: planMeta.tiltCross,
+        forceTilt: !!(opts && opts.forceTilt),
       });
       renderModules();
       refreshPitchArrows();
@@ -2327,7 +2350,25 @@
       planMeta.setbackM = Number(document.getElementById('layout-setback').value) || 0.3;
       planMeta.gapM = Number(document.getElementById('layout-gap').value) || 0.02;
       planMeta.landscape = !!(document.getElementById('layout-landscape') || {}).checked;
+      planMeta.autoOrient = autoOrientMode();
       planMeta.moduleType = (document.getElementById('layout-module-type') || {}).value || 'das';
+    }
+
+    function autoOrientMode() {
+      const active = document.querySelector('.layout-auto-orient .layout-mode-btn.active');
+      const mode = active && active.getAttribute('data-auto-orient');
+      if (mode === 'landscape' || mode === 'flat') return mode;
+      return 'portrait';
+    }
+
+    function setAutoOrientMode(mode) {
+      const m = mode === 'landscape' || mode === 'flat' ? mode : 'portrait';
+      planMeta.autoOrient = m;
+      document.querySelectorAll('.layout-auto-orient .layout-mode-btn').forEach((btn) => {
+        const on = btn.getAttribute('data-auto-orient') === m;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
     }
 
     function writeMetaToForm() {
@@ -2339,6 +2380,7 @@
       set('layout-gap', planMeta.gapM);
       const ls = document.getElementById('layout-landscape');
       if (ls) ls.checked = !!planMeta.landscape;
+      setAutoOrientMode(planMeta.autoOrient);
       const mt = document.getElementById('layout-module-type');
       if (mt) mt.value = planMeta.moduleType || 'das';
       updateTiltLabels();
@@ -2380,8 +2422,13 @@
       const d = dims();
       const obstacles = getObstacleLatLngs();
       const all = [];
+      const orient = autoOrientMode();
+      planMeta.autoOrient = orient;
+      const flat = orient === 'flat';
+      // Hochformat: lange Seite zum First. Querformat und Flachdach: lange Seite // Traufe.
+      const autoLandscape = orient === 'landscape' || flat;
       roofs.forEach((roof) => {
-        const tilt = roof.tilt != null ? Number(roof.tilt) : planMeta.tilt;
+        const tilt = flat ? 10 : (roof.tilt != null ? Number(roof.tilt) : planMeta.tilt);
         const tiltCross = planMeta.tiltCross != null ? Number(planMeta.tiltCross) : 0;
         const placed = autoLayoutModules(roof.ring, obstacles, {
           widthM: d.widthM,
@@ -2390,9 +2437,11 @@
           setbackM: planMeta.setbackM,
           edgeAngleDeg: roof.edgeAngleDeg,
           azimuth: roof.bearingDeg,
-          landscape: planMeta.landscape,
+          landscape: autoLandscape,
           tilt,
           tiltCross,
+          // Flachdach: 10°, Reihen entlang der Traufe (u = erste Kante). Nur diese Auto-Belegung.
+          tiltLock: flat,
         });
         all.push(...placed);
       });
@@ -3183,13 +3232,13 @@
         const el = document.getElementById(id);
         if (el) {
           el.addEventListener('change', () => {
-            applyFormMetaToSelectedRoof();
+            applyFormMetaToSelectedRoof({ forceTilt: true });
             updateModuleSizeLabel();
           });
           el.addEventListener('input', () => {
             readMetaFromForm();
             updateModuleSizeLabel();
-            applyFormMetaToSelectedRoof();
+            applyFormMetaToSelectedRoof({ forceTilt: true });
           });
         }
       });
@@ -3320,6 +3369,11 @@
       bind('layout-btn-auto', () => {
         if (editorStep !== 'modules') setEditorStep('modules');
         runAutoLayout();
+      });
+      document.querySelectorAll('.layout-auto-orient .layout-mode-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          setAutoOrientMode(btn.getAttribute('data-auto-orient'));
+        });
       });
       bind('layout-btn-add-mod', () => {
         if (editorStep !== 'modules') setEditorStep('modules');

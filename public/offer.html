@@ -401,6 +401,16 @@
   .layout-draw-modes {
     display: flex; gap: 0.25rem;
   }
+  .layout-auto-orient {
+    display: flex; gap: 0.25rem; align-items: end;
+  }
+  .layout-auto-orient .layout-mode-btn {
+    flex: 0 0 auto;
+    height: 1.85rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
   .layout-mode-btn {
     flex: 1;
     padding: 0.35rem 0.55rem;
@@ -482,6 +492,21 @@
         <div><label>E-Mail</label><input id="c-email" type="email" /></div>
         <div><label>Telefon</label><input id="c-phone" /></div>
       </div>
+      <div class="grid3" style="margin-top:0.7rem">
+        <div>
+          <label for="c-jahresverbrauch">Jahresverbrauch (kWh)</label>
+          <input id="c-jahresverbrauch" type="number" min="0" step="1" placeholder="4500" title="Leer = 4500 kWh im PDF" />
+        </div>
+        <div>
+          <label for="c-strompreis">Strompreis (ct/kWh)</label>
+          <input id="c-strompreis" type="number" min="0" step="0.01" placeholder="33" title="Leer = 33 ct/kWh im PDF" />
+        </div>
+        <div>
+          <label for="c-strompreissteigerung">Strompreissteigerung (%/Jahr)</label>
+          <input id="c-strompreissteigerung" type="number" min="0" step="0.1" placeholder="3" title="Leer = 3 % pro Jahr im PDF" />
+        </div>
+      </div>
+      <div class="hint">Leer lassen übernimmt die PDF-Vorgaben: 4500 kWh, 33 ct/kWh, 3 % pro Jahr.</div>
     </div>
 
     <div class="panel">
@@ -753,6 +778,11 @@
 
       <div class="layout-tool-group layout-module-tools" data-step="modules" hidden>
         <button type="button" class="btn secondary" id="layout-btn-auto" title="Module automatisch belegen">Auto</button>
+        <div class="layout-auto-orient" role="group" aria-label="Ausrichtung der automatischen Belegung">
+          <button type="button" class="layout-mode-btn active" id="layout-auto-portrait" data-auto-orient="portrait" aria-pressed="true" title="Hochformat: lange Seite zum First">Hochformat</button>
+          <button type="button" class="layout-mode-btn" id="layout-auto-landscape" data-auto-orient="landscape" aria-pressed="false" title="Querformat: lange Seite parallel zur Traufe">Querformat</button>
+          <button type="button" class="layout-mode-btn" id="layout-auto-flat" data-auto-orient="flat" aria-pressed="false" title="Flachdachbelegung: Querformat, Neigung 10°, Reihen entlang der Traufe">Flachdachbelegung</button>
+        </div>
         <button type="button" class="btn secondary icon-btn" id="layout-btn-select-rect" title="Rechteck-Auswahl" aria-label="Rechteck-Auswahl">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"/>
@@ -812,7 +842,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="/layout-editor.js?v=20260722-hybrid-rotate"></script>
+<script src="/layout-editor.js?v=20260930-energy-orient"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let CATALOG = null;
@@ -2315,7 +2345,38 @@ function basePayload() {
     body: ($('m-body') && $('m-body').value.trim()) || '',
     variants,
     allocateNewNumber: !!(allocateNewNumberOnFinalize && loadedVersionId),
+    ...readEnergyOverrides(),
   };
+}
+
+/** Haushaltswerte für PDF-Seiten Haushalt und Wirtschaftlichkeit. Leer = PDF-Defaults. */
+function readEnergyOverrides() {
+  const out = {};
+  const economics = {};
+  const kwhEl = $('c-jahresverbrauch');
+  const ctEl = $('c-strompreis');
+  const inflEl = $('c-strompreissteigerung');
+  if (kwhEl && String(kwhEl.value).trim() !== '') {
+    const n = Number(kwhEl.value);
+    if (Number.isFinite(n)) {
+      out.jahresverbrauch = n;
+      economics.jahresverbrauch = n;
+      economics.householdKwhYear = n;
+    }
+  }
+  if (ctEl && String(ctEl.value).trim() !== '') {
+    const n = Number(ctEl.value);
+    if (Number.isFinite(n)) {
+      economics.strompreisCt = n;
+      economics.gridPriceCt = n;
+    }
+  }
+  if (inflEl && String(inflEl.value).trim() !== '') {
+    const n = Number(inflEl.value);
+    if (Number.isFinite(n)) economics.priceInflation = n;
+  }
+  if (Object.keys(economics).length) out.economics = economics;
+  return out;
 }
 
 function escHtml(s) {
@@ -3365,7 +3426,7 @@ async function init() {
 
   $('btn-parse').addEventListener('click', parseCommand);
   $('btn-clear').addEventListener('click', () => {
-    ['c-vorname','c-nachname','c-street','c-zip','c-city','c-email','c-phone','command','f-extra','c-search'].forEach((id) => {
+    ['c-vorname','c-nachname','c-street','c-zip','c-city','c-email','c-phone','c-jahresverbrauch','c-strompreis','c-strompreissteigerung','command','f-extra','c-search'].forEach((id) => {
       if ($(id)) $(id).value = '';
     });
     currentLeadId = null;

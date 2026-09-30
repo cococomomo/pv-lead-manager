@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Zeichnet einen Belegungsplan (Dachflächen + Module + Neigungspfeile)
+ * Zeichnet einen Belegungsplan (Dachumriss + Module)
  * direkt in ein PDFKit-Dokument – Fallback, wenn kein Snapshot-PNG existiert.
  */
 
@@ -57,41 +57,6 @@ function collectPoints(plan) {
     if (m && m.lat != null) pts.push({ lat: m.lat, lng: m.lng });
   });
   return pts;
-}
-
-function roofEaveDir(ring, proj) {
-  if (!ring || ring.length < 2) return { x: 0, y: -1 };
-  const p0 = proj.toXY(ring[0].lat, ring[0].lng);
-  const p1 = proj.toXY(ring[1].lat, ring[1].lng);
-  const edx = p1.x - p0.x;
-  const edy = p1.y - p0.y;
-  const elen = Math.hypot(edx, edy) || 1;
-  const ex = edx / elen;
-  const ey = edy / elen;
-  // Normale; Orientierung grob über Polygonzentrum
-  let nx = -ey;
-  let ny = ex;
-  let cx = 0;
-  let cy = 0;
-  const xy = ring.map((p) => proj.toXY(p.lat, p.lng));
-  xy.forEach((p) => { cx += p.x; cy += p.y; });
-  cx /= xy.length;
-  cy /= xy.length;
-  const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
-  const toCenterX = cx - mid.x;
-  const toCenterY = cy - mid.y;
-  if (nx * toCenterX + ny * toCenterY < 0) {
-    nx = -nx;
-    ny = -ny;
-  }
-  // zur Traufe = vom Inneren zur Kante
-  return { x: -nx, y: -ny };
-}
-
-function arrowLenFromTilt(tiltDeg, refM) {
-  const t = Math.max(0, Math.min(75, Number(tiltDeg) || 0));
-  const ref = Math.max(0.2, Number(refM) || 0.5);
-  return ref * (0.22 + 0.78 * Math.min(1, t / 60));
 }
 
 /**
@@ -177,14 +142,12 @@ function drawLayoutPreview(doc, plan, box) {
   doc.circle(x0 + w * 0.72, y0 + h * 0.62, Math.min(w, h) * 0.34).fill();
   doc.fillOpacity(1);
 
-  // Dachflächen — dünne hellblaue Linien auf Ortho-Grund (Vorlage Useini)
+  // Dachumriss dünn hellblau, ohne Fläche
   roofs.forEach((roof) => {
     const ring = roof.ring || [];
     if (ring.length < 3) return;
     pathRing(ring);
-    doc.fillColor('#e8eef5').fillOpacity(0.72).fill();
-    pathRing(ring);
-    doc.strokeColor('#6aa8de').lineWidth(0.55).strokeOpacity(0.95).stroke();
+    doc.strokeColor('#7eb6e8').lineWidth(0.4).strokeOpacity(0.95).stroke();
   });
 
   // Sperrzonen
@@ -203,45 +166,11 @@ function drawLayoutPreview(doc, plan, box) {
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.fillColor('#0a0a0a').fillOpacity(0.95).fill();
+    doc.fillColor('#000000').fillOpacity(1).fill();
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.strokeColor('#f3f3f3').lineWidth(0.45).strokeOpacity(1).stroke();
-
-    // Neigungspfeil dezent
-    const tilt = m.tilt != null ? Number(m.tilt) : ((planObj.meta && planObj.meta.tilt) || 30);
-    const ref = Math.min(Number(m.widthM) || 1, Number(m.heightM) || 1);
-    const lenM = arrowLenFromTilt(tilt, ref * 0.55);
-    let ux = 0;
-    let uy = -1;
-    for (const roof of roofs) {
-      const ring = roof.ring || [];
-      if (ring.length < 3) continue;
-      const dir = roofEaveDir(ring, proj);
-      ux = dir.x;
-      uy = dir.y;
-      break;
-    }
-    if (!roofs.length) {
-      const a = deg2rad(m.azimuth || 0);
-      ux = -Math.sin(a);
-      uy = Math.cos(a);
-    }
-    const c = proj.toXY(m.lat, m.lng);
-    const base = toPage({ x: c.x - ux * lenM * 0.5, y: c.y - uy * lenM * 0.5 });
-    const tip = toPage({ x: c.x + ux * lenM * 0.5, y: c.y + uy * lenM * 0.5 });
-    doc.strokeColor('#d1d5db').lineWidth(0.55).strokeOpacity(0.85);
-    doc.moveTo(base.x, base.y).lineTo(tip.x, tip.y).stroke();
-    const dx = tip.x - base.x;
-    const dy = tip.y - base.y;
-    const al = Math.hypot(dx, dy) || 1;
-    const hx = (-dy / al) * 2.0;
-    const hy = (dx / al) * 2.0;
-    const bx = tip.x - (dx / al) * 3.6;
-    const by = tip.y - (dy / al) * 3.6;
-    doc.moveTo(tip.x, tip.y).lineTo(bx + hx, by + hy).lineTo(bx - hx, by - hy).closePath();
-    doc.fillColor('#d1d5db').fillOpacity(0.85).fill();
+    doc.strokeColor('#f3f3f3').lineWidth(0.35).strokeOpacity(1).stroke();
   });
 
   doc.restore();

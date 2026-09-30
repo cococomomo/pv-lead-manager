@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Server-seitiger Belegungsplan-Render: Orthofoto-Kacheln + Dach/Module/Pfeile → PNG.
+ * Server-seitiger Belegungsplan-Render: Orthofoto-Kacheln + Dachumriss + Module → PNG.
  * Unabhängig vom Browser-CORS (html2canvas).
  */
 
@@ -208,12 +208,6 @@ function strokePolygon(data, w, h, pts, r, g, b, a, width) {
   }
 }
 
-function arrowLenFromTilt(tiltDeg, refPx) {
-  const t = Math.max(0, Math.min(75, Number(tiltDeg) || 0));
-  const ref = Math.max(6, Number(refPx) || 12);
-  return ref * (0.22 + 0.78 * Math.min(1, t / 60));
-}
-
 function tileUrlFor(providerId, z, x, y) {
   const list = mapProviders.listMapProviders ? mapProviders.listMapProviders() : [];
   const p = list.find((i) => i.id === providerId && i.url) || list.find((i) => i.enabled && i.url);
@@ -248,11 +242,11 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
   const mPerDegLat = 111320;
   const mPerDegLng = 111320 * Math.max(0.25, Math.cos(deg2rad(midLat)));
 
-  // Framing: Gebäude ~80–85 % der Bildfläche, Umland ~15–20 %
-  // → je Seite ca. 9–11 % der Objektspanne als Rand
-  const TARGET_CONTENT_FRAC = opts.contentFrac != null
-    ? Math.min(0.95, Math.max(0.6, Number(opts.contentFrac)))
-    : 0.82;
+  // Dachkante ≈ 41 % der Bildkante (vorher 82 %): mindestens doppelt so viel Umgebung.
+  const rawFrac = opts.contentFrac != null ? Number(opts.contentFrac) : 0.41;
+  const TARGET_CONTENT_FRAC = Number.isFinite(rawFrac)
+    ? Math.min(0.95, Math.max(0.25, rawFrac))
+    : 0.41;
   let spanLat = Math.max(maxLat - minLat, 1e-9);
   let spanLng = Math.max(maxLng - minLng, 1e-9);
   // Nur bei winzigen Geometrien ein Minimum (~6 m), sonst kein künstliches Aufblasen
@@ -361,9 +355,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     return { x: (p.x - originX) * scale, y: (p.y - originY) * scale };
   }
 
-  // Vorlage: Dachlinien sehr dünn; Module schwarz mit hellgrauem Rahmen
-  const lwRoof = Math.max(0.6, 0.85 * scale);
-  const lwMod = Math.max(0.7, 0.9 * scale);
+  // Dachumriss dünn hellblau, ohne Fläche. Module schwarz, dünner heller Rahmen.
+  const lwRoof = Math.max(0.7, 0.35 * scale);
+  const lwMod = Math.max(0.6, 0.3 * scale);
   const roofs = Array.isArray(planObj.roofs) && planObj.roofs.length
     ? planObj.roofs
     : (planObj.roof ? [{ ring: planObj.roof, tilt: (planObj.meta && planObj.meta.tilt) || 30 }] : []);
@@ -372,8 +366,7 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
 
   roofs.forEach((roof) => {
     const ring = ringToWorld(roof.ring, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, ring, 219, 234, 254, 40);
-    strokePolygon(png.data, outW, outH, ring, 126, 182, 232, 220, lwRoof);
+    strokePolygon(png.data, outW, outH, ring, 126, 182, 232, 230, lwRoof);
   });
   obstacles.forEach((ring) => {
     const ptsR = ringToWorld(ring, zoom).map(toImg);
@@ -383,53 +376,8 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
 
   modules.forEach((m) => {
     const corners = moduleCornersWorld(m, zoom).map(toImg);
-    fillPolygon(png.data, outW, outH, corners, 10, 10, 10, 245);
+    fillPolygon(png.data, outW, outH, corners, 0, 0, 0, 255);
     strokePolygon(png.data, outW, outH, corners, 243, 243, 243, 255, lwMod);
-
-    const tilt = m.tilt != null ? Number(m.tilt) : ((planObj.meta && planObj.meta.tilt) || 30);
-    const c = toImg(latLngToWorldPixel(m.lat, m.lng, zoom));
-    const mpp = (156543.03392 * Math.cos(deg2rad(m.lat))) / (2 ** zoom);
-    const refPx = ((Math.min(Number(m.widthM) || 1, Number(m.heightM) || 1) * 0.7) / mpp) * scale;
-    const len = arrowLenFromTilt(tilt, refPx);
-
-    // Traufe = erste Kante des enthaltenden Dachs (Geometrie unverändert)
-    let ux = 0;
-    let uy = 1;
-    for (const roof of roofs) {
-      const ring = roof.ring || [];
-      if (ring.length < 2) continue;
-      const a = toImg(latLngToWorldPixel(ring[0].lat, ring[0].lng, zoom));
-      const b = toImg(latLngToWorldPixel(ring[1].lat, ring[1].lng, zoom));
-      const edx = b.x - a.x;
-      const edy = b.y - a.y;
-      const elen = Math.hypot(edx, edy) || 1;
-      let nx = -edy / elen;
-      let ny = edx / elen;
-      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      if ((c.x - mid.x) * nx + (c.y - mid.y) * ny > 0) {
-        nx = -nx;
-        ny = -ny;
-      }
-      ux = nx;
-      uy = ny;
-      break;
-    }
-    const tip = { x: c.x + ux * len * 0.5, y: c.y + uy * len * 0.5 };
-    const base = { x: c.x - ux * len * 0.5, y: c.y - uy * len * 0.5 };
-    drawLine(png.data, outW, outH, base.x, base.y, tip.x, tip.y, 196, 196, 196, 220, Math.max(0.8, 1.1 * scale));
-    const dx = tip.x - base.x;
-    const dy = tip.y - base.y;
-    const al = Math.hypot(dx, dy) || 1;
-    const head = Math.max(3, 3 * scale);
-    const hx = (-dy / al) * head;
-    const hy = (dx / al) * head;
-    const bx = tip.x - (dx / al) * (head * 1.7);
-    const by = tip.y - (dy / al) * (head * 1.7);
-    fillPolygon(png.data, outW, outH, [
-      tip,
-      { x: bx + hx, y: by + hy },
-      { x: bx - hx, y: by - hy },
-    ], 196, 196, 196, 220);
   });
 
   return PNG.sync.write(png);

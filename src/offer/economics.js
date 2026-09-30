@@ -9,7 +9,7 @@ const { formatEUR, formatNum } = require('./catalog');
 
 const DEFAULTS = {
   specificYieldKwhPerKwp: 1050,
-  householdKwhYear: 4200,
+  householdKwhYear: 4500,
   gridPriceCt: 33,
   priceInflation: 0.03,
   selfConsumptionNoStorage: 0.30,
