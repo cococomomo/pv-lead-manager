@@ -159,18 +159,23 @@ function drawLayoutPreview(doc, plan, box) {
     doc.strokeColor('#b91c1c').lineWidth(0.55).strokeOpacity(0.85).stroke();
   });
 
-  // Module — schwarz mit weißem/hellgrauem dünnem Rahmen (Vorlage)
+  // Module schwarz; 2px helle Fuge erst nach allen Flächen, sonst verschwindet die gemeinsame Kante.
+  const modulePolys = [];
   modules.forEach((m) => {
     const corners = moduleCorners(m, proj).map(toPage);
-    if (corners.length < 3) return;
+    if (corners.length >= 3) modulePolys.push(corners);
+  });
+  modulePolys.forEach((corners) => {
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
     doc.fillColor('#000000').fillOpacity(1).fill();
+  });
+  modulePolys.forEach((corners) => {
     doc.moveTo(corners[0].x, corners[0].y);
     for (let i = 1; i < corners.length; i += 1) doc.lineTo(corners[i].x, corners[i].y);
     doc.closePath();
-    doc.strokeColor('#f3f3f3').lineWidth(0.35).strokeOpacity(1).stroke();
+    doc.strokeColor('#f3f3f3').lineWidth(2).strokeOpacity(1).stroke();
   });
 
   doc.restore();

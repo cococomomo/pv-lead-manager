@@ -355,9 +355,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     return { x: (p.x - originX) * scale, y: (p.y - originY) * scale };
   }
 
-  // Dachumriss dünn hellblau, ohne Fläche. Module schwarz, dünner heller Rahmen.
+  // Dachumriss dünn hellblau, ohne Fläche. Module schwarz, 2px helle Fuge.
   const lwRoof = Math.max(0.7, 0.35 * scale);
-  const lwMod = Math.max(0.6, 0.3 * scale);
+  const MODULE_FRAME_PX = 2;
   const roofs = Array.isArray(planObj.roofs) && planObj.roofs.length
     ? planObj.roofs
     : (planObj.roof ? [{ ring: planObj.roof, tilt: (planObj.meta && planObj.meta.tilt) || 30 }] : []);
@@ -374,10 +374,13 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     strokePolygon(png.data, outW, outH, ptsR, 185, 28, 28, 200, lwRoof);
   });
 
-  modules.forEach((m) => {
-    const corners = moduleCornersWorld(m, zoom).map(toImg);
+  const modulePolys = modules.map((m) => moduleCornersWorld(m, zoom).map(toImg));
+  // Erst alle Flächen, danach die Fugen: sonst überdeckt die Nachbarfläche die gemeinsame Kante.
+  modulePolys.forEach((corners) => {
     fillPolygon(png.data, outW, outH, corners, 0, 0, 0, 255);
-    strokePolygon(png.data, outW, outH, corners, 243, 243, 243, 255, lwMod);
+  });
+  modulePolys.forEach((corners) => {
+    strokePolygon(png.data, outW, outH, corners, 243, 243, 243, 255, MODULE_FRAME_PX);
   });
 
   return PNG.sync.write(png);
