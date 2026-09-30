@@ -679,6 +679,44 @@
       background: var(--pvl-stat-bg);
       color: var(--pvl-accent);
     }
+    .pvl-status-view {
+      padding: 0.4rem 0.9rem 0.5rem;
+      border-bottom: 1px solid var(--pvl-border);
+      flex-shrink: 0;
+    }
+    .pvl-status-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.2rem; }
+    .pvl-status-pills button {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 0.32rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--pvl-border);
+      background: var(--pvl-surface);
+      color: var(--pvl-muted);
+      font-size: 0.72rem;
+      font-weight: 650;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .pvl-status-pills button:hover { background: var(--pvl-surface-2); color: var(--pvl-text); }
+    .pvl-status-pills button.is-active {
+      border-color: var(--pvl-accent);
+      background: var(--pvl-stat-bg);
+      color: var(--pvl-accent);
+    }
+    .pvl-status-dot {
+      width: 0.48rem;
+      height: 0.48rem;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 0.28rem;
+      vertical-align: 0.05rem;
+    }
+    .pvl-status-dot[data-tone="aktiv"] { background: #eab308; }
+    .pvl-status-dot[data-tone="angebot"] { background: #e7a13a; }
+    .pvl-status-dot[data-tone="terminiert"] { background: #2563eb; }
+    .pvl-status-dot[data-tone="verloren"] { background: #94a3b8; }
+    .pvl-status-count { margin-left: 0.28rem; font-variant-numeric: tabular-nums; opacity: 0.8; }
 
     .missing-lead-tel { font-size: 0.8rem; font-weight: 600; color: var(--pvl-text); margin: 0.15rem 0 0.1rem; }
     .missing-lead-tel-num { font-variant-numeric: tabular-nums; }
@@ -1597,14 +1635,6 @@
           <button type="button" data-betreuer="meine" id="pill-betreuer-meine">Meine Leads</button>
           <button type="button" data-betreuer="unbetreut" id="pill-betreuer-unbetreut">Unbetreut</button>
         </div>
-        <span class="pvl-filter-lbl">Status</span>
-        <select id="filter-status" aria-label="Nach Status filtern">
-          <option value="">Alle (im aktuellen Tab)</option>
-          <option value="aktiv">Aktiv</option>
-          <option value="terminiert">Terminiert</option>
-          <option value="verloren">Verloren</option>
-          <option value="abgearbeitet">Abgearbeitet</option>
-        </select>
         <span class="pvl-filter-lbl">Sortierung</span>
         <select id="sort-leads" onchange="renderList(); renderMarkers();">
           <option value="created_at_desc" selected>Erstelldatum (neueste zuerst)</option>
@@ -1618,6 +1648,27 @@
       <input type="text" id="search-input" placeholder="Name, E-Mail, Telefon, Ort…" oninput="renderList(); renderMarkers();" />
       <button type="button" id="filter-clear-missing-coords" class="filter-archive-btn is-hidden" onclick="clearMissingCoordsMapFilter()"><span aria-hidden="true">&times;</span> Filter „ohne Kartenpunkt“ aufheben</button>
       <button type="button" id="btn-missing-coords-dialog" class="filter-archive-btn" style="margin-top:0.25rem;font-weight:500" onclick="openMissingCoordsModal()">Ohne Kartenpunkt: Schnellbearbeitung (Dialog)…</button>
+    </div>
+    <div class="pvl-status-view">
+      <span class="pvl-filter-lbl">Status auf Karte und Liste</span>
+      <input type="hidden" id="filter-status" value="aktiv" />
+      <div class="pvl-status-pills" role="group" aria-label="Leads nach Status filtern">
+        <button type="button" class="is-active" data-status="aktiv" id="pill-status-aktiv" title="Aktive Pipeline ohne Angebote">
+          <span class="pvl-status-dot" data-tone="aktiv" aria-hidden="true"></span>Aktiv<span class="pvl-status-count" id="pill-count-aktiv"></span>
+        </button>
+        <button type="button" data-status="angebot" id="pill-status-angebot" title="Nur Angebot gesendet">
+          <span class="pvl-status-dot" data-tone="angebot" aria-hidden="true"></span>Angebote<span class="pvl-status-count" id="pill-count-angebot"></span>
+        </button>
+        <button type="button" data-status="terminiert" id="pill-status-terminiert">
+          <span class="pvl-status-dot" data-tone="terminiert" aria-hidden="true"></span>Terminiert<span class="pvl-status-count" id="pill-count-terminiert"></span>
+        </button>
+        <button type="button" data-status="verloren" id="pill-status-verloren">
+          <span class="pvl-status-dot" data-tone="verloren" aria-hidden="true"></span>Verloren<span class="pvl-status-count" id="pill-count-verloren"></span>
+        </button>
+        <button type="button" data-status="" id="pill-status-all" title="Alle Status im aktuellen Reiter">
+          Alle<span class="pvl-status-count" id="pill-count-all"></span>
+        </button>
+      </div>
     </div>
     <div class="sidebar-tabs pvl-lead-tabs" role="tablist" aria-label="Lead-Liste">
       <button type="button" class="sidebar-tab is-active" role="tab" id="pvl-tab-sidebar-active" aria-selected="true" aria-controls="lead-list" data-pvl-side-tab="active">
@@ -2594,6 +2645,8 @@
     const hasOffer = Number.isFinite(leadId) && pvlSentOfferLeadIds.has(leadId);
     // Angebot gesendet / Nachfassen / In-Arbeit haben Vorrang vor „neu = gelb“
     if (stPin === 'angebot gesendet' || hasOffer) return getPinVisualForLead(lead).color;
+    // Verloren, Termin, Archiv nicht als „neu/aktiv“ gelb färben.
+    if (isAbgearbeitetForMap(lead)) return getPinVisualForLead(lead).color;
     const statusPinColor = stPin === 'nachfassen' || stPin === 'nicht erreicht' || stPin === 'angerufen';
     if (!statusPinColor && isLeadCreatedWithinLastMonth(lead)) return PVL_MAP_NEW_LEAD_COLOR;
     return getPinVisualForLead(lead).color;
@@ -2914,6 +2967,11 @@
     if (tab === 'done') pvlSidebarListTab = 'done';
     else if (tab === 'nachfassen') pvlSidebarListTab = 'nachfassen';
     else pvlSidebarListTab = 'active';
+    const hid = document.getElementById('filter-status');
+    if (hid && hid.value) {
+      hid.value = '';
+      try { syncStatusPillsFromHidden(); } catch (_) { /* pills not ready */ }
+    }
     syncSidebarListTabUi();
     renderList();
     renderMarkers();
@@ -2948,13 +3006,62 @@
   }
 
   function passesStatusFilterMode(lead) {
-    const mode = document.getElementById('filter-status')?.value || '';
+    const mode = document.getElementById('filter-status')?.value ?? 'aktiv';
     if (!mode) return true;
-    if (mode === 'aktiv') return passesActiveList(lead);
-    if (mode === 'terminiert') return normalizeStatusDisplay(lead[COL.status]) === 'Termin vereinbart';
-    if (mode === 'verloren') return normalizeStatusDisplay(lead[COL.status]) === 'Lead verloren';
+    if (mode === 'aktiv') {
+      if (isAngebotGesendetLead(lead)) return false;
+      return passesActiveList(lead);
+    }
+    if (mode === 'angebot') {
+      if (isCrmArchived(lead)) return false;
+      return isAngebotGesendetLead(lead);
+    }
+    if (mode === 'terminiert') {
+      if (isCrmArchived(lead)) return false;
+      return normalizeStatusDisplay(lead[COL.status]) === 'Termin vereinbart';
+    }
+    if (mode === 'verloren') {
+      if (isCrmArchived(lead)) return false;
+      return normalizeStatusDisplay(lead[COL.status]) === 'Lead verloren';
+    }
     if (mode === 'abgearbeitet') return passesDoneList(lead);
     return true;
+  }
+
+  function syncStatusPillsFromHidden() {
+    const v = document.getElementById('filter-status')?.value ?? 'aktiv';
+    document.querySelectorAll('.pvl-status-pills button').forEach((b) => {
+      const dv = b.getAttribute('data-status');
+      b.classList.toggle('is-active', (dv == null ? '' : dv) === v);
+    });
+  }
+
+  function setStatusFilterMode(mode) {
+    const hid = document.getElementById('filter-status');
+    if (hid) hid.value = mode == null ? '' : String(mode);
+    syncStatusPillsFromHidden();
+    renderList();
+    renderMarkers();
+  }
+
+  function updateStatusPillCounts() {
+    if (!Array.isArray(allLeads)) return;
+    const base = allLeads.filter((l) => passesBetreuerFilter(l));
+    const q = (document.getElementById('search-input')?.value || '').toLowerCase();
+    const matchesQ = (lead) => {
+      if (!q) return true;
+      return [lead[COL.name], lead[COL.email], lead[COL.phone], lead[COL.city], lead[COL.street]].some((v) => String(v || '').toLowerCase().includes(q));
+    };
+    const count = (pred) => base.filter((l) => pred(l) && matchesQ(l)).length;
+    const set = (id, n) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = n > 0 ? String(n) : '';
+    };
+    set('pill-count-aktiv', count((l) => !isAngebotGesendetLead(l) && passesActiveList(l)));
+    set('pill-count-angebot', count((l) => !isCrmArchived(l) && isAngebotGesendetLead(l)));
+    set('pill-count-terminiert', count((l) => !isCrmArchived(l) && normalizeStatusDisplay(l[COL.status]) === 'Termin vereinbart'));
+    set('pill-count-verloren', count((l) => !isCrmArchived(l) && normalizeStatusDisplay(l[COL.status]) === 'Lead verloren'));
+    set('pill-count-all', count((l) => passesListTabFilter(l)));
   }
 
   /** In der Liste CRM-archivierter Leads als „Archivieren“ darstellen (entspricht dem Archiv-Workflow). */
@@ -3057,9 +3164,15 @@
     return isHiddenStatus(lead) || isCrmArchived(lead);
   }
 
-  /** Karte: nur Leads des aktuellen Sidebar-Tabs + globale Filter — Pins grau für Abgearbeitet. */
+  /**
+   * Karte folgt der Status-Ansicht (Aktiv / Angebote / …), nicht nur dem Sidebar-Reiter.
+   * „Alle“ behält den Reiter (Aktiv / Nachfassen / Abgearbeitet).
+   */
   function passesMapFilters(lead) {
-    if (!passesListTabFilter(lead)) return false;
+    const mode = document.getElementById('filter-status')?.value ?? 'aktiv';
+    if (!mode) {
+      if (!passesListTabFilter(lead)) return false;
+    }
     return passesNonTabFilters(lead);
   }
 
@@ -3989,6 +4102,22 @@
     return rows;
   }
 
+  /** Dieselbe Menge wie die Karte, inklusive Leads ohne Koordinaten. */
+  function getStatusViewLeads() {
+    const sortMode = document.getElementById('sort-leads')?.value || 'created_at_desc';
+    const mode = document.getElementById('filter-status')?.value ?? 'aktiv';
+    let rows;
+    if (!mode) {
+      const tab = getSidebarListTab();
+      if (tab === 'done') rows = allLeads.filter((l) => passesDoneList(l) && passesNonTabFilters(l));
+      else if (tab === 'nachfassen') rows = allLeads.filter((l) => passesNachfassenSnoozedList(l) && passesNonTabFilters(l));
+      else rows = allLeads.filter((l) => passesActiveList(l) && passesNonTabFilters(l));
+    } else {
+      rows = allLeads.filter((l) => passesNonTabFilters(l));
+    }
+    return [...rows].sort((a, b) => compareBySort(a, b, sortMode));
+  }
+
   function syncFilterGeoCheckbox() {
     const c = document.getElementById('filter-geo-only-missing');
     if (c) c.checked = !!filterMissingMapCoordsOnly;
@@ -4128,6 +4257,29 @@
     if (cnt) cnt.textContent = activeLeads.length;
     if (cntNach) cntNach.textContent = nachLeads.length;
     if (cntDone) cntDone.textContent = doneLeads.length;
+    try { updateStatusPillCounts(); } catch (_) { /* ignore */ }
+    const statusMode = document.getElementById('filter-status')?.value ?? 'aktiv';
+    if (statusMode) {
+      if (getSidebarListTab() !== 'active') {
+        pvlSidebarListTab = 'active';
+        syncSidebarListTabUi();
+      }
+      let view = [];
+      try { view = getStatusViewLeads(); } catch (e) {
+        console.error('[NOORTEC] Status-Ansicht', e);
+      }
+      if (cnt) cnt.textContent = view.length;
+      const emptyStatus = '<p class="lead-list-empty-hint" style="padding:0.75rem 0.9rem;color:var(--pvl-muted);font-size:0.82rem;line-height:1.45">Keine Leads in dieser Status-Ansicht. Dieselbe Auswahl gilt für die Karte.</p>';
+      renderListPanelInto(list, view, { donePanel: statusMode === 'verloren' || statusMode === 'terminiert', emptyHint: emptyStatus });
+      if (listNach) listNach.innerHTML = '';
+      if (listDone) listDone.innerHTML = '';
+      if (scroller) {
+        requestAnimationFrame(() => {
+          try { scroller.scrollTop = savedListScrollTop; } catch (_) { /* ignore */ }
+        });
+      }
+      return;
+    }
     const tab = getSidebarListTab();
     if (tab === 'active') {
       renderListPanelInto(list, activeLeads, { donePanel: false });
@@ -4153,6 +4305,14 @@
 
   function pvlUpdateLeadCountLabels() {
     const cnt = document.getElementById('lead-count');
+    const statusMode = document.getElementById('filter-status')?.value ?? 'aktiv';
+    if (statusMode) {
+      try {
+        if (cnt) cnt.textContent = String(getStatusViewLeads().length);
+        updateStatusPillCounts();
+      } catch (_) { /* ignore */ }
+      return;
+    }
     const cntNach = document.getElementById('pvl-nachfass-count');
     const cntDone = document.getElementById('pvl-done-count');
     let activeLeads;
@@ -5309,7 +5469,17 @@
         renderMarkers();
       });
     });
-    document.getElementById('filter-status')?.addEventListener('change', () => { renderList(); renderMarkers(); });
+    document.querySelectorAll('.pvl-status-pills button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setStatusFilterMode(btn.getAttribute('data-status') || '');
+      });
+    });
+    syncStatusPillsFromHidden();
+    document.getElementById('filter-status')?.addEventListener('change', () => {
+      syncStatusPillsFromHidden();
+      renderList();
+      renderMarkers();
+    });
     syncThemeToggleUi();
     initPvlSidebarResize();
     applyPvlMobileLayout();
