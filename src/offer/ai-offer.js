@@ -98,17 +98,17 @@ Klimapakete (LG STANDARD II, Brutto-Installationspreis):
 Zubehör: Kältemittelleitung inkl. 10 m je Innengerät, jeder weitere Meter 40 €; Kondensatwasserpumpe 240 €.
 
 Regeln:
-- Marke PV:
-  • Hybrid mit Speicher: Default "sigenergy"; "Fronius"/"GEN24"/"Reserva" → "fronius".
-  • Ohne Speicher: "Huawei"/"SUN2000" → "huawei"; "Fronius Symo" (ohne GEN24/Reserva) → "fronius_symo".
-  • "ohne Speicher"/"kein Speicher"/"nur PV" → speicher=0 und Marke huawei (Default) bzw. fronius_symo wenn Symo genannt.
+- Marke PV: Default immer "sigenergy" (Wechselrichter Sigen Hybrid TP2). Ohne Angabe bleibt Sigenergy.
+  • "Fronius"/"GEN24"/"Reserva" → "fronius". "Fronius Symo" ohne GEN24/Reserva → "fronius_symo".
+  • "ohne Speicher"/"kein Speicher"/"nur PV" → speicher=0. Marke bleibt die genannte, sonst sigenergy.
+  • Kein Huawei. Dach ohne Angabe = "Ziegel". Dafür keine Rückfrage.
 - Telefonnummern in +43… normalisieren.
 - "AIKO" → moduleType "aiko", sonst "das".
-- kwp/speicher als reine Zahlen. "9 kw speicher" = 9 kWh Speicher. Ohne Speicher: speicher=0.
-  Sigenergy: NUR Module 6 kWh und 9 kWh, beliebig kombinierbar.
+- kwp/speicher als reine Zahlen. Ohne Speicher: speicher=0.
+  Sigenergy: NUR Module 6,0 kWh und 10,0 kWh, beliebig kombinierbar. Wechselrichter ist der Sigen Hybrid TP2.
   Beispiele → speicher = Gesamtkapazität (eine Zahl):
-  "6+9" / "9+6" → 15; "9+9" / "2×9" / "2x9" → 18; "6+6" / "2×6" → 12;
-  "9+6+6" → 21; "18 kWh" → 18.
+  "6+10" / "10+6" → 16; "10+10" / "2×10" / "2x10" → 20; "6+6" / "2×6" → 12;
+  "10 kWh" → 10; "6 kWh" → 6. Keine 9-kWh-Module, keine Preise 3300 oder 3960.
   Fronius Reserva: NUR Module à 3,2 kWh. Tower-Stufen: 6,4 (2 Mod.) / 9,5 (3) / 12,6 (4) / 15,8 (5).
   Bis zu 3 Speichertower kombinierbar. "Reserva 12,6" / "4 Module Fronius" → speicher 12.6;
   "6 Module Fronius" / "19 kWh Fronius" → speicher ≈ 19 (15,8 + 3,2).
@@ -138,10 +138,11 @@ Regeln:
   Unterkonstruktionen = genau 1 Stück pro Modul; Summe der Segment-Module MUSS module_count entsprechen.
 - WECHSELRICHTER: "8 kW Wechselrichter" / "Wechselrichter 8 kW" → inverter_kw: 8 (niemals als module_count!).
   Speicher-kWh und Euro-Beträge niemals als Modulanzahl werten.
-- OPTIMIERER (Leistungsoptimierer, 1 pro Modul, 60 € brutto/Stück – Server berechnet):
+- OPTIMIERER (Leistungsoptimierer, 1 pro Modul, 50 € brutto/Stück, ohne Marke – Server berechnet):
   Synonyme: "Optimierer", "Optimizer", "Leistungsoptimierer", "ein Optimierer pro Modul".
+  Bezeichnung immer "Optimierer (1 pro Modul)". Kein Huawei.
   → optionen.optimierer=true UND optionDetails key=optimierer, mode=fix (außer explizit "optional"),
-  price=null (Server: 60 × Modulanzahl), hint z. B. "Ein Optimierer pro Modul für optimale Leistung."
+  price=null (Server: 50 × Modulanzahl), hint z. B. "Ein Optimierer pro Modul für optimale Leistung."
   NICHT nur in offerNotes schreiben – immer als Preisposition.
 - includePv: false wenn NUR Klima gewünscht; true bei PV oder Kombi; null wenn unklar.
 - Klima-Erkennung: Formulierungen wie "zweimal 2,5 kW Innengerät und 4,1 kW Außengerät" → outdoorKw:4.1, indoor:[{kw:2.5,qty:2}], packageId lg-std2-multi-41.
@@ -163,13 +164,15 @@ Regeln:
   Nur wenn klar getrennt von der Basis, z. B. "Basis 9 kWh, optional plus 6 kWh nachrüsten",
   "optional +3,2 kWh Fronius", "Fronius +3,2 nachrüsten" → optionen.speichererweiterung=true
   bzw. optionDetails key=speichererweiterung (bei Sigenergy +6 oder +9 im Label/kwh angeben).
-  Sigenergy: +6,0 kWh (2400) oder +10,0 kWh (3600); Fronius: immer +3,2 (1320). Gateway Sigenergy 1200, Wallbox Sigenergy 1500.
+  Sigenergy-Erweiterung: +6,0 kWh = 2400 € oder +10,0 kWh = 3600 €. Nicht +6 für 3300 und nicht +9 für 3960.
+  Fronius: immer +3,2 (1320). Gateway Sigenergy 1200, Wallbox Sigenergy 1500.
   WICHTIG: "6+9 kWh Speicher" / "15 kWh" / "Reserva 12,6" / "18 kWh" ist KEINE speichererweiterung – das ist speicher (Gesamt).
 - Weitere freie Hinweise ohne Preisposition → offerNotes[].
 - Unbekannte Extrawünsche als customOptions (mit hint) oder offerNotes – nichts erfinden, nur Übernehmen was gesagt wurde.
-- clarifications: leeres Array [], wenn alles klar. Sonst 1–3 Objekte mit question + answers (2–6 Buttons).
-  answers[].text = kurzer deutscher Nachtrag fürs Befehlsfeld (kein ganzes Angebot neu schreiben).
-  answers[].label = max. ~28 Zeichen für den Button.
+- clarifications: leeres Array [], wenn der Preis feststeht.
+  Eine Rückfrage NUR, wenn eine fehlende Zahl den Preis ändert und es keinen sinnvollen Standard gibt.
+  Beispiel: PV ohne Modulanzahl und ohne kWp. Marke ohne Angabe bleibt Sigenergy, Dach ohne Angabe bleibt Ziegel – dafür KEINE Rückfrage.
+  Sonst kein Objekt. answers[].text = kurzer deutscher Nachtrag. answers[].label = max. ~28 Zeichen.
 - contactType: telefonisch / schriftlich / null.
 - Erfinde keine Kundendaten.`;
 
@@ -182,9 +185,10 @@ function parseJsonFromLlm(text) {
   return JSON.parse(t);
 }
 
-async function chatCompletionJson(systemPrompt, userContent) {
+async function chatCompletionJson(systemPrompt, userContent, opts = {}) {
   const cfg = getLlmConfig();
   const provider = cfg.provider;
+  const maxTokens = Number(opts.maxTokens) > 0 ? Number(opts.maxTokens) : 1800;
 
   if (provider === 'anthropic') {
     if (!cfg.apiKey) throw new Error('Kein KI-API-Key gesetzt (Admin → KI-Einstellungen oder ANTHROPIC_API_KEY in .env)');
@@ -193,12 +197,15 @@ async function chatCompletionJson(systemPrompt, userContent) {
     const model = cfg.model || 'claude-haiku-4-5-20251001';
     const response = await client.messages.create({
       model,
-      max_tokens: 1800,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     });
     const block = response.content.find((b) => b.type === 'text');
-    return block ? block.text : '';
+    const text = block ? block.text : '';
+    const truncated = response.stop_reason === 'max_tokens';
+    if (opts.returnMeta) return { text, truncated };
+    return text;
   }
 
   const base = (cfg.baseUrl || DEEPSEEK_BASE_URL).replace(/\/$/, '');
@@ -210,7 +217,7 @@ async function chatCompletionJson(systemPrompt, userContent) {
   const body = {
     model,
     temperature: 0.1,
-    max_tokens: 1800,
+    max_tokens: maxTokens,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent },
@@ -230,7 +237,10 @@ async function chatCompletionJson(systemPrompt, userContent) {
     const msg = data.error?.message || JSON.stringify(data);
     throw new Error(`LLM HTTP ${res.status}: ${msg}`);
   }
-  return data.choices?.[0]?.message?.content || '';
+  const text = data.choices?.[0]?.message?.content || '';
+  const truncated = data.choices?.[0]?.finish_reason === 'length';
+  if (opts.returnMeta) return { text, truncated };
+  return text;
 }
 
 function bool(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
@@ -728,8 +738,8 @@ function heuristicAnswersForQuestion(question) {
   }
   if (/speicher|upgrade|kwh|reserva/.test(q)) {
     return [
-      { label: 'Sig 6+9', text: 'Speicher 15 kWh (6+9 Sigenergy)' },
-      { label: 'Sig 2×9', text: 'Speicher 18 kWh (2×9 Sigenergy)' },
+      { label: 'Sig 6+10', text: 'Speicher 16 kWh (6+10 Sigenergy)' },
+      { label: 'Sig 2×10', text: 'Speicher 20 kWh (2×10 Sigenergy)' },
       { label: 'Fronius 9,5', text: 'Fronius Reserva 9,5 kWh' },
       { label: 'Fronius 12,6', text: 'Fronius Reserva 12,6 kWh' },
       { label: 'Fronius 15,8', text: 'Fronius Reserva 15,8 kWh' },
@@ -816,6 +826,98 @@ function normalizeClarifications(rawList) {
   return out;
 }
 
+function extractKwpFromText(text) {
+  const m = String(text || '').match(/(\d+(?:[.,]\d+)?)\s*k\s*wp\b/i);
+  if (!m) return null;
+  const n = Number(String(m[1]).replace(',', '.'));
+  return Number.isFinite(n) && n > 0 && n < 200 ? n : null;
+}
+
+function extractModuleCountFromText(text) {
+  const segs = extractDachSegmenteFromText(text);
+  if (segs.length) {
+    const sum = segs.reduce((a, s) => a + (Number(s.modules) || 0), 0);
+    if (sum > 0) return sum;
+  }
+  const m = String(text || '').match(/(\d+)\s*(?:pv[-\s]*)?(?:module|paneele|panels?)\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 && n < 500 ? n : null;
+}
+
+function extractCustomerFromText(text) {
+  const s = String(text || '');
+  const email = ((s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || '').toLowerCase();
+  const phoneMatch = s.match(/(?:\+43|0043|0)\s*(?:\(?0?\)?[\s/-]*)?\d[\d\s/-]{5,}/);
+  const phone = phoneMatch ? phoneMatch[0].replace(/\s+/g, ' ').trim() : '';
+  const zipCity = s.match(/\b(\d{4})\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-]+){0,2})/);
+  const streetMatch = s.match(/([^\n,]{2,60}?(?:straße|strasse|gasse|weg|platz|allee|ring))\s+(\d+\s*[a-zA-Z]?)/i);
+  let vorname = '';
+  let nachname = '';
+  const named = s.match(/\b(?:Herr|Frau|Kunde|Kundin)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+)/);
+  if (named) {
+    vorname = named[1];
+    nachname = named[2];
+  } else {
+    const line = s.split(/\n/).map((l) => l.trim()).find((l) => /^[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+$/.test(l));
+    if (line) {
+      const parts = line.split(/\s+/);
+      vorname = parts.slice(0, -1).join(' ');
+      nachname = parts[parts.length - 1];
+    }
+  }
+  const name = [vorname, nachname].filter(Boolean).join(' ');
+  return {
+    vorname,
+    nachname,
+    name,
+    street: streetMatch ? `${streetMatch[1].trim()} ${streetMatch[2].trim()}` : '',
+    zip: zipCity ? zipCity[1] : '',
+    city: zipCity ? zipCity[2] : '',
+    email,
+    phone,
+  };
+}
+
+function filterPriceClarifications(list, ctx) {
+  const missingModules = !!(ctx && ctx.missingModules);
+  const missingKlima = !!(ctx && ctx.missingKlima);
+  return (Array.isArray(list) ? list : []).filter((item) => {
+    if (!item) return false;
+    const q = `${item.id || ''} ${item.question || ''}`.toLowerCase();
+    if (item.id === 'klima_package' || /klimapaket|welches klima/.test(q)) return missingKlima;
+    if (item.id === 'pv_modules' || /modul|paneel|\bkwp\b/.test(q)) return missingModules;
+    return false;
+  });
+}
+
+function draftOfferFromText(text) {
+  const customer = extractCustomerFromText(text);
+  const normalized = normalizeOffer({
+    customer,
+    requirements: {
+      includePv: true,
+      module_count: extractModuleCountFromText(text),
+      kwp: extractKwpFromText(text),
+      speicher: extractSpeicherKwhFromText(text),
+      brutto_preis: extractBruttoFromText(text),
+    },
+    clarifications: [],
+  }, text);
+  if (!normalized.requirements.brutto_preis) {
+    normalized.requirements.brutto_preis = extractBruttoFromText(text);
+  }
+  normalized.draftFromText = true;
+  return normalized;
+}
+
+function unwrapModelResult(out) {
+  if (out && typeof out === 'object' && Object.prototype.hasOwnProperty.call(out, 'text')) {
+    return { text: String(out.text || ''), truncated: !!out.truncated };
+  }
+  return { text: String(out == null ? '' : out), truncated: false };
+}
+
 function normalizeOffer(raw, sourceText = '') {
   const r = raw && typeof raw === 'object' ? raw : {};
   const c = r.customer && typeof r.customer === 'object' ? r.customer : {};
@@ -871,15 +973,7 @@ function normalizeOffer(raw, sourceText = '') {
     includePv = bool(includePv);
   }
 
-  if (includePv && !numOrNull(req.module_count) && !numOrNull(req.kwp) && klima.wanted) {
-    clarificationsRaw.push({
-      id: 'pv_modules',
-      question: 'Wie viele PV-Module (oder welche kWp) sollen im Kombi-Angebot enthalten sein?',
-      answers: heuristicAnswersForQuestion('PV Module kWp'),
-    });
-  }
-
-  const clarifications = normalizeClarifications(clarificationsRaw);
+  const clarificationsEarly = normalizeClarifications(clarificationsRaw);
 
   let dachSegmente = [];
   if (Array.isArray(req.dachSegmente)) {
@@ -907,6 +1001,22 @@ function normalizeOffer(raw, sourceText = '') {
     const sum = dachSegmente.reduce((a, s) => a + (Number(s.modules) || 0), 0);
     if (sum > 0) moduleCount = sum;
   }
+  const textModules = extractModuleCountFromText(sourceText);
+  const textKwp = extractKwpFromText(sourceText);
+  if (moduleCount == null && textModules != null) moduleCount = textModules;
+
+  const missingModules = !!(includePv && moduleCount == null && numOrNull(req.kwp) == null && textKwp == null);
+  const missingKlima = !!(klima.wanted && !klima.packageId);
+  if (missingModules && !clarificationsEarly.some((c) => c.id === 'pv_modules')) {
+    clarificationsEarly.push({
+      id: 'pv_modules',
+      question: 'Wie viele PV-Module (oder welche kWp) sollen ins Angebot?',
+      answers: heuristicAnswersForQuestion('PV Module kWp'),
+    });
+  }
+  const clarifications = filterPriceClarifications(clarificationsEarly, { missingModules, missingKlima });
+  let dach = str(req.dach) || (dachSegmente[0] && dachSegmente[0].dach) || null;
+  if (includePv && !dach) dach = 'Ziegel';
 
   let inverterKw = numOrNull(req.inverter_kw != null ? req.inverter_kw : req.inverterKw);
   const fromInvText = extractInverterKwFromText(sourceText);
@@ -955,11 +1065,11 @@ function normalizeOffer(raw, sourceText = '') {
     requirements: {
       includePv,
       brand: resolvedBrand,
-      kwp: numOrNull(req.kwp),
+      kwp: numOrNull(req.kwp) != null ? numOrNull(req.kwp) : textKwp,
       module_count: moduleCount,
       speicher: speicherKwh,
       brutto_preis: parseMoneyLike(req.brutto_preis),
-      dach: str(req.dach) || (dachSegmente[0] && dachSegmente[0].dach) || null,
+      dach,
       dachSegmente,
       moduleType: str(req.moduleType).toLowerCase() === 'aiko' ? 'aiko' : 'das',
       inverter_kw: inverterKw,
@@ -977,12 +1087,27 @@ function normalizeOffer(raw, sourceText = '') {
   };
 }
 
-async function parseOfferCommand(commandText) {
+async function parseOfferCommand(commandText, deps = {}) {
   const text = String(commandText || '').trim();
   if (!text) throw new Error('Kein Text/Sprachbefehl übergeben');
-  const out = await chatCompletionJson(SYSTEM_PROMPT_OFFER, text);
-  const raw = parseJsonFromLlm(out);
-  const normalized = normalizeOffer(raw, text);
+  const complete = typeof deps.complete === 'function'
+    ? deps.complete
+    : ((sys, user) => chatCompletionJson(sys, user, { maxTokens: 8192, returnMeta: true }));
+  let modelText = '';
+  const first = unwrapModelResult(await complete(SYSTEM_PROMPT_OFFER, text, { attempt: 1 }));
+  if (first.truncated) {
+    const retryUser = `${text}\n\nDie vorige Antwort wurde abgeschnitten. Antworte erneut nur mit dem vollständigen JSON.`;
+    const second = unwrapModelResult(await complete(SYSTEM_PROMPT_OFFER, retryUser, { attempt: 2 }));
+    modelText = second.text;
+  } else {
+    modelText = first.text;
+  }
+  let normalized;
+  try {
+    normalized = normalizeOffer(parseJsonFromLlm(modelText), text);
+  } catch (_) {
+    normalized = draftOfferFromText(text);
+  }
   if (!normalized.requirements.brutto_preis) {
     normalized.requirements.brutto_preis = extractBruttoFromText(text);
   }
@@ -998,4 +1123,9 @@ module.exports = {
   extractDachSegmenteFromText,
   extractInverterKwFromText,
   extractSpeicherKwhFromText,
+  extractModuleCountFromText,
+  extractKwpFromText,
+  extractCustomerFromText,
+  draftOfferFromText,
+  filterPriceClarifications,
 };

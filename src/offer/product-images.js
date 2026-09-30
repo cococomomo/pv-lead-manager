@@ -131,6 +131,8 @@ function buildComponentCards(offer) {
         image: guessImageForItem(item.name, brand),
         section: sectionTitle,
         kind: classifyKind(item.name, sectionTitle),
+        leistungKey: item.leistungKey || null,
+        role: item.role || null,
       });
     }
   }

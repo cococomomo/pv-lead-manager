@@ -105,6 +105,8 @@ function buildOfferFromBody(req, getProfile, body) {
     klima: cfg.klima,
     offerNotes: Array.isArray(cfg.offerNotes) ? cfg.offerNotes : undefined,
     offerNote: cfg.offerNote,
+    disabledLines: Array.isArray(cfg.disabledLines) ? cfg.disabledLines : undefined,
+    bruttoConfirm: cfg.bruttoConfirm && typeof cfg.bruttoConfirm === 'object' ? cfg.bruttoConfirm : undefined,
     layoutPlanId: cfg.layoutPlanId != null ? Number(cfg.layoutPlanId) : null,
     angebotsnummer,
     datum,
@@ -470,6 +472,13 @@ function mountOfferRoutes(app, deps) {
         body.angebotsnummer = formatOfferNumber(readCounter());
       }
       const { offer, angebotsnummer } = buildOfferFromBody(req, getProfile, body);
+      if (offer.preis && offer.preis.pdfBlocked) {
+        res.status(400).json({
+          error: offer.preis.pdfBlockReason
+            || 'Bitte den Bruttopreis bestätigen. Gestrichene Positionen ändern den Paketpreis nicht.',
+        });
+        return;
+      }
       const customer = customerFromBody(body);
       const leadIdNum = body.leadId != null ? Number(body.leadId) : null;
       const customerVersion = persist.peekNextCustomerVersion(

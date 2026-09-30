@@ -743,18 +743,37 @@ async function computeOfferBalance({ offer, customer, layoutPlan, layoutRow, hou
     }
   }
   const household = Number(householdKwh);
-  const annualLoad = Number.isFinite(household) && household > 0 ? household : 4500;
-  const weights = h0HourlyWeights(year);
-  const alignedWeights = weights.length === len ? weights : h0HourlyWeights(len > 8700 && len < 8800 ? 2023 : year);
-  const loadWeights = alignedWeights.length >= len ? alignedWeights.slice(0, len) : alignedWeights;
-  while (loadWeights.length < len) loadWeights.push(0);
-  const wSum = loadWeights.reduce((s, v) => s + v, 0) || 1;
-  const load = loadWeights.map((w) => annualLoad * (w / wSum));
-
-  const sim = simulateBattery(pv, load, {
-    capacityKwh: Number(cfg.speicher) || 0,
-    inverterAcKw: Number(cfg.inverterKw) || 0,
-  });
+  const consumptionEntered = Number.isFinite(household) && household > 0;
+  const presence = cfg.linePresence && typeof cfg.linePresence === 'object' ? cfg.linePresence : null;
+  const storageOn = !(presence && presence.storage === false);
+  const inverterOn = !(presence && presence.inverter === false);
+  let sim;
+  if (consumptionEntered) {
+    const annualLoad = household;
+    const weights = h0HourlyWeights(year);
+    const alignedWeights = weights.length === len ? weights : h0HourlyWeights(len > 8700 && len < 8800 ? 2023 : year);
+    const loadWeights = alignedWeights.length >= len ? alignedWeights.slice(0, len) : alignedWeights;
+    while (loadWeights.length < len) loadWeights.push(0);
+    const wSum = loadWeights.reduce((s, v) => s + v, 0) || 1;
+    const load = loadWeights.map((w) => annualLoad * (w / wSum));
+    sim = simulateBattery(pv, load, {
+      capacityKwh: storageOn ? (Number(cfg.speicher) || 0) : 0,
+      inverterAcKw: inverterOn ? (Number(cfg.inverterKw) || 0) : 0,
+    });
+  } else {
+    const pvR = Math.round(pv.reduce((s, v) => s + (Number(v) || 0), 0));
+    sim = {
+      annualYield: pvR,
+      household: 0,
+      direct: 0,
+      charge: 0,
+      discharge: 0,
+      feedIn: 0,
+      grid: 0,
+      autarky: null,
+      selfConsumption: null,
+    };
+  }
 
   const months = fetched[0].series.months && fetched[0].series.months.length === len
     ? fetched[0].series.months
@@ -792,6 +811,7 @@ async function computeOfferBalance({ offer, customer, layoutPlan, layoutRow, hou
     available: true,
     source,
     note,
+    consumptionEntered,
     orientationSource,
     site: site || null,
     ...sim,

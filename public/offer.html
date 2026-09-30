@@ -103,6 +103,12 @@
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.error { background: var(--danger); }
   .toast.ok { background: var(--good); }
+  .toast.hint { background: #3d4a5c; }
+  .quote-lines { margin-top: 0.7rem; max-height: 320px; overflow: auto; }
+  .quote-line { display: flex; justify-content: space-between; gap: 0.45rem; align-items: center; padding: 0.28rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+  .quote-line.off .quote-name { opacity: 0.55; text-decoration: line-through; }
+  .quote-line button { font-size: 0.72rem; padding: 0.15rem 0.4rem; }
+  .quote-note { margin-top: 0.45rem; font-size: 0.78rem; color: var(--text); }
   .variant-modal {
     position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.45);
     display: flex; align-items: center; justify-content: center; padding: 1rem;
@@ -495,7 +501,7 @@
       <div class="grid3" style="margin-top:0.7rem">
         <div>
           <label for="c-jahresverbrauch">Jahresverbrauch (kWh)</label>
-          <input id="c-jahresverbrauch" type="number" min="0" step="1" placeholder="4500" title="Leer = 4500 kWh im PDF" />
+          <input id="c-jahresverbrauch" type="number" min="0" step="1" placeholder="z. B. 4500" title="Leer = keine Haushalts- und Amortisationsseite" />
         </div>
         <div>
           <label for="c-strompreis">Strompreis (ct/kWh)</label>
@@ -506,7 +512,7 @@
           <input id="c-strompreissteigerung" type="number" min="0" step="0.1" placeholder="3" title="Leer = 3 % pro Jahr im PDF" />
         </div>
       </div>
-      <div class="hint">Leer lassen übernimmt die PDF-Vorgaben: 4500 kWh, 33 ct/kWh, 3 % pro Jahr.</div>
+      <div class="hint">Jahresverbrauch leer: keine Haushaltsfluss- und keine Amortisationsseite. Die Ertragsseite bleibt. Strompreis und Steigerung leer: 33 ct/kWh und 3 % pro Jahr, sobald ein Verbrauch eingetragen ist.</div>
     </div>
 
     <div class="panel">
@@ -577,7 +583,7 @@
         <button class="btn secondary" id="btn-add-dach" type="button">+ Dachfläche</button>
       </div>
 
-      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy: +6 / +9 kWh BAT · Fronius: +3,2 kWh)</span></label>
+      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy: +6,0 kWh / 2400 € und +10,0 kWh / 3600 € · Fronius: +3,2 kWh)</span></label>
       <div class="repeater" id="speicher-list"></div>
       <div class="btn-row" style="margin-top:0.4rem; align-items:center">
         <select id="se-size" style="max-width:300px; flex:1"></select>
@@ -638,7 +644,10 @@
       <div class="grid2" style="margin-top:0.35rem">
         <div>
           <input id="f-brutto" type="number" placeholder="auto" title="Manueller Gesamtpreis brutto – überschreibt die Kalkulation" />
-          <div class="hint">Leer = automatische Kalkulation. Gilt für die aktive Variante (PV + Klima).</div>
+          <div class="btn-row" style="margin-top:0.4rem">
+            <button class="btn secondary" id="btn-confirm-brutto" type="button">Preis bestätigen</button>
+          </div>
+          <div class="hint">Leer = automatische Kalkulation. Nach einer gestrichenen Zeile das PDF erst nach Bestätigung hier – derselbe Betrag ist erlaubt.</div>
         </div>
       </div>
     </div>
@@ -676,6 +685,10 @@
         <div class="lbl" id="s-mwst-lbl">MwSt. (20,0 %)</div><div class="val" id="s-mwst">—</div>
         <div class="lbl brutto">Gesamt (Brutto)</div><div class="val brutto" id="s-brutto">—</div>
       </div>
+      <div class="quote-note" id="s-lines-note"></div>
+      <h3 style="margin:0.85rem 0 0.25rem;font-size:0.92rem">Stückliste</h3>
+      <div class="quote-lines" id="quote-lines"></div>
+      <div class="hint">Jede Zeile ist an, bis sie entfernt wird. Unterkonstruktion und Montage bleiben, bis sie selbst gestrichen werden. Der Paketpreis ändert sich dadurch nicht.</div>
       <div class="btn-row">
         <button class="btn dark" id="btn-finish-outlook" title="KI-E-Mail erzeugen, PDF inkl. Vollmacht (bei PV) laden und Outlook-Draft öffnen">Angebot fertigstellen → Outlook-Draft</button>
         <button class="btn" id="btn-preview">PDF-Vorschau aktualisieren</button>
@@ -2040,6 +2053,10 @@ function readForm() {
     klima: readKlimaConfig(),
     offerNotes: ($('f-offer-notes').value || '').split('\n').map((s) => s.trim()).filter(Boolean),
     layoutPlanId: currentLayoutId != null ? Number(currentLayoutId) : null,
+    disabledLines: disabledLines.slice(),
+    bruttoConfirm: bruttoConfirm
+      ? { ids: (bruttoConfirm.ids || []).slice(), amount: Number(bruttoConfirm.amount) }
+      : null,
   };
 }
 
@@ -2084,6 +2101,10 @@ function writeForm(cfg) {
   applyOptionsToRows(cfg.optionen || []);
   applyKlimaConfig(cfg.klima);
   $('f-offer-notes').value = Array.isArray(cfg.offerNotes) ? cfg.offerNotes.join('\n') : (cfg.offerNotes || '');
+  disabledLines = Array.isArray(cfg.disabledLines) ? cfg.disabledLines.map(String) : [];
+  bruttoConfirm = cfg.bruttoConfirm && typeof cfg.bruttoConfirm === 'object'
+    ? { ids: (cfg.bruttoConfirm.ids || []).map(String), amount: Number(cfg.bruttoConfirm.amount) }
+    : null;
   syncPvKlimaVisibility();
 }
 
@@ -2135,6 +2156,8 @@ function emptyVariantConfig() {
     klima: { enabled: false },
     offerNotes: [],
     layoutPlanId: null,
+    disabledLines: [],
+    bruttoConfirm: null,
   };
 }
 
@@ -2729,12 +2752,68 @@ let previewTimer = null;
 let previewObjectUrl = null;
 let previewInFlight = false;
 let previewQueued = false;
+let disabledLines = [];
+let bruttoConfirm = null;
+let lastPackageBrutto = null;
 
 function setPreviewStatus(msg, isError) {
   const el = $('pdf-preview-status');
   if (!el) return;
   el.textContent = msg || '';
   el.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+}
+
+function renderQuoteLines(offer) {
+  const box = $('quote-lines');
+  const note = $('s-lines-note');
+  if (!box) return;
+  const lines = (offer && offer.quoteLines) || [];
+  box.innerHTML = lines.map((line) => {
+    const off = line.active === false;
+    const label = off ? 'Wiederherstellen' : 'Entfernen';
+    return `<div class="quote-line${off ? ' off' : ''}" data-id="${escHtml(line.id)}">
+      <span class="quote-name">${escHtml(line.name)} <span style="color:var(--muted)">· ${escHtml(line.qty || '')}</span></span>
+      <button type="button" class="btn secondary" data-line-id="${escHtml(line.id)}" data-on="${off ? '0' : '1'}">${label}</button>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('button[data-line-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-line-id');
+      const on = btn.getAttribute('data-on') === '1';
+      if (on) {
+        if (!disabledLines.includes(id)) disabledLines.push(id);
+      } else {
+        disabledLines = disabledLines.filter((x) => x !== id);
+      }
+      bruttoConfirm = null;
+      compute();
+    });
+  });
+  if (!note) return;
+  const removed = (offer && offer.preis && offer.preis.removedLineLabels) || [];
+  if (!removed.length) {
+    note.textContent = '';
+    return;
+  }
+  if (offer.preis && offer.preis.pdfBlocked) {
+    note.textContent = `Nicht enthalten: ${removed.join(', ')}. Der Preis ist noch der Paketpreis, bis er im Brutto-Feld bestätigt ist.`;
+  } else {
+    note.textContent = `Nicht enthalten: ${removed.join(', ')}. Der bestätigte Preis bleibt der Paketpreis, sofern er nicht geändert wurde.`;
+  }
+}
+
+function invalidateBruttoConfirm() {
+  if (!bruttoConfirm) return;
+  const amount = $('f-brutto').value.trim() === '' ? null : Number($('f-brutto').value);
+  if (amount !== Number(bruttoConfirm.amount)) bruttoConfirm = null;
+}
+
+function setPdfBlocked(blocked, reason) {
+  ['btn-preview', 'btn-download', 'btn-finish-outlook'].forEach((id) => {
+    const el = $(id);
+    if (el) el.disabled = !!blocked;
+  });
+  if (blocked) setPreviewStatus(reason || 'Bitte den Bruttopreis bestätigen.', false);
 }
 
 function compute() {
@@ -2767,6 +2846,10 @@ function compute() {
       $('s-mwst').textContent = o.preis.mwstFmt;
       $('s-mwst-lbl').textContent = `MwSt. (${(o.preis.mwstRate * 100).toFixed(1).replace('.', ',')} %)`;
       $('s-brutto').textContent = o.preis.bruttoFmt;
+      lastPackageBrutto = o.preis && o.preis.packageBrutto != null ? o.preis.packageBrutto : (o.preis && o.preis.brutto);
+      renderQuoteLines(o);
+      const blocked = !!(o.preis && o.preis.pdfBlocked);
+      setPdfBlocked(blocked, o.preis && o.preis.pdfBlockReason);
       if ($('f-inverter') && $('f-inverter').value === '' && o.config && o.config.inverter && o.config.inverter !== '—') {
         const el = $('f-inverter-meta');
         if (el) {
@@ -2775,7 +2858,12 @@ function compute() {
         }
       }
       if (j.angebotsnummer && !$('f-nummer').value.trim()) $('f-nummer').value = j.angebotsnummer;
-      schedulePreviewRefresh();
+      if (o.preis && o.preis.pdfBlocked) {
+        const frame = $('pdf-frame');
+        if (frame) frame.removeAttribute('src');
+      } else {
+        schedulePreviewRefresh();
+      }
     } catch (e) { /* still tippen */ }
   }, 300);
 }
@@ -2880,10 +2968,6 @@ async function parseCommand() {
     if (c.phone) $('c-phone').value = c.phone;
     const r = j.requirements || {};
     showClarifications(j.clarifications || []);
-    if (j.needsClarification) {
-      toast('KI braucht noch Angaben – bitte Rückfragen klären.', 'error');
-      // Kundendaten trotzdem übernehmen, Konfiguration nur soweit klar
-    }
     const aiOpt = r.optionen || {};
     let optionen = Array.isArray(r.optionenList) ? r.optionenList.slice() : [];
     if (!optionen.length) {
@@ -2953,6 +3037,7 @@ async function parseCommand() {
       const price = (Number(o.price) > 0) ? Number(o.price) : (mc > 0 ? unit * mc : 0);
       return Object.assign({}, o, {
         key: 'optimierer',
+        label: 'Optimierer (1 pro Modul)',
         mode: o.mode === 'optional' ? 'optional' : 'fix',
         price,
         hint: o.hint || 'Ein Optimierer pro Modul für optimale Leistung.',
@@ -2970,9 +3055,13 @@ async function parseCommand() {
     if (cfg.includePv !== false && cfg.speicher) await applySpeicherTarget(cfg.speicher);
     saveActiveVariant();
     compute();
-    if (!j.needsClarification) {
+    genEmailText().catch(() => {});
+    if (j.draftFromText) {
+      toast('Hinweis: die Antwort war unvollständig. Der Entwurf kommt aus dem Text.', 'hint');
+    } else if (j.needsClarification) {
+      toast('Hinweis: eine Angabe fehlt noch. Der Entwurf ist trotzdem angelegt.', 'hint');
+    } else {
       toast('KI-Analyse übernommen. Bitte Werte prüfen.', 'ok');
-      genEmailText().catch(() => {});
     }
   } catch (e) { toast('KI-Fehler: ' + e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Mit KI analysieren'; }
@@ -3439,9 +3528,27 @@ async function init() {
   ['f-speicher', 'f-inverter', 'f-brutto', 'f-offer-notes'].forEach((id) => {
     $(id).addEventListener('change', () => {
       if (id === 'f-speicher') updateSpeicherCompositionHint();
+      if (id === 'f-brutto') invalidateBruttoConfirm();
       compute();
     });
-    $(id).addEventListener('input', compute);
+    $(id).addEventListener('input', () => {
+      if (id === 'f-brutto') invalidateBruttoConfirm();
+      compute();
+    });
+  });
+  $('btn-confirm-brutto').addEventListener('click', () => {
+    const field = $('f-brutto');
+    if (String(field.value).trim() === '' && lastPackageBrutto != null && Number.isFinite(Number(lastPackageBrutto))) {
+      field.value = String(lastPackageBrutto);
+    }
+    const amount = Number(field.value);
+    if (!Number.isFinite(amount)) {
+      toast('Bitte den Bruttopreis eintragen.', 'error');
+      return;
+    }
+    bruttoConfirm = { ids: disabledLines.slice().sort(), amount };
+    toast('Preis bestätigt.', 'ok');
+    compute();
   });
   // Preis-/Hinweisänderungen in Optionen-Zeilen live übernehmen
   $('opts').addEventListener('input', (e) => {

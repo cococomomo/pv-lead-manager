@@ -211,7 +211,7 @@ const OPTIONS = {
   notstrom: { label: 'Notstrom / Gateway / Umschaltbox', price: 1500 },
   wallbox: { label: 'Wallbox 11 kW', price: 1800 },
   speichererweiterung: { label: 'Speichererweiterung (Sigenergy +6,0/+10,0 kWh · Fronius +3,2 kWh)', price: 2400 },
-  optimierer: { label: 'Optimierer Huawei (1 pro Modul)', price: 50, perModule: true },
+  optimierer: { label: 'Optimierer (1 pro Modul)', price: 50, perModule: true },
   ueberspannungsschutz: { label: 'Überspannungsschutz', price: 400 },
   lasttrennschalter: { label: 'Lasttrennschalter', price: 150 },
   fi_schalter: { label: 'FI-Zusatzschutz', price: 180 },
@@ -242,7 +242,7 @@ function brandOptionPrice(brand, key) {
 
 // Komponentennamen für die Stückliste, wenn eine Option FIX ins Angebot kommt.
 const OPTION_COMPONENT_NAMES = {
-  optimierer: 'Optimierer Huawei',
+  optimierer: 'Optimierer (1 pro Modul)',
   ueberspannungsschutz: 'Überspannungsschutz (Typ I+II)',
   lasttrennschalter: 'Lasttrennschalter',
   fi_schalter: 'FI-Zusatzschutz',
@@ -998,7 +998,7 @@ function resolveOptimiererOption(o, moduleCount) {
     || 'Ein Optimierer pro Modul für optimale Leistung.';
   return {
     key: 'optimierer',
-    label: String((o && o.label) || OPTIONS.optimierer.label).trim() || OPTIONS.optimierer.label,
+    label: OPTIONS.optimierer.label,
     price,
     hint,
     qty: n,
@@ -1466,6 +1466,90 @@ function formatEUR(n) {
   }).format(Number(n) || 0);
 }
 
+const QUOTE_SERVICE_DEFS = [
+  { id: 'svc:installation', leistungKey: 'installation', name: 'Installation (AC- und DC-seitig, Montage Unterkonstruktion & Module)' },
+  { id: 'svc:netzanschluss', leistungKey: 'netzanschluss', name: 'Netzanschluss (Standard Wien / NÖ + Wiener Netze)' },
+  { id: 'svc:verdrahtung', leistungKey: 'verdrahtung', name: 'Verdrahtung Verteiler' },
+  { id: 'svc:erdung', leistungKey: 'erdung', name: 'Erdung / Anbindung Potenzialausgleich' },
+  { id: 'svc:inbetriebnahme', leistungKey: 'inbetriebnahme', name: 'Erstinbetriebnahme, Testlauf und Einschulung' },
+  { id: 'svc:einreichung', leistungKey: 'einreichung', name: 'Einreichung (Förderung, Netze & Gemeinde)' },
+  { id: 'svc:ebefund', leistungKey: 'ebefund', name: 'E-Befund PV nach ÖVE E8001-4-712' },
+];
+
+function normalizeDisabledLineIds(config) {
+  const raw = config && (config.disabledLines || config.removedLineIds);
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((id) => String(id || '').trim()).filter(Boolean))];
+}
+
+function quoteItem(partial, disabled) {
+  const id = String(partial.id);
+  return {
+    id,
+    role: partial.role,
+    section: partial.section,
+    name: partial.name,
+    desc: partial.desc || '',
+    qty: partial.qty || '1 Stück',
+    active: !disabled.has(id),
+    leistungKey: partial.leistungKey || null,
+  };
+}
+
+function groupActiveSections(lines) {
+  const order = [];
+  const map = new Map();
+  for (const line of lines) {
+    if (!line.active) continue;
+    if (!map.has(line.section)) {
+      map.set(line.section, []);
+      order.push(line.section);
+    }
+    map.get(line.section).push({
+      id: line.id,
+      role: line.role,
+      name: line.name,
+      desc: line.desc,
+      qty: line.qty,
+      active: true,
+      leistungKey: line.leistungKey,
+    });
+  }
+  return order.map((title) => ({ title, items: map.get(title) }));
+}
+
+function linePresenceFrom(lines) {
+  const on = (role) => lines.some((l) => l.role === role && l.active);
+  return {
+    module: on('module'),
+    inverter: on('inverter'),
+    unterkonstruktion: on('unterkonstruktion'),
+    storage: on('storage'),
+    meter: on('meter'),
+    service: on('service'),
+    optimierer: on('optimierer'),
+    notstrom: on('notstrom'),
+  };
+}
+
+function priceConfirmMatches(config, disabledIds) {
+  if (!disabledIds.length) return true;
+  const confirm = config && config.bruttoConfirm;
+  if (!confirm || typeof confirm !== 'object') return false;
+  const ids = disabledIds.slice().sort();
+  const known = new Set(ids);
+  const got = (Array.isArray(confirm.ids) ? confirm.ids : [])
+    .map((id) => String(id))
+    .filter((id) => known.has(id))
+    .sort();
+  if (got.length !== ids.length || got.some((id, i) => id !== ids[i])) return false;
+  const amount = Number(confirm.amount);
+  const field = config.bruttoOverride != null && config.bruttoOverride !== ''
+    ? Number(config.bruttoOverride)
+    : NaN;
+  return Number.isFinite(amount) && Number.isFinite(field) && amount === field;
+}
+
 /**
  * Hauptberechnung: nimmt eine Konfiguration und liefert das vollständige
  * Angebotsobjekt (Konfig-Karte, Stückliste, Summen, optionale Komponenten).
@@ -1763,66 +1847,101 @@ function computeOffer(config) {
   }
   brutto += klimaSumme;
   if (klimaSumme) brutto = roundEuro(brutto);
+  const packageBrutto = brutto;
   if (config.bruttoOverride != null && config.bruttoOverride !== '' && Number.isFinite(Number(config.bruttoOverride))) {
     brutto = Number(config.bruttoOverride);
   }
   const netto = brutto / (1 + MWST_RATE);
   const mwst = brutto - netto;
 
-  const sections = [];
+  const disabled = new Set(normalizeDisabledLineIds(config));
+  const quoteLines = [];
+  const pushLine = (partial) => {
+    quoteLines.push(quoteItem(partial, disabled));
+  };
+
   if (includePv) {
-    const unterkonstruktion = (dachSegmente.length > 1)
-      ? dachSegmente.map((s) => ({ name: `Unterkonstruktion ${s.label}`, desc: 'ALU-Unterkonstruktion', qty: `${s.modules || 0} Stück` }))
-      : [{ name: `Unterkonstruktion ${dachLabel}`, desc: 'ALU-Unterkonstruktion', qty: `${moduleCount} Stück` }];
-
-    sections.push({
-      title: 'Photovoltaikanlage',
-      items: [
-        { name: mod.model, desc: mod.desc, qty: `${moduleCount} Stück` },
-        { name: (selectedInverter && selectedInverter.label) || config.inverterModel || inverterModel(brand, kwpCalculated, { moduleKwp: kwpCalculated, packageKwp: kwpPackage, acKw: config.inverterKw }),
-          desc: 'Wechselrichter | 10 Jahre Garantie',
-          qty: '1 Stück' },
-        ...unterkonstruktion,
-        { name: 'GAK Generatoranschlusskasten', desc: 'DC-Schutz Typ I+II, Erdung', qty: '2 Stück' },
-        { name: 'Kabelkanal und Alurohr', desc: 'Kabelführung', qty: '1 Stück' },
-        { name: 'Solarflex', desc: 'DC-Solarkabel, TÜV-zertifiziert', qty: '1 Stück' },
-        { name: 'MC Buchse', desc: 'Steckverbinder Typ 4', qty: '1 Stück' },
-        { name: 'MC Stecker', desc: 'Steckverbinder Typ 4', qty: '1 Stück' },
-        { name: 'Kleinmaterial', desc: '', qty: '1 Stück' },
-      ],
+    pushLine({
+      id: 'pv:module',
+      role: 'module',
+      section: 'Photovoltaikanlage',
+      name: mod.model,
+      desc: mod.desc,
+      qty: `${moduleCount} Stück`,
     });
-    sections.push({
-      title: 'Leistungen',
-      items: [
-        'Installation (AC- und DC-seitig, Montage Unterkonstruktion & Module)',
-        'Netzanschluss (Standard Wien / NÖ + Wiener Netze)',
-        'Verdrahtung Verteiler',
-        'Erdung / Anbindung Potenzialausgleich',
-        'Erstinbetriebnahme, Testlauf und Einschulung',
-        'Einreichung (Förderung, Netze & Gemeinde)',
-        'E-Befund PV nach ÖVE E8001-4-712',
-      ].map((name) => ({ name, desc: '', qty: '1 Stück' })),
+    pushLine({
+      id: 'pv:inverter',
+      role: 'inverter',
+      section: 'Photovoltaikanlage',
+      name: (selectedInverter && selectedInverter.label) || config.inverterModel || inverterModel(brand, kwpCalculated, { moduleKwp: kwpCalculated, packageKwp: kwpPackage, acKw: config.inverterKw }),
+      desc: 'Wechselrichter | 10 Jahre Garantie',
+      qty: '1 Stück',
+    });
+    const ukSegs = (dachSegmente.length > 1)
+      ? dachSegmente
+      : [{ label: dachLabel, modules: moduleCount }];
+    ukSegs.forEach((s, idx) => {
+      pushLine({
+        id: `pv:uk:${idx}`,
+        role: 'unterkonstruktion',
+        section: 'Photovoltaikanlage',
+        name: `Unterkonstruktion ${s.label}`,
+        desc: 'ALU-Unterkonstruktion',
+        qty: `${s.modules || 0} Stück`,
+      });
+    });
+    [
+      { id: 'pv:gak', name: 'GAK Generatoranschlusskasten', desc: 'DC-Schutz Typ I+II, Erdung', qty: '2 Stück' },
+      { id: 'pv:kabel', name: 'Kabelkanal und Alurohr', desc: 'Kabelführung', qty: '1 Stück' },
+      { id: 'pv:solarflex', name: 'Solarflex', desc: 'DC-Solarkabel, TÜV-zertifiziert', qty: '1 Stück' },
+      { id: 'pv:mc-buchse', name: 'MC Buchse', desc: 'Steckverbinder Typ 4', qty: '1 Stück' },
+      { id: 'pv:mc-stecker', name: 'MC Stecker', desc: 'Steckverbinder Typ 4', qty: '1 Stück' },
+      { id: 'pv:kleinmaterial', name: 'Kleinmaterial', desc: '', qty: '1 Stück' },
+    ].forEach((row) => {
+      pushLine({
+        id: row.id,
+        role: 'accessory',
+        section: 'Photovoltaikanlage',
+        name: row.name,
+        desc: row.desc,
+        qty: row.qty,
+      });
+    });
+    QUOTE_SERVICE_DEFS.forEach((def) => {
+      pushLine({
+        id: def.id,
+        role: 'service',
+        section: 'Leistungen',
+        leistungKey: def.leistungKey,
+        name: def.name,
+        desc: '',
+        qty: '1 Stück',
+      });
     });
 
-    const speicherItems = [];
     if (speicherGesamt) {
       if (brand === 'sigenergy') {
         // Nur physische 6,0-/10,0-kWh-BAT-Module ausweisen (Legacy-12 = 2×6)
         const breakdown = storageModuleBreakdown(brand, speicher, speicherBloecke);
-        for (const m of breakdown) {
-          speicherItems.push({
+        breakdown.forEach((m, idx) => {
+          pushLine({
+            id: `sto:${formatNum(m.kwh)}:${idx}`,
+            role: 'storage',
+            section: 'Energiespeicher',
             name: storageModel(brand, m.kwh),
             desc: `Stromspeicher ${formatNum(m.kwh)} kWh (SigenStor BAT) | 10 Jahre Garantie`,
             qty: `${m.qty} Stück`,
           });
-        }
+        });
       } else if (brand === 'fronius') {
-        // Reserva: einheitliche 3,2-kWh-Batteriemodule; Tower = 2–5 Module, max. 3 Tower
         const breakdown = storageModuleBreakdown(brand, speicher, speicherBloecke);
         const mods = breakdown[0] ? breakdown[0].qty : 0;
         if (mods > 0) {
           const towers = Math.ceil(mods / FRONIUS_MAX_MODULES_PER_TOWER);
-          speicherItems.push({
+          pushLine({
+            id: 'sto:fronius',
+            role: 'storage',
+            section: 'Energiespeicher',
             name: 'Fronius Reserva Batteriemodul (3,2 kWh)',
             desc: towers > 1
               ? `${mods} Module in ${towers} Speichertower (je max. ${FRONIUS_MAX_MODULES_PER_TOWER}) | LFP | 10 Jahre Garantie`
@@ -1831,85 +1950,136 @@ function computeOffer(config) {
           });
         }
       } else if (speicher) {
-        speicherItems.push({
+        pushLine({
+          id: 'sto:base',
+          role: 'storage',
+          section: 'Energiespeicher',
           name: storageModel(brand, speicher),
           desc: `Stromspeicher ${formatNum(speicher)} kWh | 10 Jahre Garantie`,
           qty: '1 Stück',
         });
-        for (const b of speicherBloecke) {
-          speicherItems.push({
+        speicherBloecke.forEach((b, idx) => {
+          pushLine({
+            id: `sto:block:${idx}`,
+            role: 'storage',
+            section: 'Energiespeicher',
             name: b.label,
             desc: `Speichererweiterung +${formatNum(b.kwh)} kWh | 10 Jahre Garantie`,
             qty: '1 Stück',
           });
-        }
+        });
       }
-      if (speicherItems.length) {
-        speicherItems.push({
+      if (quoteLines.some((l) => l.role === 'storage')) {
+        pushLine({
+          id: 'sto:meter',
+          role: 'meter',
+          section: 'Energiespeicher',
           name: smartMeterModel(brand),
           desc: 'Bidirektionaler Zähler / Eigenverbrauchsoptimierung',
           qty: '1 Stück',
         });
       }
     }
-    if (speicherItems.length) sections.push({ title: 'Energiespeicher', items: speicherItems });
 
-    const zusaetzlich = [];
-    for (const it of inkludiert) {
+    inkludiert.forEach((it, idx) => {
       const hintDesc = it.hint ? String(it.hint).trim() : '';
-      if (it.key === 'wallbox') zusaetzlich.push({ name: wallboxLabelComponent(brand), desc: hintDesc, qty: '1 Stück' });
-      else if (it.key === 'speichererweiterung') zusaetzlich.push({ name: it.label || speichererweiterungOption(brand).label, desc: hintDesc || 'Erweiterung der Speicherkapazität', qty: '1 Stück' });
-      else if (it.key === 'speicher_upgrade') zusaetzlich.push({ name: it.label, desc: hintDesc || 'Speicher-Upgrade (Preisdifferenz)', qty: '1 Stück' });
-      else if (it.key === 'notstrom') zusaetzlich.push({ name: notstromLabelOption(brand), desc: notstromComponentDesc(brand, it.hint), qty: '1 Stück' });
-      else if (it.key === 'optimierer') {
+      let name = it.label;
+      let desc = hintDesc;
+      let qty = '1 Stück';
+      let role = 'option';
+      if (it.key === 'wallbox') name = wallboxLabelComponent(brand);
+      else if (it.key === 'speichererweiterung') {
+        name = it.label || speichererweiterungOption(brand).label;
+        desc = hintDesc || 'Erweiterung der Speicherkapazität';
+      } else if (it.key === 'speicher_upgrade') {
+        desc = hintDesc || 'Speicher-Upgrade (Preisdifferenz)';
+      } else if (it.key === 'notstrom') {
+        name = notstromLabelOption(brand);
+        desc = notstromComponentDesc(brand, it.hint);
+        role = 'notstrom';
+      } else if (it.key === 'optimierer') {
         const q = it.qty != null ? Number(it.qty) : moduleCount;
-        zusaetzlich.push({
-          name: OPTION_COMPONENT_NAMES.optimierer || 'Optimierer',
-          desc: hintDesc || 'Ein Optimierer pro Modul für optimale Leistung.',
-          qty: `${Math.max(0, q)} Stück`,
-        });
+        name = OPTIONS.optimierer.label;
+        desc = hintDesc || 'Ein Optimierer pro Modul für optimale Leistung.';
+        qty = `${Math.max(0, q)} Stück`;
+        role = 'optimierer';
+      } else if (it.key && OPTION_COMPONENT_NAMES[it.key]) {
+        name = OPTION_COMPONENT_NAMES[it.key];
       }
-      else if (it.key && OPTION_COMPONENT_NAMES[it.key]) zusaetzlich.push({ name: OPTION_COMPONENT_NAMES[it.key], desc: hintDesc, qty: '1 Stück' });
-      else zusaetzlich.push({ name: it.label, desc: hintDesc, qty: '1 Stück' });
-    }
-    if (zusaetzlich.length) sections.push({ title: 'Zusätzliche Komponenten', items: zusaetzlich });
+      const idKey = it.key ? String(it.key) : `custom-${idx}`;
+      pushLine({
+        id: `opt:${idKey}:${idx}`,
+        role,
+        section: 'Zusätzliche Komponenten',
+        name,
+        desc,
+        qty,
+      });
+    });
   }
 
   const offerNotes = Array.isArray(config.offerNotes)
     ? config.offerNotes.map((n) => String(n || '').trim()).filter(Boolean)
     : (config.offerNote ? [String(config.offerNote).trim()].filter(Boolean) : []);
 
-  const klimaItems = [];
-  for (const k of klimaFix) {
+  klimaFix.forEach((k, kIdx) => {
     if (k.package) {
       const kp = k.package;
-      klimaItems.push({
+      pushLine({
+        id: `klima:${k.packageId || kIdx}:set`,
+        role: 'klima',
+        section: 'Klimageräte (LG STANDARD II)',
         name: k.label,
         desc: `${kp.brand} · Außen ${formatNum(kp.outdoorKw)} kW (${kp.outdoorModel}) · Innen ${formatKlimaIndoorSummary(kp)}`,
         qty: `${k.qty} Set`,
       });
-      for (const inn of kp.indoor || []) {
-        klimaItems.push({
+      (kp.indoor || []).forEach((inn, innIdx) => {
+        pushLine({
+          id: `klima:${k.packageId || kIdx}:in:${innIdx}`,
+          role: 'klima',
+          section: 'Klimageräte (LG STANDARD II)',
           name: `Innengerät ${formatNum(inn.kw)} kW${inn.model ? ` (${inn.model})` : ''}`,
           desc: 'Wandgerät LG STANDARD II',
           qty: `${(inn.qty || 1) * (k.qty || 1)} Stück`,
         });
-      }
-      klimaItems.push({
+      });
+      pushLine({
+        id: `klima:${k.packageId || kIdx}:out`,
+        role: 'klima',
+        section: 'Klimageräte (LG STANDARD II)',
         name: `Außengerät ${formatNum(kp.outdoorKw)} kW${kp.outdoorModel ? ` (${kp.outdoorModel})` : ''}`,
         desc: 'Außeneinheit LG STANDARD II',
         qty: `${k.qty} Stück`,
       });
-      klimaItems.push({
+      pushLine({
+        id: `klima:${k.packageId || kIdx}:leitung`,
+        role: 'klima',
+        section: 'Klimageräte (LG STANDARD II)',
         name: 'Kältemittelleitung & Montage',
         desc: `Inkl. bis ${KLIMA_EXTRAS.piping.includedMetersPerIndoor} m je Innengerät`,
         qty: '1 Pauschale',
       });
     } else {
-      klimaItems.push({ name: k.label, desc: k.desc || 'Klimazubehör', qty: `${k.qty || 1} Stück` });
+      pushLine({
+        id: `klima:extra:${kIdx}`,
+        role: 'klima',
+        section: 'Klimageräte (LG STANDARD II)',
+        name: k.label,
+        desc: k.desc || 'Klimazubehör',
+        qty: `${k.qty || 1} Stück`,
+      });
     }
-  }
-  if (klimaItems.length) sections.push({ title: 'Klimageräte (LG STANDARD II)', items: klimaItems });
+  });
+
+  const sections = groupActiveSections(quoteLines);
+  const linePresence = linePresenceFrom(quoteLines);
+  const removedLines = quoteLines.filter((l) => !l.active);
+  const removedIds = removedLines.map((l) => l.id).sort();
+  const pdfBlocked = removedIds.length > 0 && !priceConfirmMatches(config, removedIds);
+  const removedLineLabels = removedLines.map((l) => l.name);
+  const pdfBlockReason = pdfBlocked
+    ? `Nicht enthalten: ${removedLineLabels.join(', ')}. Der Preis ist noch der Paketpreis, bis er im Brutto-Feld bestätigt ist.`
+    : null;
 
   const hasKlimaAny = klimaFix.length + klimaOptional.length > 0;
   const offerKind = includePv && hasKlimaAny ? 'combo' : (hasKlimaAny && !includePv ? 'klima' : 'pv');
@@ -1955,12 +2125,15 @@ function computeOffer(config) {
         : null,
       inverterMeta: inverterMetaLine(selectedInverter),
       klima: klimaFix.concat(klimaOptional),
+      linePresence,
+      disabledLines: removedIds,
     },
     statCards: {
       peak: includePv ? formatNum(kwpCalculated) : null,
       speicher: speicherGesamt ? formatNum(speicherGesamt) : null,
     },
     sections,
+    quoteLines,
     optionaleKomponenten,
     offerNotes,
     klima: { fix: klimaFix, optional: klimaOptional },
@@ -1981,6 +2154,11 @@ function computeOffer(config) {
       mwst,
       mwstRate: MWST_RATE,
       bruttoOverride: config.bruttoOverride != null && config.bruttoOverride !== '' ? Number(config.bruttoOverride) : null,
+      packageBrutto,
+      packageBruttoFmt: formatEUR(packageBrutto),
+      pdfBlocked,
+      pdfBlockReason,
+      removedLineLabels,
       bruttoFmt: formatEUR(brutto),
       nettoFmt: formatEUR(netto),
       mwstFmt: formatEUR(mwst),

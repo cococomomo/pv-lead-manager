@@ -106,17 +106,24 @@ function resolveHouseDiagramSelection(offer) {
     && (Number(cfg.moduleCount) > 0 || Number(cfg.kwp) > 0 || Number(cfg.kwpCalculated) > 0
       || namesMatch(names, /modul|das-|aiko|photovoltaik|unterkonstruktion/));
 
-  const hasBattery = Number(cfg.speicher) > 0
-    || Number(cfg.speicherBasis) > 0
-    || Number(cfg.speicherGesamt) > 0
-    || namesMatch(names, /speicher|batter|reserva|sigenstor bat|\bbat\b/);
+  const presence = cfg.linePresence && typeof cfg.linePresence === 'object' ? cfg.linePresence : null;
+  const hasBattery = presence
+    ? !!presence.storage
+    : (Number(cfg.speicher) > 0
+      || Number(cfg.speicherBasis) > 0
+      || Number(cfg.speicherGesamt) > 0
+      || namesMatch(names, /speicher|batter|reserva|sigenstor bat|\bbat\b/));
 
-  const hasInverter = hasPv
-    || !!(cfg.inverter)
-    || namesMatch(names, /wechselrichter|hybrid|inverter|gen24|sigenstor ec|sun2000/);
+  const hasInverter = presence
+    ? !!presence.inverter
+    : (hasPv
+      || !!(cfg.inverter)
+      || namesMatch(names, /wechselrichter|hybrid|inverter|gen24|sigenstor ec|sun2000/));
 
-  const hasNotstrom = inkl.has('notstrom')
-    || namesMatch(names, /notstrom|umschalt|gateway|netztren|backup.?box/);
+  const hasNotstrom = presence
+    ? !!presence.notstrom
+    : (inkl.has('notstrom')
+      || namesMatch(names, /notstrom|umschalt|gateway|netztren|backup.?box/));
 
   const hasWallbox = inkl.has('wallbox')
     || namesMatch(names, /wallbox|wattpilot|e-?ladestation|ladestation/);

@@ -303,18 +303,13 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       y = startContentPage();
       y = drawGlancePage(doc, y, offer, eco);
 
-      // ── 5 PV + Belegungsplan (aktiv) + weitere Varianten ──
+      // ── 5 Belegungsplan nur, wenn ein Plan existiert ──
       const layoutPages = collectLayoutPages(opts);
-      if (cfg.includePv !== false && Number(cfg.moduleCount) > 0) {
-        if (!layoutPages.length) {
+      if (layoutPages.length && cfg.includePv !== false && Number(cfg.moduleCount) > 0) {
+        layoutPages.forEach((lp, idx) => {
           y = startContentPage();
-          y = drawPvIntroPage(doc, y, offer, eco, null);
-        } else {
-          layoutPages.forEach((lp, idx) => {
-            y = startContentPage();
-            y = drawPvIntroPage(doc, y, offer, eco, lp, idx === 0);
-          });
-        }
+          y = drawPvIntroPage(doc, y, offer, eco, lp, idx === 0);
+        });
       }
 
       // ── 6 VERBAUTE KOMPONENTEN (PV) ──
@@ -334,22 +329,22 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       // Der Ertragsblock (Diagramm ~260 pt) passt selten unter die Leistungen.
       // Dann bleibt die Seite bei den Leistungen und die Ertragsberechnung beginnt danach.
       const ERTRAG_BLOCK_MIN = 470;
-      if (groups.services.length) {
+      const leistungen = activeLeistungen(groups.services);
+      if (leistungen.length) {
         y = startContentPage();
-        y = drawLeistungenBlock(doc, y);
+        y = drawLeistungenBlock(doc, y, groups.services);
         if (y + ERTRAG_BLOCK_MIN > CONTENT_BOTTOM) y = startContentPage();
       } else {
         y = startContentPage();
       }
       y = drawErtragPage(doc, y, eco);
 
-      // ── 9 Haushalt ──
-      y = startContentPage();
-      y = drawHaushaltPage(doc, y, eco);
-
-      // ── 10 Wirtschaftlichkeit ──
-      y = startContentPage();
-      y = drawWirtschaftPage(doc, y, eco);
+      if (eco.consumptionEntered) {
+        y = startContentPage();
+        y = drawHaushaltPage(doc, y, eco);
+        y = startContentPage();
+        y = drawWirtschaftPage(doc, y, eco);
+      }
 
       // ── Abschluss (großzügig, i. d. R. 2 Seiten): Liste → Preis+Optionals+Unterschrift ──
       y = startContentPage();
@@ -833,40 +828,55 @@ function drawStorageSection(doc, y, cards, eco, startContentPage) {
 /** Wortlaut der Useini-Vorlage, unmittelbar vor der Ertragsberechnung. Keine Produktfotos. */
 const LEISTUNGEN_ITEMS = [
   {
+    key: 'installation',
     title: 'Installation',
     body: 'Installation der Anlage AC und DC-Seitig. Montage der gesamten Unterkonstruktion inkl. der Module auf der dafür vorgesehene Dachfläche. Inkl dem Verlegen der Stringkabel von den Modulen bis zum Wechselrichter. Montage der Wechselrichter, Anschließen des Wechselrichters an die bestehende Hausstromversorgung im Sicherungskasten',
   },
   {
+    key: 'netzanschluss',
     title: 'Netzanschluss',
     body: 'Netzanschluss Standard Wien (NÖ + Wiener Netze)',
   },
   {
+    key: 'verdrahtung',
     title: 'Verdrahtung Verteiler',
     body: 'Verdrahtung diverse Verteiler',
   },
   {
+    key: 'erdung',
     title: 'Erdung',
     body: 'Anbindung der Photovoltaikanlage an den vorhandenen Blitzschutz oder Erdung der Anlage an den vorhandene Potenzialausgeleichschiene',
   },
   {
+    key: 'inbetriebnahme',
     title: 'Erstinbetriebnahme',
     body: 'Inbetriebnahme, Testlauf und Einschulung',
   },
   {
+    key: 'einreichung',
     title: 'Einreichung',
     body: 'Einreichung der Unterlagen für die Förderung, Netze & Gemeinde',
   },
   {
+    key: 'ebefund',
     title: 'E-Befund PV',
     body: 'E-Befund PV nach ÖVE E8001-4-712',
   },
 ];
 
-function drawLeistungenBlock(doc, y) {
+function activeLeistungen(serviceCards) {
+  const cards = Array.isArray(serviceCards) ? serviceCards : [];
+  const keys = new Set(cards.map((c) => c && c.leistungKey).filter(Boolean));
+  if (!keys.size) return [];
+  return LEISTUNGEN_ITEMS.filter((item) => keys.has(item.key));
+}
+
+function drawLeistungenBlock(doc, y, serviceCards) {
   doc.font(F.bold).fontSize(13).fillColor(COLORS.softMuted)
     .text('UNSERE LEISTUNGEN', MARGIN, y, { characterSpacing: 0.6 });
   y = doc.y + 14;
-  LEISTUNGEN_ITEMS.forEach((item, i) => {
+  const items = activeLeistungen(serviceCards);
+  items.forEach((item, i) => {
     const numR = 9;
     doc.save().circle(MARGIN + numR, y + numR, numR).lineWidth(1.1).strokeColor(COLORS.text).stroke().restore();
     doc.font(F.bold).fontSize(9.5).fillColor(COLORS.text)
@@ -1504,6 +1514,17 @@ function drawDatasheetsPage(doc, y, sheets) {
   return y;
 }
 
+function pdfPageFlags({ hasLayout, consumptionEntered, serviceCount } = {}) {
+  const services = Number(serviceCount) || 0;
+  return {
+    layout: !!hasLayout,
+    leistungen: services > 0,
+    yield: true,
+    household: !!consumptionEntered,
+    amortization: !!consumptionEntered,
+  };
+}
+
 function collectLayoutPages(opts) {
   const pages = [];
   const seen = new Set();
@@ -1584,6 +1605,8 @@ module.exports = {
   DEFAULT_BULLETS,
   DEFAULT_INTRO,
   collectLayoutPages,
+  activeLeistungen,
+  pdfPageFlags,
   resolveSalesPhotoPath,
   salesPhotoMetaForUsername,
   findNewestSalesPhotoAbs,

@@ -195,10 +195,10 @@ function buildOverviewLine(offer) {
   }
 
   const parts = [];
-  if (cfg.kwpLabel) {
+  if (cfg.kwpLabel && roleActive(offer, 'module')) {
     parts.push(`${deNum(cfg.kwpLabel)}${cfg.moduleCount ? ` (${cfg.moduleCount} Module)` : ''}`);
   }
-  if (cfg.speicher) {
+  if (cfg.speicher && roleActive(offer, 'storage')) {
     parts.push(`${deNum(cfg.speicherLabel)} ${cfg.brandLabel || 'Sigenergy'}-Speicher`);
   }
   let line = parts.filter(Boolean).join(' + ');
@@ -217,8 +217,8 @@ function buildSubject(offer) {
     return `Ihr Klima-Angebot: ${klimaShort}`;
   }
   const bits = [];
-  if (cfg.kwpLabel) bits.push(deNum(cfg.kwpLabel));
-  if (cfg.speicher) bits.push(`${deNum(cfg.speicherLabel || `${cfg.speicher} kWh`)} Speicher`);
+  if (cfg.kwpLabel && roleActive(offer, 'module')) bits.push(deNum(cfg.kwpLabel));
+  if (cfg.speicher && roleActive(offer, 'storage')) bits.push(`${deNum(cfg.speicherLabel || `${cfg.speicher} kWh`)} Speicher`);
   if (kind === 'combo') bits.push('Klima');
   const mid = bits.length ? bits.join(' + ') : 'Photovoltaik';
   const prefix = kind === 'combo' ? 'Ihr PV- & Klima-Angebot' : 'Ihr PV-Angebot';
@@ -229,6 +229,19 @@ function offerProductLabel(kind) {
   if (kind === 'klima') return 'Ihre Klimaanlage';
   if (kind === 'combo') return 'Ihre Photovoltaikanlage und Klimaanlage';
   return 'Ihre Photovoltaikanlage';
+}
+
+function roleActive(offer, role) {
+  const lines = offer && offer.quoteLines;
+  if (!Array.isArray(lines) || !lines.length) return true;
+  return lines.some((l) => l && l.role === role && l.active !== false);
+}
+
+function lineIdActive(offer, id) {
+  const lines = offer && offer.quoteLines;
+  if (!Array.isArray(lines) || !lines.length) return true;
+  const line = lines.find((l) => l && l.id === id);
+  return !!(line && line.active !== false);
 }
 
 function formatUnterkonstruktionBullet(offer) {
@@ -246,6 +259,9 @@ function formatUnterkonstruktionBullet(offer) {
 }
 
 function hasFixOptimierer(offer) {
+  if (Array.isArray(offer && offer.quoteLines) && offer.quoteLines.length && !roleActive(offer, 'optimierer')) {
+    return false;
+  }
   const inkl = (offer.preis && Array.isArray(offer.preis.inkludiert)) ? offer.preis.inkludiert : [];
   if (inkl.some((it) => it && (it.key === 'optimierer' || /optimier/i.test(it.label || '')))) return true;
   const sections = Array.isArray(offer.sections) ? offer.sections : [];
@@ -289,9 +305,11 @@ function buildIncludeBullets(offer) {
   const bullets = [];
 
   if (kind !== 'klima') {
-    bullets.push(buildModuleBullet(offer));
-    bullets.push(`- Wechselrichter der Firma ${brand === 'Fronius' ? 'Fronius' : 'Fronius bzw. Sigenergy'} mit sehr hohem Wirkungsgrad.`);
-    if (cfg.speicher) {
+    if (roleActive(offer, 'module')) bullets.push(buildModuleBullet(offer));
+    if (roleActive(offer, 'inverter')) {
+      bullets.push(`- Wechselrichter der Firma ${brand === 'Fronius' ? 'Fronius' : 'Fronius bzw. Sigenergy'} mit sehr hohem Wirkungsgrad.`);
+    }
+    if (cfg.speicher && roleActive(offer, 'storage')) {
       bullets.push('- Lithium-Eisenphosphat-Speicher (LFP).');
     }
     if (hasFixOptimierer(offer)) {
@@ -300,11 +318,11 @@ function buildIncludeBullets(offer) {
         ? `- Optimierer (${n} Stück, 1 pro Modul).`
         : '- Optimierer (1 pro Modul).');
     }
-    bullets.push(formatUnterkonstruktionBullet(offer));
-    bullets.push('- Installation & Inbetriebnahme der Anlage.');
-    bullets.push('- Genehmigungen, Behördenwege und Förderabwicklung.');
-    bullets.push('- Überwachungssystem der Photovoltaikanlage.');
-    bullets.push('- Einschulung und App-Installation.');
+    if (roleActive(offer, 'unterkonstruktion')) bullets.push(formatUnterkonstruktionBullet(offer));
+    if (lineIdActive(offer, 'svc:installation')) bullets.push('- Installation & Inbetriebnahme der Anlage.');
+    if (lineIdActive(offer, 'svc:einreichung')) bullets.push('- Genehmigungen, Behördenwege und Förderabwicklung.');
+    if (roleActive(offer, 'module')) bullets.push('- Überwachungssystem der Photovoltaikanlage.');
+    if (lineIdActive(offer, 'svc:inbetriebnahme')) bullets.push('- Einschulung und App-Installation.');
   }
 
   if (kind === 'klima' || kind === 'combo') {

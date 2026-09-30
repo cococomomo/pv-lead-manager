@@ -40,15 +40,21 @@ function computeEconomics(offer, overrides = {}) {
   const preis = (offer && offer.preis) || {};
 
   const kwp = num(cfg.kwpCalculated, num(cfg.kwp, 0)) || 0;
-  const speicherKwh = num(cfg.speicher, 0) || 0;
+  const storageLineOff = cfg.linePresence && cfg.linePresence.storage === false;
+  const speicherKwh = storageLineOff ? 0 : (num(cfg.speicher, 0) || 0);
   const hasStorage = speicherKwh > 0;
   const balance = o.balance && typeof o.balance === 'object' ? o.balance : null;
   const yieldAvailable = !!(balance && balance.available);
 
   const householdInput = num(o.householdKwhYear, num(o.jahresverbrauch, null));
-  const household = yieldAvailable
-    ? num(balance.household, householdInput != null ? householdInput : DEFAULTS.householdKwhYear)
-    : (householdInput != null ? householdInput : DEFAULTS.householdKwhYear);
+  const consumptionEntered = balance && typeof balance.consumptionEntered === 'boolean'
+    ? balance.consumptionEntered
+    : (householdInput != null && householdInput > 0);
+  const household = !consumptionEntered
+    ? 0
+    : (yieldAvailable
+      ? num(balance.household, householdInput != null ? householdInput : DEFAULTS.householdKwhYear)
+      : (householdInput != null ? householdInput : DEFAULTS.householdKwhYear));
   const annualYield = yieldAvailable ? num(balance.annualYield, 0) : 0;
   const directToHome = yieldAvailable ? num(balance.direct, 0) : 0;
   const toStorage = yieldAvailable ? num(balance.charge, 0) : 0;
@@ -56,8 +62,12 @@ function computeEconomics(offer, overrides = {}) {
   const feedInKwh = yieldAvailable ? num(balance.feedIn, 0) : 0;
   const gridRemain = yieldAvailable ? num(balance.grid, 0) : 0;
   const selfConsumedBalanced = directToHome + fromStorage;
-  const autarkyActual = yieldAvailable ? num(balance.autarky, household > 0 ? selfConsumedBalanced / household : 0) : null;
-  const selfRateActual = yieldAvailable ? num(balance.selfConsumption, annualYield > 0 ? selfConsumedBalanced / annualYield : 0) : null;
+  const autarkyActual = (!consumptionEntered || !yieldAvailable)
+    ? null
+    : num(balance.autarky, household > 0 ? selfConsumedBalanced / household : 0);
+  const selfRateActual = (!consumptionEntered || !yieldAvailable)
+    ? null
+    : num(balance.selfConsumption, annualYield > 0 ? selfConsumedBalanced / annualYield : 0);
   const yieldNote = (balance && balance.note) || (yieldAvailable
     ? ''
     : 'Die stündliche Ertragsberechnung (PVGIS-SARAH3) war nicht verfügbar und es liegt kein gespeicherter Datensatz für diese Gegend vor. Es wird kein pauschaler Jahresertrag angesetzt.');
@@ -69,7 +79,9 @@ function computeEconomics(offer, overrides = {}) {
   const years = Math.max(1, Math.round(num(o.analysisYears, DEFAULTS.analysisYears)));
   const degradation = num(o.degradationPerYear, DEFAULTS.degradationPerYear);
 
-  const savingsYear1 = yieldAvailable ? (selfConsumedBalanced * gridPrice + feedInKwh * feedIn) : 0;
+  const savingsYear1 = (consumptionEntered && yieldAvailable)
+    ? (selfConsumedBalanced * gridPrice + feedInKwh * feedIn)
+    : 0;
   const investment = num(o.investmentBrutto, num(preis.brutto, 0)) || 0;
 
   let cumulative = -investment;
@@ -77,6 +89,7 @@ function computeEconomics(offer, overrides = {}) {
   let paybackYearLabel = null;
   const startYear = new Date().getFullYear();
   const yearly = [];
+  if (consumptionEntered) {
   for (let y = 1; y <= years; y += 1) {
     const degFactor = Math.pow(1 - degradation, y - 1);
     const priceFactor = Math.pow(1 + inflation, y - 1);
@@ -88,6 +101,7 @@ function computeEconomics(offer, overrides = {}) {
       paybackYearLabel = startYear + y - 1;
     }
   }
+  }
 
   const monthly = (yieldAvailable && Array.isArray(balance.monthly) && balance.monthly.length === 12)
     ? balance.monthly.map((row, i) => ({
@@ -98,11 +112,13 @@ function computeEconomics(offer, overrides = {}) {
 
   const totalSavings = yearly.reduce((s, r) => s + r.savings, 0);
 
-  const flowText = !yieldAvailable
+  const flowText = !consumptionEntered
+    ? ''
+    : (!yieldAvailable
     ? yieldNote
     : (hasStorage
       ? `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt und ${formatNum(toStorage)} kWh in den Speicher. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Aus Ihrem Speicher fließen ${formatNum(fromStorage)} kWh weiter in Ihren Haushalt. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`
-      : `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`);
+      : `Von Ihrer Photovoltaikanlage fließen ${formatNum(directToHome)} kWh direkt in Ihren Haushalt. Der verbleibende Strom, also ${formatNum(feedInKwh)} kWh, wird in das Netz eingespeist. Insgesamt beziehen Sie ${formatNum(gridRemain)} kWh Ihres Haushaltsverbrauchs aus dem Netz.`));
 
   return {
     kwp,
@@ -113,6 +129,7 @@ function computeEconomics(offer, overrides = {}) {
     selfRate: selfRateActual,
     autarky: autarkyActual,
     yieldAvailable,
+    consumptionEntered,
     yieldNote,
     selfConsumed: selfConsumedBalanced,
     feedInKwh,

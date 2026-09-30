@@ -255,7 +255,10 @@ function selectDatasheetsForOffer(offer, opts = {}) {
     : null;
   const moduleType = cfg.moduleType === 'aiko' ? 'aiko' : 'das';
   const includePv = cfg.includePv !== false && Number(cfg.moduleCount) > 0;
-  const hasSpeicher = !!(Number(cfg.speicher) || Number(cfg.speicherBasis) || Number(cfg.speicherGesamt));
+  const presence = cfg.linePresence && typeof cfg.linePresence === 'object' ? cfg.linePresence : null;
+  const hasSpeicher = presence
+    ? !!presence.storage
+    : !!(Number(cfg.speicher) || Number(cfg.speicherBasis) || Number(cfg.speicherGesamt));
   const klimaIds = collectKlimaPackageIds(offer);
   const optionKeys = includedOptionKeys(offer);
 
@@ -274,19 +277,22 @@ function selectDatasheetsForOffer(offer, opts = {}) {
       ok = klimaIds.some((id) => entry.klimaPackages.includes(id));
     } else if (entry.moduleTypes) {
       ok = includePv && entry.moduleTypes.includes(moduleType);
+      if (presence && presence.module === false) ok = false;
     } else if (entry.brands) {
       if (!brand || !entry.brands.includes(brand) || !includePv) ok = false;
       else if (entry.kind === 'storage') ok = hasSpeicher;
-      else if (entry.kind === 'meter') ok = hasSpeicher || optionKeys.has('smartmeter');
+      else if (entry.kind === 'meter') {
+        ok = presence ? !!presence.meter : (hasSpeicher || optionKeys.has('smartmeter'));
+      }
       else if (entry.kind === 'gateway') {
-        ok = optionKeys.has('notstrom');
+        ok = presence ? !!presence.notstrom : optionKeys.has('notstrom');
         if (ok && Number.isFinite(acKw)) {
           if (entry.maxAcKw != null && acKw > entry.maxAcKw) ok = false;
           if (entry.minAcKw != null && acKw < entry.minAcKw) ok = false;
         }
       }
       else if (entry.kind === 'inverter') {
-        ok = true;
+        ok = presence ? !!presence.inverter : true;
         if (Number.isFinite(acKw)) {
           if (entry.maxAcKw != null && acKw > entry.maxAcKw) ok = false;
           if (entry.minAcKw != null && acKw < entry.minAcKw) ok = false;
