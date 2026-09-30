@@ -1124,11 +1124,63 @@ function findInverterByLabel(brand, label) {
   return list.find((i) => s.includes(String(i.acKw).replace('.', ',')) || s.includes(String(i.acKw))) || null;
 }
 
+/** Ein paar Watt über Max-PV (10,01 kWp gegen 10,000 kW) stufen nicht hoch. */
+const MAX_PV_OVERSHOOT_W = 50;
+
+function maxPvAccepts(inv, needW) {
+  if (!inv || inv.maxPvW == null || !Number.isFinite(needW) || needW <= 0) return true;
+  return inv.maxPvW + MAX_PV_OVERSHOOT_W >= needW;
+}
+
+/**
+ * AC folgt der Modulleistung P = Modulanzahl × Wp / 1000.
+ * Größtes Katalogmodell mit AC ≤ P, solange das nicht unter 0,85×P liegt.
+ * Sonst das kleinste Modell mit AC ≥ P. Gibt es keins, bleibt das größte.
+ * Max-PV ist nur die elektrische Decke, kein Auswahlkriterium.
+ */
+function selectInverterForPower(list, moduleKwp) {
+  const sorted = list.slice().sort((a, b) => a.acKw - b.acKw);
+  const p = Number(moduleKwp);
+  const under = sorted.filter((i) => i.acKw <= p + 1e-9);
+  let chosen;
+  let source;
+  if (!under.length) {
+    chosen = sorted[0];
+    source = 'ac-smallest';
+  } else {
+    chosen = under[under.length - 1];
+    source = 'ac-under';
+    if (chosen.acKw < 0.85 * p - 1e-9) {
+      const over = sorted.filter((i) => i.acKw + 1e-9 >= p);
+      if (over.length) {
+        chosen = over[0];
+        source = 'ac-cover';
+      } else {
+        chosen = sorted[sorted.length - 1];
+        source = 'ac-largest';
+      }
+    }
+  }
+  const needW = p * 1000;
+  if (!maxPvAccepts(chosen, needW)) {
+    const idx = sorted.indexOf(chosen);
+    const higher = sorted.slice(Math.max(0, idx)).filter((i) => maxPvAccepts(i, needW));
+    if (higher.length) {
+      chosen = higher[0];
+      source = 'max-pv-ceiling';
+    } else {
+      chosen = sorted[sorted.length - 1];
+      source = 'max-pv-overflow';
+    }
+  }
+  return { ...chosen, source };
+}
+
 /**
  * WR wählen:
  * 1) Manuelles Label / bekannter Katalogeintrag
- * 2) Explizite AC-kW (Sprachbefehl / Formular)
- * 3) Kleinstes Modell mit maxPvW >= Modul-kWp
+ * 2) Explizite AC-kW (Sprachbefehl / Formular, nachdem der Nutzer ein Modell gewählt hat)
+ * 3) AC folgt der Modulleistung (selectInverterForPower)
  */
 function selectInverter(brand, opts = {}) {
   const b = normalizeBrand(brand);
@@ -1156,11 +1208,8 @@ function selectInverter(brand, opts = {}) {
   }
 
   const moduleKwp = Number(opts.moduleKwp != null ? opts.moduleKwp : opts.kwp);
-  const needW = Number.isFinite(moduleKwp) && moduleKwp > 0 ? moduleKwp * 1000 : 0;
-  if (needW > 0) {
-    const fit = list.filter((i) => i.maxPvW >= needW - 1);
-    if (fit.length) return { ...fit[0], source: 'max-pv' };
-    return { ...list[list.length - 1], source: 'max-pv-overflow' };
+  if (Number.isFinite(moduleKwp) && moduleKwp > 0) {
+    return selectInverterForPower(list, moduleKwp);
   }
 
   // Fallback: nächstgelegene AC-Größe zur Paket-kWp (Altverhalten)
@@ -1177,7 +1226,7 @@ function selectInverter(brand, opts = {}) {
   return { ...best, source: 'snap-ac' };
 }
 
-/** @deprecated Kompatibilität – nutzt selectInverter (Max-PV). */
+/** @deprecated Kompatibilität – nächstgelegene AC-Größe. */
 function snapInverterSize(kwp, sizes) {
   const d = Number(kwp);
   let best = sizes[0];

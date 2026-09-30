@@ -566,7 +566,7 @@
         <div style="grid-column: 1 / -1">
           <label>Wechselrichter <span style="font-weight:400;color:var(--muted)">(manuell wählbar · Fronius / Sigenergy)</span></label>
           <select id="f-inverter"></select>
-          <div class="hint" id="f-inverter-meta" style="margin-top:0.25rem">Automatisch: kleinstes Modell mit Max.-PV ≥ Modul-kWp. Oder manuell aus dem Katalog wählen.</div>
+          <div class="hint" id="f-inverter-meta" style="margin-top:0.25rem">Automatisch: größte AC-Größe bis zur Modulleistung, höchstens etwa 15 % darunter. Oder manuell aus dem Katalog wählen.</div>
         </div>
       </div>
       <div class="price-hint" id="price-hint">Preisanlage wird aus Modulanzahl berechnet.</div>
@@ -1379,7 +1379,7 @@ function refreshInverterSelect(preferredKw) {
   const brand = currentBrandId();
   const list = ((CATALOG.inverters || {})[brand]) || [];
   const prev = preferredKw != null ? Number(preferredKw) : Number(sel.value);
-  sel.innerHTML = '<option value="">Automatisch (kleinstes Modell · Max. PV ≥ Modul-kWp)</option>'
+  sel.innerHTML = '<option value="">Automatisch (AC folgt der Modulleistung)</option>'
     + list.map((i) => {
       const maxKwp = (i.maxPvW / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 });
       return `<option value="${i.acKw}">${i.label} · max. ${maxKwp} kWp</option>`;
@@ -1405,7 +1405,14 @@ function updateInverterMetaHint() {
       return;
     }
   }
-  el.textContent = 'Automatisch: kleinstes Modell mit Max.-PV ≥ Modul-kWp (je Anlagenvariante).';
+  el.textContent = 'Automatisch: größte AC-Größe bis zur Modulleistung, höchstens etwa 15 % darunter. Max.-PV ist nur die elektrische Obergrenze.';
+}
+
+function clearManualInverter() {
+  const sel = $('f-inverter');
+  if (!sel || sel.value === '') return;
+  sel.value = '';
+  updateInverterMetaHint();
 }
 
 function refreshSpeicherSelect() {
@@ -2640,6 +2647,7 @@ function clearLayoutLink() {
 }
 
 function applyLayoutToOffer(count, moduleType) {
+  clearManualInverter();
   if (count > 0) {
     $('f-modules').value = String(count);
   }
@@ -2759,6 +2767,13 @@ function compute() {
       $('s-mwst').textContent = o.preis.mwstFmt;
       $('s-mwst-lbl').textContent = `MwSt. (${(o.preis.mwstRate * 100).toFixed(1).replace('.', ',')} %)`;
       $('s-brutto').textContent = o.preis.bruttoFmt;
+      if ($('f-inverter') && $('f-inverter').value === '' && o.config && o.config.inverter && o.config.inverter !== '—') {
+        const el = $('f-inverter-meta');
+        if (el) {
+          const meta = o.config.inverterMeta ? ` — ${o.config.inverterMeta}` : '';
+          el.textContent = `Automatisch: ${o.config.inverter}${meta}`;
+        }
+      }
       if (j.angebotsnummer && !$('f-nummer').value.trim()) $('f-nummer').value = j.angebotsnummer;
       schedulePreviewRefresh();
     } catch (e) { /* still tippen */ }
@@ -3395,17 +3410,19 @@ async function init() {
     $('f-inverter').addEventListener('change', () => { updateInverterMetaHint(); compute(); });
   }
   $('f-module').addEventListener('change', () => { syncModuleDerivedUi(); compute(); });
-  $('f-modules').addEventListener('input', () => { syncModuleDerivedUi(); compute(); });
-  $('f-modules').addEventListener('change', () => { syncModuleDerivedUi(); compute(); });
+  $('f-modules').addEventListener('input', () => { clearManualInverter(); syncModuleDerivedUi(); compute(); });
+  $('f-modules').addEventListener('change', () => { clearManualInverter(); syncModuleDerivedUi(); compute(); });
   $('btn-mod-minus').addEventListener('click', () => {
     const n = Math.max(1, (Math.round(Number($('f-modules').value) || 1) - 1));
     $('f-modules').value = String(n);
+    clearManualInverter();
     syncModuleDerivedUi();
     compute();
   });
   $('btn-mod-plus').addEventListener('click', () => {
     const n = Math.max(1, (Math.round(Number($('f-modules').value) || 0) + 1));
     $('f-modules').value = String(n);
+    clearManualInverter();
     syncModuleDerivedUi();
     compute();
   });

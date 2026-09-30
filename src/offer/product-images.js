@@ -23,6 +23,7 @@ const FILES = {
   pvModule: 'pv-module.png',
   froniusInverter: 'fronius-gen24-vorlage.png',
   froniusGen24: 'fronius-gen24.jpg',
+  froniusSymo: 'fronius-symo.png',
   froniusReserva: 'fronius-reserva.png',
   froniusSmartmeter: 'fronius-smartmeter.png',
   froniusUmschalt: 'umschaltbox-fronius.png',
@@ -77,7 +78,10 @@ function guessImageForItem(name, brand) {
     return firstExisting('modulDas', 'pvModule');
   }
   if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|\btp\b|tp2|sun2000/.test(n)) {
-    if (b === 'fronius' || /fronius|gen24|symo/.test(n)) return firstExisting('froniusInverter', 'froniusGen24');
+    // Klassischer Symo (SnapINverter), nicht GEN24. Kein Fallback auf GEN24, TP2 oder ein Balken-Inverter.
+    const classicSymo = b === 'fronius_symo' || (/symo/.test(n) && !/gen24/.test(n));
+    if (classicSymo) return abs('froniusSymo');
+    if (b === 'fronius' || /fronius|gen24/.test(n)) return firstExisting('froniusInverter', 'froniusGen24');
     if (b === 'huawei' || /huawei|sun2000/.test(n)) return firstExisting('huaweiInverter');
     // Sigenergy: freigestellter Sigen Hybrid TP2 (Wandgerät), nicht das EC-/Stack-Foto
     if (b === 'sigenergy' || /sigen|sigenergy|tp2/.test(n)) return firstExisting('sigenHybridTp2');

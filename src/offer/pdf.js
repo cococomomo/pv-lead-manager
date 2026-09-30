@@ -3,7 +3,7 @@
 /**
  * Angebots-PDF im Stil der Useini-Vorlage (Reonic/NOORTEC).
  * Seite: Cover → Über uns → Brief → Auf einen Blick → PV+Belegung →
- * Komponenten → Speicher → Ertrag → Haushalt → Wirtschaftlichkeit →
+ * Komponenten → Speicher → Leistungen → Ertrag → Haushalt → Wirtschaftlichkeit →
  * Bestandteile → Preis/Akzeptieren → Datenblätter (+ Vollmacht).
  */
 
@@ -330,8 +330,17 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
         y = drawComponentCardPages(doc, groups.extras, startContentPage, 'WEITERE KOMPONENTEN');
       }
 
-      // ── 8 Ertrag ──
-      y = startContentPage();
+      // ── 8 Leistungen (Text, keine Fotos), dann Ertrag ──
+      // Der Ertragsblock (Diagramm ~260 pt) passt selten unter die Leistungen.
+      // Dann bleibt die Seite bei den Leistungen und die Ertragsberechnung beginnt danach.
+      const ERTRAG_BLOCK_MIN = 470;
+      if (groups.services.length) {
+        y = startContentPage();
+        y = drawLeistungenBlock(doc, y);
+        if (y + ERTRAG_BLOCK_MIN > CONTENT_BOTTOM) y = startContentPage();
+      } else {
+        y = startContentPage();
+      }
       y = drawErtragPage(doc, y, eco);
 
       // ── 9 Haushalt ──
@@ -818,6 +827,57 @@ function drawStorageSection(doc, y, cards, eco, startContentPage) {
     'Speichergröße',
     'Die Speichergröße in Kilowattstunden (kWh) beschreibt die maximale Menge Strom, die Ihr Speicher aufnehmen und abgeben kann.',
     eco.labels.speicher);
+  return y;
+}
+
+/** Wortlaut der Useini-Vorlage, unmittelbar vor der Ertragsberechnung. Keine Produktfotos. */
+const LEISTUNGEN_ITEMS = [
+  {
+    title: 'Installation',
+    body: 'Installation der Anlage AC und DC-Seitig. Montage der gesamten Unterkonstruktion inkl. der Module auf der dafür vorgesehene Dachfläche. Inkl dem Verlegen der Stringkabel von den Modulen bis zum Wechselrichter. Montage der Wechselrichter, Anschließen des Wechselrichters an die bestehende Hausstromversorgung im Sicherungskasten',
+  },
+  {
+    title: 'Netzanschluss',
+    body: 'Netzanschluss Standard Wien (NÖ + Wiener Netze)',
+  },
+  {
+    title: 'Verdrahtung Verteiler',
+    body: 'Verdrahtung diverse Verteiler',
+  },
+  {
+    title: 'Erdung',
+    body: 'Anbindung der Photovoltaikanlage an den vorhandenen Blitzschutz oder Erdung der Anlage an den vorhandene Potenzialausgeleichschiene',
+  },
+  {
+    title: 'Erstinbetriebnahme',
+    body: 'Inbetriebnahme, Testlauf und Einschulung',
+  },
+  {
+    title: 'Einreichung',
+    body: 'Einreichung der Unterlagen für die Förderung, Netze & Gemeinde',
+  },
+  {
+    title: 'E-Befund PV',
+    body: 'E-Befund PV nach ÖVE E8001-4-712',
+  },
+];
+
+function drawLeistungenBlock(doc, y) {
+  doc.font(F.bold).fontSize(13).fillColor(COLORS.softMuted)
+    .text('UNSERE LEISTUNGEN', MARGIN, y, { characterSpacing: 0.6 });
+  y = doc.y + 14;
+  LEISTUNGEN_ITEMS.forEach((item, i) => {
+    const numR = 9;
+    doc.save().circle(MARGIN + numR, y + numR, numR).lineWidth(1.1).strokeColor(COLORS.text).stroke().restore();
+    doc.font(F.bold).fontSize(9.5).fillColor(COLORS.text)
+      .text(String(i + 1), MARGIN, y + 4, { width: numR * 2, align: 'center', lineBreak: false });
+    doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
+      .text(item.title, MARGIN + 28, y + 2, { width: CONTENT_W - 28 });
+    y = doc.y + 3;
+    doc.font(F.regular).fontSize(9.5).fillColor(COLORS.dark)
+      .text(item.body, MARGIN + 28, y, { width: CONTENT_W - 28, lineGap: 1.4 });
+    y = doc.y + 12;
+  });
   return y;
 }
 
