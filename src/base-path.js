@@ -41,7 +41,7 @@ function rewritePublicText(text, base) {
   const root = base || getBasePath();
   if (!root || typeof text !== 'string' || text.indexOf('/') === -1) return text;
   const already = root.slice(1);
-  const pathRe = /^(api\/|login\.html|offer(?=[/?#'"`]|$)|admin(?=[/?#'"`]|$)|profile(?=[/?#'"`]|$)|layout-editor\.js|datenblaetter\/|offer-assets\/|index\.html)/;
+  const pathRe = /^(api\/|login\.html|offer(?=[/?#'"`]|$)|admin(?=[/?#'"`]|$)|profile(?=[/?#'"`]|$)|layout-editor\.js|map-pin-spread\.js|datenblaetter\/|offer-assets\/|index\.html)/;
   return text.replace(/(['"`])\/(?!\/)/g, (match, q, offset, src) => {
     const rest = src.slice(offset + 2);
     if (

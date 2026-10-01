@@ -22,7 +22,8 @@
     "renumber-leads-anfrage": "node scripts/renumber-leads-anfrage.js",
     "test:layout-tilt": "node scripts/test-layout-tilt.js",
     "test:yield-orientation": "node scripts/test-yield-orientation.js",
-    "test:offer-lines": "node scripts/test-offer-lines.js"
+    "test:offer-lines": "node scripts/test-offer-lines.js",
+    "test:map-leads": "node scripts/test-map-leads.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -17,6 +17,7 @@ check("href=\"/offer\"", "href=\"/test/offer\"");
 check("href=\"/\"", "href=\"/test/\"");
 check("location.replace('/')", "location.replace('/test/')");
 check("src=\"/layout-editor.js?v=1\"", "src=\"/test/layout-editor.js?v=1\"");
+check("src=\"/map-pin-spread.js?v=1\"", "src=\"/test/map-pin-spread.js?v=1\"");
 check("src=\"/offer-assets/noortec-logo.png\"", "src=\"/test/offer-assets/noortec-logo.png\"");
 check("fetch('/test/api/stats')", "fetch('/test/api/stats')");
 check("s.startsWith('//')", "s.startsWith('//')");
