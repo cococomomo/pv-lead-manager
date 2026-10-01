@@ -2656,6 +2656,46 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Gespeicherte Angebotszeiten bleiben UTC in der DB.
+ * Anzeige in Europe/Vienna, gleiches Muster YYYY-MM-DD HH:mm.
+ */
+function formatOfferInstantVienna(iso) {
+  const raw = String(iso || '').trim();
+  if (!raw) return '';
+  let normalized = raw.replace(' ', 'T');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized) && !/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(normalized)) {
+    normalized += 'Z';
+  }
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 16).replace('T', ' ');
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Vienna',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(d);
+    const get = (type) => {
+      const part = parts.find((p) => p.type === type);
+      return part ? part.value : '';
+    };
+    let hour = get('hour');
+    if (hour === '24') hour = '00';
+    const y = get('year');
+    const mo = get('month');
+    const da = get('day');
+    const mi = get('minute');
+    if (!y || !mo || !da || !hour || !mi) return raw.slice(0, 16).replace('T', ' ');
+    return y + '-' + mo + '-' + da + ' ' + hour + ':' + mi;
+  } catch (_) {
+    return raw.slice(0, 16).replace('T', ' ');
+  }
+}
+
 async function refreshOfferHistory() {
   const el = $('offer-history-list');
   if (!el) return;
@@ -2678,7 +2718,7 @@ async function refreshOfferHistory() {
     el.innerHTML = offers.map((o) => {
       const label = o.label || o.filenameBase || ((o.angebotsnummer || ('#' + o.id)) + '-V' + (o.customerVersion || 1));
       const st = o.status === 'sent' ? 'gesendet' : 'Entwurf';
-      const when = (o.sentAt || o.createdAt || '').slice(0, 16).replace('T', ' ');
+      const when = formatOfferInstantVienna(o.sentAt || o.createdAt || '');
       const pdf = o.pdfUrl
         ? ` · <a href="${escHtml(o.pdfUrl)}" target="_blank" rel="noopener">PDF</a>`
         : '';
