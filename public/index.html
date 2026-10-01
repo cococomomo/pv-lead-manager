@@ -718,8 +718,13 @@
     .pvl-status-dot[data-tone="verloren"] { background: #94a3b8; }
     .pvl-status-count { margin-left: 0.28rem; font-variant-numeric: tabular-nums; opacity: 0.8; }
 
-    .missing-lead-tel { font-size: 0.8rem; font-weight: 600; color: var(--pvl-text); margin: 0.15rem 0 0.1rem; }
-    .missing-lead-tel-num { font-variant-numeric: tabular-nums; }
+    .missing-lead-tel { font-size: 0.8rem; font-weight: 600; color: var(--pvl-text); margin: 0.15rem 0 0.35rem; }
+    .missing-lead-tel a {
+      color: #0369a1;
+      font-weight: 700;
+      text-decoration: underline;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* Map — Fläche in .map-wrap (position absolute) */
 
@@ -1386,6 +1391,11 @@
     .popup-row.popup-row-phone {
       margin: 8px 0;
       padding: 0;
+    }
+    /* Detailzeile: dasselbe Rosa wie die Karten-Pins (30–90 Tage), lesbar auf Weiß. */
+    .popup-row.popup-row-info,
+    html[data-theme="dark"] .popup-row.popup-row-info {
+      color: #e11d48;
     }
     .leaflet-popup-content .popup-row a.pvl-lens-phone,
     html[data-theme="dark"] .leaflet-popup-content .popup-row a.pvl-lens-phone {
@@ -4034,14 +4044,20 @@
   function missingCoordsRowHtml(lead) {
     const id = lead.pvlDbId;
     if (id == null) return '';
-    const th = telHref(lead[COL.phone]);
+    const telRaw = String(lead[COL.phone] || lead.telefon || '').trim();
+    const th = telRaw ? telHref(telRaw) : '';
+    const telShown = telRaw ? (formatPhoneE164Display(telRaw) || telRaw) : '';
+    const telLine = telShown
+      ? (th
+        ? `<div class="missing-lead-tel"><a href="${esc(th)}">${esc(telShown)}</a></div>`
+        : `<div class="missing-lead-tel">${esc(telShown)}</div>`)
+      : '';
     const telBtn = th
       ? `<a class="btn-mini btn-mini-tel" href="${esc(th)}">Anrufen</a>`
       : '';
-    const telRaw = lead[COL.phone] ? String(lead[COL.phone]).trim() : '';
     return `<div class="missing-lead-card" data-pvl-id="${id}">
       <div class="row-title">${esc(lead[COL.name] || '(kein Name)')} <span style="color:#64748b;font-weight:500">#${esc(anfrageNr(lead))}</span>${lead[COL.email] ? ' · ' + esc(lead[COL.email]) : ''}</div>
-      ${telRaw ? `<div class="missing-lead-tel">Tel. <span class="missing-lead-tel-num">${esc(telRaw)}</span></div>` : ''}
+      ${telLine}
       <div class="addr-grid">
         <input type="text" class="mc-str" placeholder="Straße" value="${esc(lead[COL.street] || '')}" />
         <input type="text" class="mc-zip" placeholder="PLZ" value="${esc(lead[COL.zip] || '')}" />
@@ -4881,7 +4897,7 @@
       ${emailRawPop ? (emailHPop ? `<div class="popup-row"><a href="${esc(emailHPop)}">${esc(emailRawPop)}</a></div>` : `<div class="popup-row">${esc(emailRawPop)}</div>`) : ''}
       ${addrLinePop ? (addrHPop ? `<div class="popup-row"><a href="${esc(addrHPop)}" target="_blank" rel="noopener noreferrer">${esc(addrLinePop)}</a></div>` : `<div class="popup-row">${esc(addrLinePop)}</div>`) : ''}
       <div class="popup-row" style="color:#64748b">${esc(src)}${stampPop ? ' · ' + esc(stampPop) : ''}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
-      ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
+      ${lead[COL.info]    ? `<div class="popup-row popup-row-info" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
       ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
       <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(leadKey(lead))}')">
         Bearbeiten / Details
