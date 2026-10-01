@@ -1535,7 +1535,7 @@ function drawDatasheetsPage(doc, y, sheets) {
     doc.font(F.regular).fontSize(9).fillColor(COLORS.muted)
       .text(kind, MARGIN + CONTENT_W * 0.62, rowTop, { width: CONTENT_W * 0.2, lineBreak: false });
     // Short link on the far right – avoids long URLs overlapping name/type
-    const linkLabel = 'Oeffnen';
+    const linkLabel = 'Öffnen';
     const linkW = 52;
     const linkX = PAGE.width - MARGIN - linkW;
     doc.font(F.bold).fontSize(9).fillColor(COLORS.yellow)
