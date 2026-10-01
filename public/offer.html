@@ -80,9 +80,9 @@
   .optrow .opt-hint:focus { border-color: var(--accent); outline: none; }
   .repeater { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.35rem; }
   .dachrow { display: grid; grid-template-columns: 1fr 92px 20px; gap: 0.4rem; align-items: center; }
-  .serow { display: grid; grid-template-columns: 1fr 74px 88px 20px; gap: 0.4rem; align-items: center; }
-  .dachrow select, .dachrow input, .serow input { padding: 0.32rem 0.35rem; font-size: 0.8rem; }
-  .serow .se-kwh, .serow .se-price { text-align: right; }
+  .serow { display: grid; grid-template-columns: 104px minmax(0, 1fr) 88px 20px; gap: 0.4rem; align-items: center; }
+  .dachrow select, .dachrow input, .serow input, .serow select { padding: 0.32rem 0.35rem; font-size: 0.8rem; }
+  .serow .se-price { text-align: right; }
   .serow .price-wrap { display: flex; align-items: center; gap: 0.18rem; }
   .serow .price-wrap .eur { color: var(--muted); font-size: 0.78rem; }
   .rrow-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; }
@@ -116,6 +116,8 @@
   .line-edit-modal .variant-modal-card { max-width: 520px; }
   .klima-unit { display: grid; grid-template-columns: 1fr 28px; gap: 0.35rem; align-items: center; }
   .quote-note { margin-top: 0.45rem; font-size: 0.78rem; color: var(--text); }
+  .optional-lines { margin-top: 0.65rem; }
+  .optional-lines h3 { margin: 0 0 0.2rem; font-size: 0.82rem; color: var(--muted); font-weight: 600; }
   .variant-modal {
     position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.45);
     display: flex; align-items: center; justify-content: center; padding: 1rem;
@@ -600,12 +602,13 @@
         <button class="btn secondary" id="btn-add-dach" type="button">+ Dachfläche</button>
       </div>
 
-      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy Neu und Alt: 6.0 / 2.400 € und 10.0 / 3.600 € · Fronius: +3,2 kWh)</span></label>
+      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy 6.0 = 6,02 kWh / 2.400 € und 10.0 = 9,04 kWh / 3.600 € · Fronius +3,2 kWh)</span></label>
       <div class="repeater" id="speicher-list"></div>
       <div class="btn-row" style="margin-top:0.4rem; align-items:center">
         <select id="se-size" style="max-width:300px; flex:1"></select>
-        <button class="btn secondary" id="btn-add-speicher" type="button">+ Speicherblock (Fix im Preis)</button>
+        <button class="btn secondary" id="btn-add-speicher" type="button">+ Speicherblock</button>
       </div>
+      <div class="hint">Jeder Block ist <b>Fix</b> (im Paket) oder <b>Optional</b> (eigene Zeile, nicht im Gesamtpreis). Die Größe kommt nur aus dem Datenblatt, ohne freies kWh-Feld.</div>
 
       <label style="margin-top:0.7rem">Optional: Speicher-Upgrade <span style="font-weight:400;color:var(--muted)">(Preisdifferenz statt Basisgröße)</span></label>
       <div class="btn-row" style="margin-top:0.35rem; align-items:center">
@@ -716,7 +719,8 @@
       <div class="quote-note" id="s-lines-note"></div>
       <h3 style="margin:0.85rem 0 0.25rem;font-size:0.92rem">Stückliste</h3>
       <div class="quote-lines" id="quote-lines"></div>
-      <div class="hint">Jede Zeile ist an, bis sie entfernt wird. Unterkonstruktion und Montage bleiben, bis sie selbst gestrichen werden. Der Paketpreis ändert sich dadurch nicht.</div>
+      <div class="optional-lines" id="optional-lines"></div>
+      <div class="hint">Jede Zeile ist an, bis sie entfernt wird. Unterkonstruktion und Montage bleiben, bis sie selbst gestrichen werden. Der Paketpreis ändert sich dadurch nicht. Optionale Speicherblöcke stehen darunter und bleiben außerhalb des Pakets.</div>
       <div class="btn-row">
         <button class="btn dark" id="btn-finish-outlook" title="KI-E-Mail erzeugen, PDF inkl. Vollmacht (bei PV) laden und Outlook-Draft öffnen">Angebot fertigstellen → Outlook-Draft</button>
         <button class="btn" id="btn-preview">PDF-Vorschau aktualisieren</button>
@@ -1025,41 +1029,154 @@ function applyDachSegments(segments) {
 }
 
 // ── Speicher erweitern (Zusatzblöcke) ───────────────────────────────────────
-function refreshStorageExtSelect() {
-  const brand = $('f-brand').value;
-  const exts = (CATALOG.storageExtensions || {})[brand] || [];
-  $('se-size').innerHTML = exts.map((e, i) => `<option value="${i}">${e.label} – € ${e.price}</option>`).join('');
+function storageExtsForBrand(brand) {
+  return ((CATALOG && CATALOG.storageExtensions) || {})[brand] || [];
 }
 
-function createSpeicherRow({ label = '', kwh = 0, price = 0 }) {
+function storageBlockOptionLabel(brand, ext) {
+  const k = Number(ext && ext.kwh);
+  if (isSigenergyClient(brand)) {
+    if (Math.abs(k - 6) < 0.05) return '6.0 · 6,02 kWh';
+    if (Math.abs(k - 10) < 0.05) return '10.0 · 9,04 kWh';
+  }
+  if (brand === 'fronius' && Math.abs(k - 3.2) < 0.15) return '3,2 kWh';
+  return (ext && ext.label) || String(k);
+}
+
+function nearestStorageExt(brand, kwh) {
+  const exts = storageExtsForBrand(brand);
+  if (!exts.length) return null;
+  const k = Number(kwh);
+  if (isSigenergyClient(brand) && Number.isFinite(k)) {
+    const tier = (Math.abs(k - 6) < 0.2 || Math.abs(k - 6.02) < 0.03) ? 6
+      : ((Math.abs(k - 10) < 0.2 || Math.abs(k - 9) < 0.25 || Math.abs(k - 9.04) < 0.03) ? 10 : null);
+    if (tier != null) {
+      const named = exts.find((e) => Math.abs(Number(e.kwh) - tier) < 0.05);
+      if (named) return named;
+    }
+  }
+  let best = exts[0];
+  let bestDiff = Infinity;
+  for (const ext of exts) {
+    const diff = Math.abs(Number(ext.kwh) - k);
+    if (diff < bestDiff) { bestDiff = diff; best = ext; }
+  }
+  return best;
+}
+
+function storageKwhMatchesExt(brand, kwh, ext) {
+  if (!ext) return false;
+  const k = Number(kwh);
+  if (!Number.isFinite(k)) return false;
+  if (Math.abs(k - Number(ext.kwh)) < 0.05) return true;
+  if (!isSigenergyClient(brand)) return false;
+  if (Math.abs(k - sigenergyUsableClient(ext.kwh)) < 0.03) return true;
+  if (Math.abs(Number(ext.kwh) - 10) < 0.05 && (Math.abs(k - 9) < 0.25 || Math.abs(k - 9.04) < 0.03)) return true;
+  if (Math.abs(Number(ext.kwh) - 6) < 0.05 && Math.abs(k - 6.02) < 0.03) return true;
+  return false;
+}
+
+function fillStorageSizeSelect(select, brand, kwh) {
+  const exts = storageExtsForBrand(brand);
+  select.innerHTML = '';
+  exts.forEach((ext) => {
+    const opt = document.createElement('option');
+    opt.value = String(ext.kwh);
+    opt.textContent = storageBlockOptionLabel(brand, ext);
+    opt.dataset.price = String(ext.price);
+    opt.dataset.label = ext.label || storageBlockOptionLabel(brand, ext);
+    select.appendChild(opt);
+  });
+  const hit = nearestStorageExt(brand, kwh) || exts[0] || null;
+  if (hit) select.value = String(hit.kwh);
+  return hit;
+}
+
+function refreshStorageExtSelect() {
+  const brand = $('f-brand').value;
+  const exts = storageExtsForBrand(brand);
+  $('se-size').innerHTML = exts.map((e, i) => `<option value="${i}">${storageBlockOptionLabel(brand, e)} – ${Number(e.price).toLocaleString('de-DE')} €</option>`).join('');
+  refreshSpeicherRowCatalog();
+}
+
+function refreshSpeicherRowCatalog() {
+  const brand = currentBrandId();
+  document.querySelectorAll('#speicher-list .serow').forEach((row) => {
+    const size = row.querySelector('.se-size');
+    const price = row.querySelector('.se-price');
+    if (!size) return;
+    const prev = Number(size.value);
+    const prevPrice = price ? Number(price.value) : NaN;
+    const hit = fillStorageSizeSelect(size, brand, prev);
+    if (!hit || !price) return;
+    const same = Math.abs(Number(hit.kwh) - prev) < 0.05;
+    if (!same || !(prevPrice > 0)) price.value = String(hit.price);
+  });
+}
+
+function createSpeicherRow({ kwh = 0, price = 0, mode = 'fix' } = {}) {
+  const brand = currentBrandId();
   const row = document.createElement('div');
   row.className = 'serow';
-  const lab = document.createElement('input');
-  lab.className = 'se-label'; lab.value = label; lab.placeholder = 'Bezeichnung';
-  lab.addEventListener('input', () => { updateSpeicherCompositionHint(); compute(); });
-  const k = document.createElement('input');
-  k.className = 'se-kwh'; k.type = 'number'; k.step = '0.1'; k.min = '0'; k.title = 'kWh'; k.value = kwh;
-  k.addEventListener('input', () => { updateSpeicherCompositionHint(); compute(); });
-  const pw = document.createElement('div'); pw.className = 'price-wrap';
-  const p = document.createElement('input');
-  p.className = 'se-price'; p.type = 'number'; p.step = '10'; p.min = '0'; p.title = 'Preis (€)'; p.value = price;
-  p.addEventListener('input', compute);
-  const eur = document.createElement('span'); eur.className = 'eur'; eur.textContent = '€';
-  pw.append(p, eur);
+
+  const modeSel = document.createElement('select');
+  modeSel.className = 'se-mode';
+  modeSel.title = 'Fix = im Paketpreis. Optional = eigene Zeile, nicht im Gesamtpreis.';
+  [['fix', 'Fix'], ['optional', 'Optional']].forEach(([value, text]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = text;
+    modeSel.appendChild(opt);
+  });
+  modeSel.value = mode === 'optional' ? 'optional' : 'fix';
+  modeSel.addEventListener('change', () => { updateSpeicherCompositionHint(); compute(); });
+
+  const sizeSel = document.createElement('select');
+  sizeSel.className = 'se-size';
+  sizeSel.title = 'Nur Datenblattgrößen';
+  const hit = fillStorageSizeSelect(sizeSel, brand, kwh);
+  const matched = storageKwhMatchesExt(brand, kwh, hit);
+  const pw = document.createElement('div');
+  pw.className = 'price-wrap';
+  const priceEl = document.createElement('input');
+  priceEl.className = 'se-price';
+  priceEl.type = 'number';
+  priceEl.step = '10';
+  priceEl.min = '0';
+  priceEl.title = 'Preis (€)';
+  priceEl.value = (matched && Number(price) > 0) ? String(price) : String(hit ? hit.price : 0);
+  priceEl.addEventListener('input', compute);
+  sizeSel.addEventListener('change', () => {
+    const opt = sizeSel.selectedOptions[0];
+    if (opt && opt.dataset.price) priceEl.value = opt.dataset.price;
+    updateSpeicherCompositionHint();
+    compute();
+  });
+  const eur = document.createElement('span');
+  eur.className = 'eur';
+  eur.textContent = '€';
+  pw.append(priceEl, eur);
+
   const del = document.createElement('span');
-  del.className = 'rrow-del'; del.textContent = '✕'; del.title = 'Speicherblock entfernen';
+  del.className = 'rrow-del';
+  del.textContent = '✕';
+  del.title = 'Speicherblock entfernen';
   del.addEventListener('click', () => { row.remove(); updateSpeicherCompositionHint(); compute(); });
-  row.append(lab, k, pw, del);
+  row.append(modeSel, sizeSel, pw, del);
   return row;
 }
 
 function readSpeicherZusatz() {
   const list = [];
-  document.querySelectorAll('#speicher-list .serow').forEach((r) => {
+  document.querySelectorAll('#speicher-list .serow').forEach((row) => {
+    const size = row.querySelector('.se-size');
+    const opt = size && size.selectedOptions[0];
+    const modeSel = row.querySelector('.se-mode');
     list.push({
-      label: r.querySelector('.se-label').value.trim(),
-      kwh: Number(r.querySelector('.se-kwh').value) || 0,
-      price: Number(r.querySelector('.se-price').value) || 0,
+      label: (opt && opt.dataset.label) || '',
+      kwh: Number(size && size.value) || 0,
+      price: Number(row.querySelector('.se-price').value) || 0,
+      mode: modeSel && modeSel.value === 'optional' ? 'optional' : 'fix',
     });
   });
   return list;
@@ -1559,16 +1676,33 @@ function refreshSpeicherSelect() {
   syncStorageUiForBrand();
 }
 
+function optionalStorageNote(brand, blocks) {
+  const opt = (blocks || []).filter((b) => b.mode === 'optional');
+  if (!opt.length) return '';
+  const bits = opt.map((b) => {
+    const k = Number(b.kwh) || 0;
+    if (isSigenergyClient(brand)) {
+      if (Math.abs(k - 10) < 0.05) return '10.0 (9,04 kWh)';
+      return '6.0 (6,02 kWh)';
+    }
+    if (brand === 'fronius') return '3,2 kWh';
+    return `${String(k).replace('.', ',')} kWh`;
+  });
+  return ` Optional, nicht im Preis: ${bits.join(', ')}.`;
+}
+
 /** Kurzhinweis: physische Module je Marke (Sigenergy 6,0/10,0 · Fronius 3,2). */
 function updateSpeicherCompositionHint() {
   const el = $('speicher-comp-hint');
   if (!el) return;
   const brand = $('f-brand').value;
   const base = Number($('f-speicher').value) || 0;
-  const blocks = readSpeicherZusatz();
+  const allBlocks = readSpeicherZusatz();
+  const blocks = allBlocks.filter((b) => b.mode !== 'optional');
   const extra = blocks.reduce((s, b) => s + (Number(b.kwh) || 0), 0);
   const total = Math.round((base + extra) * 10) / 10;
   const fmt = (n) => String(n).replace('.', ',');
+  const optNote = optionalStorageNote(brand, allBlocks);
 
   if (brand === 'fronius') {
     const towerMap = [[6.5, 2], [6.4, 2], [9.5, 3], [12.6, 4], [15.8, 5]];
@@ -1581,9 +1715,9 @@ function updateSpeicherCompositionHint() {
     });
     const towers = Math.max(1, Math.ceil(mods / 5));
     const shown = mods === 2 ? '6,5' : fmt(Math.round((mods === 2 ? 6.5 : mods * 3.2) * 10) / 10);
-    el.textContent = mods > 0
+    el.textContent = (mods > 0
       ? `Fronius Reserva: ${mods === 2 ? '2 Module (6,5 kWh)' : `${mods}×3,2 kWh (= ${shown} kWh)`}${towers > 1 ? ` in ${towers} Tower` : ''} · max. 5 Module/Tower, max. 3 Tower. Zusatz je +3,2 = 1.320 €.`
-      : 'Fronius Reserva: zwei Module sind 6,5 kWh, danach je +3,2 kWh. Bis zu 3 Tower kombinierbar.';
+      : 'Fronius Reserva: zwei Module sind 6,5 kWh, danach je +3,2 kWh. Bis zu 3 Tower kombinierbar.') + optNote;
     return;
   }
 
@@ -1593,9 +1727,9 @@ function updateSpeicherCompositionHint() {
   }
 
   if (!isSigenergyClient(brand)) {
-    el.textContent = extra > 0
+    el.textContent = (extra > 0
       ? `Gesamt ${fmt(total)} kWh (Basis ${fmt(base)} + ${fmt(extra)} Zusatz).`
-      : '';
+      : '') + optNote;
     return;
   }
   const counts = {};
@@ -1619,8 +1753,11 @@ function updateSpeicherCompositionHint() {
     const name = Math.abs(k - 6) < 0.05 ? '6.0' : (Math.abs(k - 10) < 0.05 ? '10.0' : fmt(k));
     return q > 1 ? `${q}×${name}` : name;
   });
-  if (!labels.length) { el.textContent = 'Sigenergy: BAT 6.0 (6,02 kWh) oder 10.0 (9,04 kWh), kombinierbar über Zusatzblöcke.'; return; }
-  el.textContent = `Sigenergy BAT ${labels.join('+')} (${fmt(usable)} kWh nutzbar).`;
+  if (!labels.length) {
+    el.textContent = 'Sigenergy: BAT 6.0 (6,02 kWh) oder 10.0 (9,04 kWh), kombinierbar über Zusatzblöcke.' + optNote;
+    return;
+  }
+  el.textContent = `Sigenergy BAT ${labels.join('+')} (${fmt(usable)} kWh nutzbar).` + optNote;
 }
 
 /** Wählt im Select die Option mit dem numerisch nächstgelegenen Wert. */
@@ -2249,7 +2386,9 @@ function readForm() {
     kwp: includePv && pkg ? pkg.kwpPackage : null,
     speicher: includePv ? Number($('f-speicher').value) : null,
     speicherGesamt: includePv
-      ? Number($('f-speicher').value) + readSpeicherZusatz().reduce((s, b) => s + (Number(b.kwh) || 0), 0)
+      ? Number($('f-speicher').value) + readSpeicherZusatz()
+        .filter((b) => b.mode !== 'optional')
+        .reduce((s, b) => s + (Number(b.kwh) || 0), 0)
       : null,
     speicherZusatz: includePv ? readSpeicherZusatz() : [],
     dachSegmente: includePv ? readDachSegments() : [],
@@ -3033,6 +3172,20 @@ function setPreviewStatus(msg, isError) {
   el.style.color = isError ? 'var(--danger)' : 'var(--muted)';
 }
 
+function renderOptionalLines(offer) {
+  const box = $('optional-lines');
+  if (!box) return;
+  const opts = (offer && offer.optionaleKomponenten) || [];
+  if (!opts.length) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = `<h3>Optional, nicht im Preis</h3>${opts.map((opt) => {
+    const price = Number(opt.price) || 0;
+    return `<div class="quote-line"><span class="quote-name">${escHtml(opt.label || '')}</span><span>${price.toLocaleString('de-DE')} €</span></div>`;
+  }).join('')}`;
+}
+
 function renderQuoteLines(offer) {
   const box = $('quote-lines');
   const note = $('s-lines-note');
@@ -3158,6 +3311,7 @@ function compute() {
       $('s-brutto').textContent = o.preis.bruttoFmt;
       lastPackageBrutto = o.preis && o.preis.packageBrutto != null ? o.preis.packageBrutto : (o.preis && o.preis.brutto);
       renderQuoteLines(o);
+      renderOptionalLines(o);
       const blocked = !!(o.preis && o.preis.pdfBlocked);
       setPdfBlocked(blocked, o.preis && o.preis.pdfBlockReason);
       if ($('f-inverter') && $('f-inverter').value === '' && o.config && o.config.inverter && o.config.inverter !== '—') {
@@ -3929,7 +4083,7 @@ async function init() {
     const exts = (CATALOG.storageExtensions || {})[brand] || [];
     const e = exts[Number($('se-size').value) || 0] || exts[0];
     if (!e) { toast('Für diese Marke ist keine Speichererweiterung hinterlegt.', 'error'); return; }
-    $('speicher-list').appendChild(createSpeicherRow({ label: e.label, kwh: e.kwh, price: e.price }));
+    $('speicher-list').appendChild(createSpeicherRow({ kwh: e.kwh, price: e.price, mode: 'fix' }));
     updateSpeicherCompositionHint();
     compute();
   });

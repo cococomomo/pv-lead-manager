@@ -340,6 +340,87 @@ function testStorageClimateSplit() {
   assert(manualKlima.klima.priceSource === 'manual', 'Preisquelle manuell');
 }
 
+function testStorageBlockChoice() {
+  console.log('Speicherblöcke Fix/Optional, nur Datenblattgrößen');
+  const html = fs.readFileSync(path.join(__dirname, '../public/offer.html'), 'utf8');
+  assert(html.includes('se-mode'), 'Formular hat Fix/Optional je Block');
+  assert(html.includes('>Fix<') && html.includes('>Optional<'), 'Schalter bietet Fix und Optional');
+  assert(!html.includes("className = 'se-kwh'"), 'kein freies kWh-Feld');
+  assert(!html.includes("k.step = '0.1'"), 'keine Komma-Schritte an der Blockgröße');
+  assert(!html.includes('Speicherblock (Fix im Preis)'), 'Hinzufügen ist nicht mehr nur Fix');
+
+  const base = { brand: 'sigenergy', moduleCount: 11, speicher: 6, dach: 'Ziegel', optionen: [] };
+  const fixedOnly = catalog.computeOffer({
+    ...base,
+    speicherZusatz: [{ kwh: 10, price: 3600, mode: 'fix' }],
+  });
+  assert(Math.abs(fixedOnly.config.speicher - 15.06) < 0.001, 'Fixblock 10.0 zählt 9,04 kWh ins Paket');
+  assert(fixedOnly.preis.speicherZusatzPreis === 3600, 'Fixblock kostet 3.600');
+  assert(fixedOnly.preis.brutto === 16100, 'Fixblock bleibt im Paketpreis');
+  assert(fixedOnly.quoteLines.some((l) => l.role === 'storage' && /9,04/.test(l.desc)), 'Angebot zeigt 9,04 im Paket');
+  assert(!fixedOnly.optionaleKomponenten.some((o) => o.key === 'speicherblock'), 'Fixblock ist keine optionale Zeile');
+
+  const optionalOnly = catalog.computeOffer({
+    ...base,
+    speicher: 10,
+    speicherZusatz: [{ kwh: 6, price: 2400, mode: 'optional' }],
+  });
+  assert(optionalOnly.config.speicher === 9.04, 'optionaler Block ändert die Paketkapazität nicht');
+  assert(optionalOnly.preis.basePrice === 13500, 'Basis bleibt das 10.0-Paket');
+  assert(optionalOnly.preis.speicherZusatzPreis === 0, 'optionaler Block nicht im Paketpreis');
+  assert(optionalOnly.preis.brutto === 13500, 'Brutto ohne optionalen Block');
+  const optLine = optionalOnly.optionaleKomponenten.find((o) => o.key === 'speicherblock');
+  assert(optLine && optLine.price === 2400 && /6,02/.test(optLine.label), 'optionale Zeile 6.0 / 6,02 kWh / 2.400 €');
+  assert(!optionalOnly.quoteLines.some((l) => l.role === 'storage' && /6,02/.test(l.desc || l.name || '')), 'optionaler 6.0-Block steht nicht in der Paket-Stückliste');
+
+  const mixed = catalog.computeOffer({
+    ...base,
+    speicherZusatz: [
+      { kwh: 10, price: 3600, mode: 'fix' },
+      { kwh: 6, price: 2400, mode: 'optional' },
+    ],
+  });
+  assert(Math.abs(mixed.config.speicher - 15.06) < 0.001, 'gemischt: nur der Fixblock zählt zur Kapazität');
+  assert(mixed.preis.brutto === 16100, 'gemischt: nur 3.600 im Paket');
+  assert(mixed.optionaleKomponenten.filter((o) => o.key === 'speicherblock').length === 1, 'genau eine optionale Speicherzeile');
+
+  const weird = catalog.computeOffer({
+    ...base,
+    speicherZusatz: [
+      { kwh: 6.5, price: 1000, mode: 'fix' },
+      { kwh: 7.2, price: 1111, mode: 'optional' },
+      { kwh: 5.84, price: 999, mode: 'optional' },
+      { kwh: 8.76, price: 888, mode: 'fix' },
+    ],
+  });
+  const blob = JSON.stringify({
+    config: weird.config,
+    quoteLines: weird.quoteLines,
+    optionaleKomponenten: weird.optionaleKomponenten,
+    preis: weird.preis,
+  });
+  assert(!/5[,.]84|8[,.]76|6[,.]5|7[,.]2/.test(blob), 'keine freie Größe 6,5 / 7,2 und nicht 5,84 / 8,76');
+  assert(weird.preis.speicherZusatzPreis === 2400 + 3600, 'gesnappte Fixblöcke bleiben 2.400 und 3.600');
+  const weirdOpt = weird.optionaleKomponenten.filter((o) => o.key === 'speicherblock');
+  assert(weirdOpt.length === 2, 'gesnappte optionale Blöcke bleiben optionale Zeilen');
+  assert(weirdOpt.every((o) => o.price === 2400 || o.price === 3600), 'keine erfundenen Blockpreise');
+  assert(weirdOpt.some((o) => /6,02/.test(o.label) && o.price === 2400), '7,2 wird zum 6.0-Block für 2.400');
+  assert(weird.quoteLines.filter((l) => l.role === 'storage').every((l) => /6,02|9,04/.test(l.desc)), 'Paketzeilen nur 6,02 oder 9,04');
+
+  const alt = catalog.computeOffer({
+    brand: 'sigenergy_alt',
+    moduleCount: 11,
+    speicher: 6,
+    dach: 'Ziegel',
+    optionen: [],
+    speicherZusatz: [{ kwh: 10, mode: 'optional' }],
+  });
+  const altLine = alt.optionaleKomponenten.find((o) => o.key === 'speicherblock');
+  assert(alt.config.speicher === 6.02, 'Alt-Paket bleibt 6,02');
+  assert(alt.preis.brutto === 13200, 'Alt-Paketpreis ohne optionalen Block');
+  assert(altLine && altLine.price === 3600 && /9,04/.test(altLine.label), 'Alt-Block 10.0 ebenfalls 9,04 kWh und 3.600 €');
+}
+
 async function main() {
   await testTruncatedDraft();
   await testClarificationStillDrafts();
@@ -347,6 +428,7 @@ async function main() {
   testOptimizerLabel();
   testPdfPages();
   testStorageClimateSplit();
+  testStorageBlockChoice();
   console.log(`\n${passed} ok, ${failed} failed`);
   if (failed) process.exit(1);
 }

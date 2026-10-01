@@ -1656,8 +1656,51 @@ function listStorageExtensionOptions(brand) {
     label: e.label,
     hint: brand === 'fronius'
       ? 'Nachrüstbares Fronius-Reserva-Element (+3,2 kWh).'
-      : `Zusätzlicher SigenStor-BAT-Block (+${formatNum(e.kwh)} kWh), stapelbar.`,
+      : `Zusätzlicher SigenStor-BAT-Block ${sigenergyNominalLabel(e.kwh)} (${formatDe(sigenergyUsableKwh(e.kwh))} kWh), stapelbar.`,
   }));
+}
+
+/**
+ * Zusatzblock auf eine Datenblattgröße ziehen.
+ * Sigenergy nur 6.0 (6,02 kWh, 2.400 €) und 10.0 (9,04 kWh, 3.600 €).
+ * Freie Werte wie 6,5 oder 7,2 werden auf den nächsten Katalogblock gelegt
+ * und bekommen dann den Katalogpreis, keine eigene Preisspanne.
+ */
+function resolveStorageBlock(brand, block) {
+  const b = normalizeBrand(brand);
+  const exts = STORAGE_EXTENSIONS[b] || [];
+  if (!exts.length || !block) return null;
+  const raw = Number(block.kwh);
+  let hit = null;
+  if (isSigenergyBrand(b) && Number.isFinite(raw)) {
+    const tier = sigenergyNominalTier(raw);
+    if (tier != null) hit = exts.find((e) => e.kwh === tier) || null;
+  }
+  if (!hit && Number.isFinite(raw)) {
+    hit = exts.find((e) => Math.abs(Number(e.kwh) - raw) < (b === 'fronius' ? 0.15 : 0.05)) || null;
+  }
+  if (!hit) {
+    hit = exts.slice().sort((a, c) => Math.abs(Number(a.kwh) - raw) - Math.abs(Number(c.kwh) - raw))[0];
+  }
+  if (!hit) return null;
+  const usable = isSigenergyBrand(b) ? sigenergyUsableKwh(hit.kwh) : hit.kwh;
+  const exact = Number.isFinite(raw) && (
+    Math.abs(raw - Number(hit.kwh)) < 0.05
+    || (isSigenergyBrand(b) && Math.abs(raw - usable) < 0.03)
+    || (isSigenergyBrand(b) && hit.kwh === 10 && Math.abs(raw - 9) < 0.05)
+  );
+  const override = Number(block.price);
+  const hasOverride = block.price != null && block.price !== '' && Number.isFinite(override) && override >= 0;
+  const price = exact && hasOverride ? override : hit.price;
+  return {
+    kwh: hit.kwh,
+    price,
+    label: hit.label,
+    usableKwh: usable,
+    hint: isSigenergyBrand(b)
+      ? `SigenStor BAT ${sigenergyNominalLabel(hit.kwh)}, nutzbar ${formatDe(usable)} kWh.`
+      : null,
+  };
 }
 
 function resolveSpeicherUpgradeOption(brand, kwp, opt) {
@@ -1855,6 +1898,7 @@ function computeOffer(config) {
   let kwp = 0;
   let speicher = null;
   let speicherBloecke = [];
+  let optionalStorageBlocks = [];
   let speicherZusatzKwh = 0;
   let speicherZusatzPreis = 0;
   let speicherGesamt = 0;
@@ -1905,9 +1949,10 @@ function computeOffer(config) {
     } else if (manualZusatz.length) {
       speicher = snapStorage(brand, kwpPackage, config.speicher);
       for (const b of manualZusatz) {
-        const k = Number(b.kwh) || 0;
-        const p = Number(b.price) || 0;
-        speicherBloecke.push({ kwh: k, price: p, label: String(b.label || `+${formatNum(k)} kWh Speichererweiterung`).trim() });
+        const resolved = resolveStorageBlock(brand, b);
+        if (!resolved) continue;
+        if (b.mode === 'optional') optionalStorageBlocks.push(resolved);
+        else speicherBloecke.push({ kwh: resolved.kwh, price: resolved.price, label: resolved.label });
       }
     } else if (desiredSpeicher) {
       const plan = planStorage(brand, kwpPackage, desiredSpeicher);
@@ -2035,7 +2080,7 @@ function computeOffer(config) {
             price: resolved.price,
             hint: resolved.hint || (brand === 'fronius'
               ? 'Optionales Reserva-Batteriemodul (+3,2 kWh).'
-              : `Optionaler SigenStor-BAT-Block (+${formatNum(resolved.kwh)} kWh).`),
+              : `Optionaler SigenStor-BAT-Block ${sigenergyNominalLabel(resolved.kwh)} (${formatDe(sigenergyUsableKwh(resolved.kwh))} kWh).`),
             kwh: resolved.kwh,
           };
           if (mode === 'fix') {
@@ -2087,6 +2132,17 @@ function computeOffer(config) {
           optionaleKomponenten.push({ key: 'speichererweiterung', label: se.label, price: se.price, hint: null });
         }
       }
+    }
+    for (const block of optionalStorageBlocks) {
+      optionaleKomponenten.push({
+        key: 'speicherblock',
+        label: block.label,
+        price: block.price,
+        hint: block.hint || null,
+        kwh: block.kwh,
+        usableKwh: block.usableKwh,
+        mode: 'optional',
+      });
     }
   }
 
