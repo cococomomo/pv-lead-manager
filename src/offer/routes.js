@@ -166,6 +166,12 @@ function shouldPersistOfferVersion(body) {
   return !!(body && (body.finalize || body.saveVersion));
 }
 
+/** Lead-Id für die Frage nach dem Versand, auch wenn der Kunde gerade angelegt wurde. */
+function leadIdHeaderValue(savedVersion) {
+  const id = savedVersion && savedVersion.leadId != null ? Number(savedVersion.leadId) : NaN;
+  return Number.isFinite(id) && id > 0 ? String(id) : '';
+}
+
 function customerFromBody(body) {
   const c = body.customer && typeof body.customer === 'object' ? body.customer : {};
   const s = (v) => (v == null ? '' : String(v).trim());
@@ -614,6 +620,7 @@ function mountOfferRoutes(app, deps) {
             customerVersion,
             filenameBase: fileBase,
             status: body.finalize ? 'sent' : 'draft',
+            updateLeadStatus: false,
             config: configNorm,
             variants: variantsNorm,
             emailSubject: body.subject || '',
@@ -636,8 +643,10 @@ function mountOfferRoutes(app, deps) {
       res.setHeader('X-Customer-Version', String(customerVersion));
       res.setHeader('X-Filename-Base', fileBase);
       if (savedVersion) res.setHeader('X-Offer-Version-Id', String(savedVersion.id));
+      const leadHeader = leadIdHeaderValue(savedVersion);
+      if (leadHeader) res.setHeader('X-Lead-Id', leadHeader);
       // CORS-ähnliche Exposure für Frontend-Header-Lesen (same-origin reicht meist)
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Angebotsnummer, X-Customer-Version, X-Filename-Base, X-Offer-Version-Id');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Angebotsnummer, X-Customer-Version, X-Filename-Base, X-Offer-Version-Id, X-Lead-Id');
       res.send(pdf);
     } catch (err) {
       console.error('[NOORTEC] /api/offer/pdf:', err.message);
@@ -684,6 +693,21 @@ function mountOfferRoutes(app, deps) {
       });
     } catch (err) {
       console.error('[NOORTEC] /api/offer/email-text:', err.message);
+      res.status(400).json({ error: err.message || String(err) });
+    }
+  });
+
+  // Ja nach PDF-Download oder Outlook: Status und Nachfass, Endstatus bleiben.
+  app.post('/api/offer/mark-angebot-gesendet', (req, res) => {
+    const leadId = Number((req.body || {}).leadId);
+    if (!Number.isFinite(leadId) || leadId < 1) {
+      return res.status(400).json({ error: 'leadId erforderlich' });
+    }
+    try {
+      const updated = persist.markLeadAngebotGesendetById(leadId);
+      res.json({ ok: true, updated: !!updated, leadId });
+    } catch (err) {
+      console.error('[NOORTEC] /api/offer/mark-angebot-gesendet:', err.message);
       res.status(400).json({ error: err.message || String(err) });
     }
   });
@@ -746,4 +770,4 @@ function mountOfferRoutes(app, deps) {
   });
 }
 
-module.exports = { mountOfferRoutes, shouldPersistOfferVersion, customerFromBody };
+module.exports = { mountOfferRoutes, shouldPersistOfferVersion, customerFromBody, leadIdHeaderValue };

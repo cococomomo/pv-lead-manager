@@ -756,6 +756,17 @@
 
 <div class="toast" id="toast"></div>
 
+<div id="offer-status-modal" class="variant-modal" aria-hidden="true" hidden>
+  <div class="variant-modal-card" role="dialog" aria-labelledby="offer-status-title" aria-modal="true">
+    <h3 id="offer-status-title">Status dieses Leads auf „Angebot gesendet“ setzen?</h3>
+    <p class="hint" style="margin:0 0 0.85rem">Ja setzt den Status und den Nachfass in 14 Tagen. Verloren und archiviert bleiben. Nein lässt den Status, wie er ist.</p>
+    <div class="variant-modal-actions">
+      <button type="button" class="btn" id="offer-status-yes">Ja</button>
+      <button type="button" class="btn secondary" id="offer-status-no">Nein</button>
+    </div>
+  </div>
+</div>
+
 <div id="line-edit-modal" class="variant-modal line-edit-modal" aria-hidden="true" hidden>
   <div class="variant-modal-card" role="dialog" aria-labelledby="line-edit-title">
     <h3 id="line-edit-title">Zeile bearbeiten</h3>
@@ -2934,9 +2945,66 @@ async function loadOfferVersionById(id) {
 function markFinalizeDone(headers) {
   const num = headers && headers.get && headers.get('X-Angebotsnummer');
   if (num && $('f-nummer')) $('f-nummer').value = num;
+  const leadId = Number(headers && headers.get && headers.get('X-Lead-Id'));
+  if (Number.isFinite(leadId) && leadId > 0) currentLeadId = leadId;
   loadedVersionId = null;
   allocateNewNumberOnFinalize = false;
   refreshOfferHistory();
+}
+
+const OFFER_SENT_STATUS_QUESTION = 'Status dieses Leads auf „Angebot gesendet“ setzen?';
+let offerStatusAsk = null;
+
+function askSetOfferSentStatus() {
+  const modal = $('offer-status-modal');
+  const yesBtn = $('offer-status-yes');
+  const noBtn = $('offer-status-no');
+  if (!modal || !yesBtn || !noBtn) return Promise.resolve(window.confirm(OFFER_SENT_STATUS_QUESTION));
+  if (offerStatusAsk) return offerStatusAsk;
+  offerStatusAsk = new Promise((resolve) => {
+    function done(answer) {
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      yesBtn.removeEventListener('click', onYes);
+      noBtn.removeEventListener('click', onNo);
+      modal.removeEventListener('click', onBackdrop);
+      offerStatusAsk = null;
+      resolve(!!answer);
+    }
+    function onYes() { done(true); }
+    function onNo() { done(false); }
+    function onBackdrop(ev) { if (ev.target === modal) done(false); }
+    yesBtn.addEventListener('click', onYes);
+    noBtn.addEventListener('click', onNo);
+    modal.addEventListener('click', onBackdrop);
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    yesBtn.focus();
+  });
+  return offerStatusAsk;
+}
+
+/** Nur nach erfolgreichem Versand. Vorschau und „Version speichern“ rufen das nicht auf. */
+async function maybeAskOfferSentStatus(headers) {
+  const leadId = Number(headers && headers.get && headers.get('X-Lead-Id'));
+  if (!Number.isFinite(leadId) || leadId < 1) return;
+  currentLeadId = leadId;
+  const yes = await askSetOfferSentStatus();
+  if (!yes) {
+    toast('Status bleibt unverändert.', 'ok');
+    return;
+  }
+  try {
+    const res = await api('/api/offer/mark-angebot-gesendet', {
+      method: 'POST',
+      body: JSON.stringify({ leadId }),
+    });
+    const j = await res.json();
+    if (j && j.updated) toast('Status auf „Angebot gesendet“ gesetzt. Nachfass in 14 Tagen.', 'ok');
+    else toast('Status bleibt unverändert.', 'ok');
+  } catch (e) {
+    toast('Status nicht gesetzt: ' + e.message, 'error');
+  }
 }
 
 function updateLayoutPanelUi() {
@@ -3663,6 +3731,7 @@ async function openOutlookDraft() {
     markFinalizeDone(pdfRes.headers);
     openMailtoDraft(j.mailtoUrl);
     toast('Outlook-Draft geöffnet. PDF wurde heruntergeladen – bitte anhängen.', 'ok');
+    await maybeAskOfferSentStatus(pdfRes.headers);
   } catch (e) { toast('Fehler: ' + e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Outlook öffnen (aktueller Text)'; }
 }
@@ -3685,6 +3754,7 @@ async function finishOfferOpenOutlook() {
     markFinalizeDone(pdfRes.headers);
     openMailtoDraft(j.mailtoUrl);
     toast('Angebot fertig: KI-Mail + PDF bereit, Outlook-Draft geöffnet.', 'ok');
+    await maybeAskOfferSentStatus(pdfRes.headers);
   } catch (e) { toast('Fehler: ' + e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'Angebot fertigstellen → Outlook-Draft'; }
 }
@@ -3698,6 +3768,7 @@ async function downloadPdf() {
     const pdfRes = await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
     markFinalizeDone(pdfRes.headers);
     toast(shouldAttachVollmacht() ? 'PDF heruntergeladen (inkl. Vollmacht).' : 'PDF heruntergeladen (ohne Vollmacht).', 'ok');
+    await maybeAskOfferSentStatus(pdfRes.headers);
   } catch (e) { toast('Fehler: ' + e.message, 'error'); }
   finally { btn.disabled = false; btn.textContent = 'PDF herunterladen'; }
 }

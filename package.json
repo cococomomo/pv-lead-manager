@@ -26,6 +26,7 @@
     "test:offer-lines": "node scripts/test-offer-lines.js",
     "test:map-leads": "node scripts/test-map-leads.js",
     "test:manual-customers": "node scripts/test-manual-customers.js",
+    "test:offer-sent-status": "node scripts/test-offer-sent-status.js",
     "test:lead-contact-by-id": "node scripts/test-lead-contact-by-id.js"
   },
   "dependencies": {

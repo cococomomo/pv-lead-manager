@@ -233,12 +233,9 @@ function mountLayoutOfferPersistRoutes(app) {
 
   app.get('/api/offer/sent-lead-ids', (_req, res) => {
     try {
-      let synced = 0;
-      try { synced = persist.syncLeadStatusFromSentOffers(); } catch (e) {
-        console.warn('[NOORTEC] syncLeadStatusFromSentOffers:', e.message);
-      }
+      // Pin-Badge nur. Der Status kommt erst von der Ja-Frage nach dem Versand.
       const ids = [...persist.leadIdsWithSentOffers()];
-      res.json({ ok: true, leadIds: ids, synced });
+      res.json({ ok: true, leadIds: ids, synced: 0 });
     } catch (err) {
       res.status(400).json({ error: err.message || String(err) });
     }

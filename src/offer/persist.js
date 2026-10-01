@@ -314,6 +314,7 @@ function leadIdsWithSentOffers() {
 /**
  * Nachgezogen: Leads mit gesendetem Angebot → Status „Angebot gesendet“ + Nachfass +14 Tage.
  * Überschreibt keine Endstatus (Termin / verloren / Archiv).
+ * Die Karte ruft das nicht mehr auf. Nach dem Versand setzt nur die Ja-Frage den Status.
  * @returns {number} Anzahl aktualisierter Leads
  */
 function syncLeadStatusFromSentOffers() {
@@ -594,6 +595,7 @@ function markLeadAngebotGesendet(db, leadId, sentAt) {
       END,
       last_updated = strftime('%Y-%m-%dT%H:%M:%fZ','now')
     WHERE id = ?
+      AND (archived_at IS NULL OR trim(archived_at) = '')
       AND (
         status IS NULL OR trim(status) = ''
         OR lower(trim(status)) IN (
@@ -602,6 +604,11 @@ function markLeadAngebotGesendet(db, leadId, sentAt) {
       )
   `).run(nachfassBis || sentDay, nachfassBis || sentDay, id);
   return !!info.changes;
+}
+
+/** Ja nach dem Versand: derselbe Schritt, Status plus Nachfass in 14 Tagen. */
+function markLeadAngebotGesendetById(leadId, sentAt) {
+  return markLeadAngebotGesendet(getDb(), leadId, sentAt);
 }
 
 function collectLayoutPlanIds(input) {
@@ -725,7 +732,8 @@ async function saveOfferVersion(input, createdBy = '') {
     customerJson,
   );
 
-  // Senden und PDF-Download: „Angebot gesendet“. Ein Entwurf bleibt „Neu“.
+  // Versand setzt den Status nicht mit (PDF-Route: updateLeadStatus false).
+  // Ein Entwurf bleibt „Neu“. Die Ja-Frage ruft markLeadAngebotGesendetById.
   if (status === 'sent' && leadId && input.updateLeadStatus !== false) {
     try {
       const changed = markLeadAngebotGesendet(db, leadId, sentAt);
@@ -936,6 +944,7 @@ module.exports = {
   listOffersForEmail,
   getOfferVersion,
   saveOfferVersion,
+  markLeadAngebotGesendetById,
   parseNameFromFilenameBase,
   saveOfferPdfFile,
   getOfferPdfAbsPath,
