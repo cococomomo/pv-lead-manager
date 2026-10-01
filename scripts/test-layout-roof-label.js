@@ -95,10 +95,12 @@ console.log('offer toolbar markers');
   });
   assert(html.includes('Modulabstand'), 'Abstand renamed to Modulabstand');
   assert(html.includes('>Modulplanung<'), 'module step label Modulplanung');
-  assert(!html.includes('id="layout-btn-auto"'), 'Auto button removed');
-  assert(!html.includes('id="layout-auto-portrait"'), 'Hochformat button removed');
-  assert(!html.includes('Flachdachbelegung'), 'Flachdachbelegung button removed');
-  assert(!html.includes('id="layout-auto-eastwest"'), 'Ost-West button removed');
+  assert(html.includes('>Auto-Belegung<'), 'Auto-Belegung is back');
+  assert(html.includes('>Hochformat<'), 'Hochformat is back');
+  assert(html.includes('>Querformat<'), 'Querformat is back');
+  assert(html.includes('>Flachdachbelegung<'), 'Flachdachbelegung is back');
+  assert(html.includes('>Ost-West<'), 'Ost-West is back');
+  assert(/class="layout-tool-group layout-auto-row" data-step="modules"/.test(html), 'orientation row belongs to Modulplanung');
   assert(!/>Abstand m</.test(html), 'old Abstand m label gone');
 }
 

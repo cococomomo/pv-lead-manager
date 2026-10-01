@@ -292,9 +292,8 @@
   .layout-stats span { white-space: nowrap; }
   #layout-stat-kwp { color: #93c5fd; }
   .layout-toolbar {
-    display: flex; flex-wrap: nowrap; gap: 0.35rem 0.5rem; align-items: end;
+    display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: end;
     padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); background: #fafafa;
-    overflow-x: auto;
   }
   .layout-toolbar label { margin: 0; font-size: 0.65rem; color: var(--muted); line-height: 1.2; }
   .layout-toolbar .field { min-width: 72px; }
@@ -335,6 +334,13 @@
     flex: 0 1 auto;
   }
   .layout-toolbar[data-editor-step="building"] .layout-module-tools { display: none; }
+  .layout-auto-row {
+    display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;
+    flex: 1 1 100%;
+    padding-top: 0.35rem; margin-top: 0.1rem;
+    border-top: 1px dashed #e5e7eb;
+  }
+  .layout-toolbar[data-editor-step="building"] .layout-auto-row { display: none; }
   .layout-toolbar[data-editor-step="modules"] #layout-btn-del-poly,
   .layout-toolbar[data-editor-step="modules"] #layout-btn-dup,
   .layout-toolbar[data-editor-step="modules"] #layout-btn-redo { display: none !important; }
@@ -871,6 +877,15 @@
         <button type="button" class="btn secondary snap-on" id="layout-btn-snap" title="Snap (Alt)">Snap</button>
         <button type="button" class="btn secondary icon-btn" id="layout-btn-undo" title="Rückgängig (Ctrl+Z)" disabled aria-label="Rückgängig">↶</button>
       </div>
+      <div class="layout-tool-group layout-auto-row" data-step="modules" hidden>
+        <button type="button" class="btn secondary" id="layout-btn-auto" title="Module automatisch belegen">Auto-Belegung</button>
+        <div class="layout-auto-orient" role="group" aria-label="Ausrichtung der automatischen Belegung">
+          <button type="button" class="layout-mode-btn active" id="layout-auto-portrait" data-auto-orient="portrait" aria-pressed="true" title="Hochformat: lange Seite zum First">Hochformat</button>
+          <button type="button" class="layout-mode-btn" id="layout-auto-landscape" data-auto-orient="landscape" aria-pressed="false" title="Querformat: lange Seite parallel zur Traufe">Querformat</button>
+          <button type="button" class="layout-mode-btn" id="layout-auto-flat" data-auto-orient="flat" aria-pressed="false" title="Flachdachbelegung: Querformat, Neigung 10°, Reihen entlang der Traufe">Flachdachbelegung</button>
+          <button type="button" class="layout-mode-btn" id="layout-auto-eastwest" data-auto-orient="eastwest" aria-pressed="false" title="Ost-West: Querformat, 10°, Paare an der langen Kante (2 cm, dann 20 cm), kurze Kante 2 cm">Ost-West</button>
+        </div>
+      </div>
     </div>
     <div id="layout-map"></div>
     <div class="layout-modal-foot">
@@ -888,7 +903,7 @@
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="/layout-roof-label.js?v=20261001-belegungsplan"></script>
-<script src="/layout-editor.js?v=20261001-belegungsplan"></script>
+<script src="/layout-editor.js?v=20261001-auto-row"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let CATALOG = null;
