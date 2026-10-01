@@ -587,7 +587,7 @@
           <label>Module (Anzahl)</label>
           <div class="module-stepper">
             <button type="button" id="btn-mod-minus" aria-label="Ein Modul weniger">−</button>
-            <input id="f-modules" type="number" min="1" step="1" value="22" />
+            <input id="f-modules" type="number" min="0" step="1" value="22" />
             <button type="button" id="btn-mod-plus" aria-label="Ein Modul mehr">+</button>
           </div>
         </div>
@@ -610,6 +610,19 @@
         <button class="btn secondary" id="btn-add-dach" type="button">+ Dachfläche</button>
       </div>
 
+      <label style="margin-top:0.7rem">Optional: Speicher-Upgrade <span style="font-weight:400;color:var(--muted)">(Preisdifferenz statt Basisgröße)</span></label>
+      <div class="btn-row" style="margin-top:0.35rem; align-items:center">
+        <select id="su-target" style="max-width:360px; flex:1"></select>
+        <button class="btn secondary" id="btn-add-upgrade" type="button">+ Upgrade als Option</button>
+      </div>
+      <div class="hint" id="su-hint">Wähle z. B. 9,5 kWh Basis und biete optional das Upgrade auf 12,6 oder 15,8 kWh an – Preis = Differenz der Paketpreise.</div>
+      </div>
+      <div id="positions-block">
+      <label style="margin-top:0.7rem">Position hinzufügen</label>
+      <div class="btn-row" style="margin-top:0.35rem; align-items:center">
+        <input id="pos-search" type="search" placeholder="Wallbox, Speicherblock, Klima, freie Position …" style="flex:1" autocomplete="off" />
+      </div>
+      <div id="pos-results"></div>
       <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy 6.0 = 6,02 kWh / 2.400 € und 10.0 = 9,04 kWh / 3.600 € · Fronius +3,2 kWh)</span></label>
       <div class="repeater" id="speicher-list"></div>
       <div class="btn-row" style="margin-top:0.4rem; align-items:center">
@@ -617,13 +630,6 @@
         <button class="btn secondary" id="btn-add-speicher" type="button">+ Speicherblock</button>
       </div>
       <div class="hint">Jeder Block ist <b>Fix</b> (im Paket) oder <b>Optional</b> (eigene Zeile, nicht im Gesamtpreis). Die Größe kommt nur aus dem Datenblatt, ohne freies kWh-Feld.</div>
-
-      <label style="margin-top:0.7rem">Optional: Speicher-Upgrade <span style="font-weight:400;color:var(--muted)">(Preisdifferenz statt Basisgröße)</span></label>
-      <div class="btn-row" style="margin-top:0.35rem; align-items:center">
-        <select id="su-target" style="max-width:360px; flex:1"></select>
-        <button class="btn secondary" id="btn-add-upgrade" type="button">+ Upgrade als Option</button>
-      </div>
-      <div class="hint" id="su-hint">Wähle z. B. 9,5 kWh Basis und biete optional das Upgrade auf 12,6 oder 15,8 kWh an – Preis = Differenz der Paketpreise.</div>
 
       <label>Optionen &amp; Zusatzleistungen</label>
       <div class="optlist" id="opts"></div>
@@ -1252,7 +1258,7 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   const pw = document.createElement('div'); pw.className = 'opt-price-wrap';
   const priceEl = document.createElement('input');
   priceEl.className = 'opt-price'; priceEl.type = 'number'; priceEl.min = '0'; priceEl.step = '10';
-  priceEl.value = price;
+  priceEl.value = price == null || price === '' ? '' : price;
   const eur = document.createElement('span'); eur.className = 'eur'; eur.textContent = '€';
   pw.appendChild(priceEl); pw.appendChild(eur);
 
@@ -1301,9 +1307,10 @@ function readOptionRows() {
     const key = row.dataset.key || null;
     const nameEl = row.querySelector('.opt-name');
     const label = (nameEl.value !== undefined ? nameEl.value : nameEl.textContent).trim();
-    const price = Number(row.querySelector('.opt-price').value) || 0;
+    const rawPrice = String(row.querySelector('.opt-price').value || '').trim();
+    const price = rawPrice === '' ? null : Number(rawPrice);
     const hint = (row.querySelector('.opt-hint') && row.querySelector('.opt-hint').value.trim()) || '';
-    if (!label && !price && key !== 'optimierer') return;
+    if (!label && price == null && key !== 'optimierer') return;
     const item = { key, label, price, mode, hint: hint || null };
     if (key === 'optimierer') {
       const qtyEl = row.querySelector('.opt-qty');
@@ -1674,7 +1681,10 @@ function refreshSpeicherSelect() {
   const st = (CATALOG.pricelist[brand] || {})[kwpPkg] || {};
   let tiers = Object.keys(st).map(Number).sort((a, b) => a - b);
   if (!brandHasStorageClient(brand)) tiers = [0];
-  const cur = Number($('f-speicher').value);
+  else if (!tiers.includes(0)) tiers = [0].concat(tiers);
+  const rawSpeicher = $('f-speicher').value;
+  const explicitZero = rawSpeicher === '0';
+  const cur = Number(rawSpeicher);
   const labelFor = (t) => {
     if (t === 0 || !Number.isFinite(t)) return 'Kein Speicher';
     if (isSigenergyClient(brand)) {
@@ -1694,8 +1704,14 @@ function refreshSpeicherSelect() {
     return `${String(t).replace('.', ',')} kWh`;
   };
   $('f-speicher').innerHTML = tiers.map((t) => `<option value="${t}">${labelFor(t)}</option>`).join('');
-  if (tiers.includes(cur)) $('f-speicher').value = String(cur);
-  else if (tiers.length) $('f-speicher').value = String(tiers[0]);
+  if (explicitZero) $('f-speicher').value = '0';
+  else if (rawSpeicher !== '' && tiers.some((t) => Math.abs(t - cur) < 0.05)) {
+    const hit = tiers.find((t) => Math.abs(t - cur) < 0.05);
+    $('f-speicher').value = String(hit);
+  } else {
+    const positive = tiers.find((t) => t > 0);
+    $('f-speicher').value = String(positive != null ? positive : (tiers[0] != null ? tiers[0] : 0));
+  }
   refreshStorageUpgradeSelect();
   refreshExistingUpgradePrice();
   updateSpeicherCompositionHint();
@@ -1862,8 +1878,16 @@ function modulesFromKwp(brand, kwp) {
 /** Live-Anzeige: berechnetes kWp + Preis-Hinweis + Speicher-Stufen. */
 function syncModuleDerivedUi() {
   if (!CATALOG) return;
-  const mods = Math.max(1, Math.round(Number($('f-modules').value) || 0));
-  if (String(mods) !== $('f-modules').value) $('f-modules').value = String(mods);
+  const pvOn = $('f-include-pv').checked;
+  const rawMods = $('f-modules').value;
+  if (!pvOn && (rawMods === '' || Number(rawMods) === 0)) {
+    $('f-kwp-live').textContent = '—';
+    $('f-kwp').value = '';
+    refreshSpeicherSelect();
+    return;
+  }
+  const mods = Math.max(1, Math.round(Number(rawMods) || 0));
+  if (String(mods) !== rawMods) $('f-modules').value = String(mods);
   const wp = currentModuleWp();
   const kwpCalc = Math.round((mods * wp) / 10) / 100;
   $('f-kwp-live').textContent = `${String(kwpCalc).replace('.', ',')} kWp`;
@@ -1896,6 +1920,131 @@ function syncOptimiererQty() {
   if (priceEl) priceEl.value = String(unit * mods);
 }
 
+function positionChoices(query) {
+  const q = String(query || '').trim().toLowerCase();
+  const items = [];
+  const push = (item) => {
+    const hay = `${item.label} ${item.group || ''}`.toLowerCase();
+    if (q && !hay.includes(q)) return;
+    items.push(item);
+  };
+  (CATALOG.options || []).forEach((o) => {
+    if (!o || o.alwaysIncluded || o.price == null) return;
+    if (o.key === 'speichererweiterung') return;
+    push({ id: `opt:${o.key}`, group: 'Option', label: o.label, price: o.price });
+  });
+  const pvOn = $('f-include-pv').checked;
+  const brand = $('f-brand').value;
+  const blocks = [];
+  const ext = (CATALOG.storageExtensions || {});
+  if (pvOn) {
+    (ext[brand] || []).forEach((e) => blocks.push({ brand, ...e }));
+  } else {
+    (ext.sigenergy || []).forEach((e) => blocks.push({ brand: 'sigenergy', ...e }));
+    (ext.fronius || []).forEach((e) => blocks.push({ brand: 'fronius', ...e }));
+  }
+  blocks.forEach((e) => {
+    push({
+      id: `block:${e.brand}:${e.kwh}`,
+      group: 'Speicherblock',
+      label: e.label,
+      price: e.price,
+      brand: e.brand,
+      kwh: e.kwh,
+    });
+  });
+  (CATALOG.klimaPackages || []).forEach((p) => {
+    push({ id: `klima:${p.id}`, group: 'Klima', label: p.label, price: p.priceBrutto });
+  });
+  push({ id: 'piping', group: 'Klima', label: 'Kältemittelleitung, Zusatzmeter', price: 40 });
+  push({ id: 'pump', group: 'Klima', label: 'Kondensatwasserpumpe', price: 240 });
+  const extra = Math.round(((CATALOG.extraModulePriceNetto != null ? CATALOG.extraModulePriceNetto : 200) * 1.2));
+  push({ id: 'modul', group: 'Modul', label: 'Zusatzmodul', price: extra });
+  push({ id: 'free', group: 'Frei', label: 'Freie Position', price: null });
+  return items;
+}
+
+function renderPositionResults(query) {
+  const box = $('pos-results');
+  if (!box || !CATALOG) return;
+  const items = positionChoices(query).slice(0, 12);
+  if (!items.length) { box.innerHTML = ''; return; }
+  box.innerHTML = items.map((item) => {
+    const price = item.price == null ? '' : ` · ${Number(item.price).toLocaleString('de-DE')} €`;
+    return `<button type="button" class="btn secondary" data-pos="${escHtml(item.id)}" style="margin:0.2rem 0.35rem 0 0">${escHtml(item.label)}${escHtml(price)}</button>`;
+  }).join('');
+}
+
+function addPositionFromSearch(id) {
+  const item = positionChoices('').find((entry) => entry.id === id);
+  if (!item && id !== 'free') return;
+  if (id === 'free' || (item && item.id === 'free')) {
+    const row = createOptionRow({ label: '', price: '', mode: 'fix', manual: true, hint: '' });
+    $('opts').appendChild(row);
+    const name = row.querySelector('.opt-name');
+    if (name) name.focus();
+    compute();
+    return;
+  }
+  if (id.startsWith('opt:')) {
+    const key = id.slice(4);
+    let row = document.querySelector(`#opts .optrow[data-key="${key}"]`);
+    if (!row) {
+      const cat = (CATALOG.options || []).find((o) => o.key === key);
+      row = createOptionRow({ key, label: cat ? cat.label : key, price: cat ? cat.price : '', mode: 'fix', manual: true });
+      $('opts').appendChild(row);
+    }
+    const sel = row.querySelector('.opt-mode');
+    if (sel) { sel.value = 'fix'; sel.setAttribute('data-mode', 'fix'); }
+    compute();
+    return;
+  }
+  if (id.startsWith('block:')) {
+    if (!$('f-include-pv').checked && item.brand) $('f-brand').value = item.brand;
+    refreshStorageExtSelect();
+    $('speicher-list').appendChild(createSpeicherRow({ kwh: item.kwh, price: item.price, mode: 'fix' }));
+    updateSpeicherCompositionHint();
+    compute();
+    return;
+  }
+  if (id.startsWith('klima:')) {
+    const pkg = (CATALOG.klimaPackages || []).find((p) => p.id === id.slice(6));
+    if (!pkg) return;
+    $('f-klima-enabled').checked = true;
+    const exp = expandLegacyKlimaPackage(pkg, 1);
+    setKlimaUnits('klima-outdoor-list', exp.outdoor, 'outdoor');
+    setKlimaUnits('klima-indoor-list', exp.indoor, 'indoor');
+    syncPvKlimaVisibility();
+    compute();
+    return;
+  }
+  if (id === 'piping') {
+    $('f-klima-enabled').checked = true;
+    const cur = Math.max(0, Number($('f-klima-piping').value) || 0);
+    $('f-klima-piping').value = String(cur > 0 ? cur : 1);
+    syncPvKlimaVisibility();
+    compute();
+    return;
+  }
+  if (id === 'pump') {
+    $('f-klima-enabled').checked = true;
+    $('f-klima-pump').checked = true;
+    syncPvKlimaVisibility();
+    compute();
+    return;
+  }
+  if (id === 'modul') {
+    $('opts').appendChild(createOptionRow({
+      key: 'zusatzmodul',
+      label: 'Zusatzmodul',
+      price: item.price,
+      mode: 'fix',
+      manual: true,
+    }));
+    compute();
+  }
+}
+
 function syncPvKlimaVisibility() {
   const pvOn = $('f-include-pv').checked;
   const klimaOn = $('f-klima-enabled').checked;
@@ -1920,7 +2069,7 @@ function syncVollmachtUi() {
   if (hint) {
     hint.textContent = on
       ? 'PV-/Kombi-Angebot: Vollmacht wird automatisch ans PDF angehängt. E-Mail-Text per KI (editierbar), Angebot 30 Tage gültig.'
-      : 'Reines Klima-Angebot: keine Vollmacht. E-Mail-Text per KI (editierbar), Angebot 30 Tage gültig.';
+      : 'Ohne Photovoltaikanlage: keine Vollmacht. E-Mail-Text per KI (editierbar), Angebot 30 Tage gültig.';
   }
 }
 
@@ -2128,7 +2277,7 @@ function showClarifications(items) {
     };
   }).filter((q) => q.question).map((q) => {
     // Fallback, falls Server/KI keine Buttons geliefert hat
-    if (!q.answers.length) {
+    if (!q.answers.length && q.id !== 'montage_price' && q.id !== 'parts_only') {
       q.answers = [
         { label: 'Ja', text: 'Ja, bestätigen' },
         { label: 'Nein', text: 'Nein' },
@@ -2404,26 +2553,32 @@ function resolveDachSegmenteFromAi(r, cmdText) {
 // ── Formular <-> Variant ────────────────────────────────────────────────────
 function readForm() {
   const includePv = $('f-include-pv').checked;
-  const modules = Math.max(1, Math.round(Number($('f-modules').value) || 0));
-  const pkg = resolvePackageClient($('f-brand').value, modules);
+  const rawModules = $('f-modules').value;
+  const modules = includePv
+    ? Math.max(1, Math.round(Number(rawModules) || 0))
+    : 0;
+  const pkg = includePv ? resolvePackageClient($('f-brand').value, modules) : null;
+  const speicherRaw = $('f-speicher').value;
+  const speicher = includePv ? (speicherRaw === '' ? null : Number(speicherRaw)) : null;
+  const zusatz = readSpeicherZusatz();
   return {
     includePv,
     brand: $('f-brand').value,
     kwp: includePv && pkg ? pkg.kwpPackage : null,
-    speicher: includePv ? Number($('f-speicher').value) : null,
+    speicher,
     speicherGesamt: includePv
-      ? Number($('f-speicher').value) + readSpeicherZusatz()
+      ? (Number(speicher) || 0) + zusatz
         .filter((b) => b.mode !== 'optional')
         .reduce((s, b) => s + (Number(b.kwh) || 0), 0)
       : null,
-    speicherZusatz: includePv ? readSpeicherZusatz() : [],
+    speicherZusatz: zusatz,
     dachSegmente: includePv ? readDachSegments() : [],
     moduleType: $('f-module').value,
-    moduleCount: includePv ? modules : 0,
+    moduleCount: modules,
     inverterKw: includePv && $('f-inverter').value !== '' ? Number($('f-inverter').value) : null,
     inverterModel: '',
     bruttoOverride: $('f-brutto').value.trim() === '' ? null : Number($('f-brutto').value),
-    optionen: includePv ? readOptionRows() : [],
+    optionen: readOptionRows(),
     klima: readKlimaConfig(),
     offerNotes: ($('f-offer-notes').value || '').split('\n').map((s) => s.trim()).filter(Boolean),
     layoutPlanId: currentLayoutId != null ? Number(currentLayoutId) : null,
@@ -2449,15 +2604,23 @@ function writeForm(cfg) {
   refreshInverterSelect(cfg.inverterKw != null ? cfg.inverterKw : null);
   $('f-module').value = cfg.moduleType || 'das';
 
+  const pvOn = $('f-include-pv').checked;
   let modules = cfg.moduleCount;
-  if (!(Number.isFinite(Number(modules)) && Number(modules) > 0)) {
-    if (cfg.kwp) modules = modulesFromKwp($('f-brand').value, cfg.kwp);
+  if (pvOn && !(Number.isFinite(Number(modules)) && Number(modules) > 0)) {
+    if (cfg.kwp && !(cfg.speicher === 0 || cfg.speicher === '0')) modules = modulesFromKwp($('f-brand').value, cfg.kwp);
   }
-  $('f-modules').value = String(Math.max(1, Math.round(Number(modules) || 22)));
+  if (!pvOn) {
+    $('f-modules').value = (Number(modules) > 0) ? String(Math.round(Number(modules))) : '';
+  } else if (cfg.moduleCount === 0 || cfg.moduleCount === '0') {
+    $('f-modules').value = '';
+  } else {
+    $('f-modules').value = String(Math.max(1, Math.round(Number(modules) || 22)));
+  }
   syncModuleDerivedUi();
 
   refreshSpeicherSelect();
-  if (cfg.speicher) snapSelectToValue($('f-speicher'), cfg.speicher);
+  if (cfg.speicher === 0 || cfg.speicher === '0') $('f-speicher').value = '0';
+  else if (cfg.speicher) snapSelectToValue($('f-speicher'), cfg.speicher);
 
   const segs = (cfg.dachSegmente && cfg.dachSegmente.length)
     ? cfg.dachSegmente
@@ -3551,11 +3714,11 @@ async function parseCommand() {
     const cfg = {
       includePv: r.includePv !== false,
       brand: r.brand || 'sigenergy',
-      kwp: r.kwp || null,
-      moduleCount: r.module_count || null,
-      speicher: r.speicher || null,
-      speicherZusatz: [],
-      dachSegmente: resolveDachSegmenteFromAi(r, cmd),
+      kwp: r.includePv === false ? null : (r.kwp || null),
+      moduleCount: (r.module_count === 0 || r.module_count === '0') ? 0 : (r.module_count || null),
+      speicher: (r.speicher === 0 || r.speicher === '0') ? 0 : (r.speicher || null),
+      speicherZusatz: Array.isArray(r.speicherZusatz) ? r.speicherZusatz : [],
+      dachSegmente: r.includePv === false ? [] : resolveDachSegmenteFromAi(r, cmd),
       moduleType: r.moduleType || 'das',
       inverterKw: r.inverter_kw != null ? Number(r.inverter_kw) : null,
       inverterModel: '',
@@ -3565,16 +3728,22 @@ async function parseCommand() {
       offerNotes: Array.isArray(r.offerNotes) ? r.offerNotes : [],
     };
     if (r.includePv === false) cfg.includePv = false;
-    // Nur kWp genannt → Modulanzahl aus Preispaket ableiten
-    if (!cfg.moduleCount && cfg.kwp) {
-      cfg.moduleCount = modulesFromKwp(cfg.brand, cfg.kwp);
-    }
-    // Summe aus Dachsegmenten hat Vorrang
-    if (cfg.dachSegmente.length > 1 || (cfg.dachSegmente[0] && cfg.dachSegmente[0].modules)) {
-      const sum = cfg.dachSegmente.reduce((a, s) => a + (Number(s.modules) || 0), 0);
-      if (sum > 0) cfg.moduleCount = sum;
-    } else if (cfg.moduleCount && cfg.dachSegmente[0]) {
-      cfg.dachSegmente[0].modules = cfg.moduleCount;
+    if (cfg.includePv !== false) {
+      // Nur kWp genannt → Modulanzahl aus Preispaket ableiten. Ohne Speicher rechnet der Server selbst.
+      if (!cfg.moduleCount && cfg.kwp && cfg.speicher !== 0) {
+        cfg.moduleCount = modulesFromKwp(cfg.brand, cfg.kwp);
+      }
+      // Summe aus Dachsegmenten hat Vorrang
+      if (cfg.dachSegmente.length > 1 || (cfg.dachSegmente[0] && cfg.dachSegmente[0].modules)) {
+        const sum = cfg.dachSegmente.reduce((a, s) => a + (Number(s.modules) || 0), 0);
+        if (sum > 0) cfg.moduleCount = sum;
+      } else if (cfg.moduleCount && cfg.dachSegmente[0]) {
+        cfg.dachSegmente[0].modules = cfg.moduleCount;
+      }
+    } else {
+      cfg.moduleCount = 0;
+      cfg.dachSegmente = [];
+      cfg.speicher = null;
     }
     // Optimierer: Preis 50 € × Module vorbelegen (editierbar)
     const mc = Number(cfg.moduleCount) || 0;
@@ -4170,8 +4339,23 @@ async function init() {
     if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint') || e.target.classList.contains('opt-qty')) compute();
   });
   $('btn-add-option').addEventListener('click', () => {
-    $('opts').appendChild(createOptionRow({ label: '', price: 0, mode: 'fix', manual: true }));
+    $('opts').appendChild(createOptionRow({ label: '', price: '', mode: 'fix', manual: true }));
   });
+  const posSearch = $('pos-search');
+  if (posSearch) {
+    posSearch.addEventListener('input', () => renderPositionResults(posSearch.value));
+    posSearch.addEventListener('focus', () => renderPositionResults(posSearch.value));
+  }
+  const posResults = $('pos-results');
+  if (posResults) {
+    posResults.addEventListener('click', (e) => {
+      const btn = e.target.closest ? e.target.closest('[data-pos]') : null;
+      if (!btn) return;
+      addPositionFromSearch(btn.dataset.pos);
+      if (posSearch) posSearch.value = '';
+      posResults.innerHTML = '';
+    });
+  }
   $('btn-add-dach').addEventListener('click', () => {
     $('dach-list').appendChild(createDachRow('Flachdach', ''));
     compute();

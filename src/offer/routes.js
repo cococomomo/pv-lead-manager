@@ -597,8 +597,7 @@ function mountOfferRoutes(app, deps) {
         baseUrl: process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`,
       });
       const kind = (offer.meta && offer.meta.offerKind) || 'pv';
-      const isPvOffer = kind === 'pv' || kind === 'combo'
-        || (offer.config && offer.config.includePv !== false && Number(offer.config.moduleCount) > 0);
+      const isPvOffer = kind === 'pv' || kind === 'combo';
       const attachVollmacht = isPvOffer && body.appendVollmacht !== false;
       if (attachVollmacht) pdf = await appendVollmacht(pdf);
       if (body.finalize) maybeBumpCounter(angebotsnummer);
@@ -763,7 +762,7 @@ function mountOfferRoutes(app, deps) {
         customerVersion: nextV,
         filenameBase: fileBase,
         offerKind: (offer.meta && offer.meta.offerKind) || 'pv',
-        appendVollmacht: ((offer.meta && offer.meta.offerKind) || 'pv') !== 'klima',
+        appendVollmacht: ['pv', 'combo'].includes((offer.meta && offer.meta.offerKind) || 'pv'),
       });
     } catch (err) {
       console.error('[NOORTEC] /api/offer/outlook-draft:', err.message);

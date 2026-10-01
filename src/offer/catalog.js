@@ -401,9 +401,8 @@ function formatKlimaIndoorSummary(pkg) {
  */
 function klimaHasUnits(entry) {
   if (!entry || typeof entry !== 'object') return false;
-  return Array.isArray(entry.outdoor) || Array.isArray(entry.outdoors)
-    || Array.isArray(entry.indoor) || Array.isArray(entry.indoors)
-    || Array.isArray(entry.indoorUnits);
+  return [entry.outdoor, entry.outdoors, entry.indoor, entry.indoors, entry.indoorUnits]
+    .some((list) => Array.isArray(list) && list.length > 0);
 }
 
 function entryKlimaUnits(entry) {
@@ -416,7 +415,10 @@ function expandKlimaLines(klimaConfig) {
   const lines = [];
   const rawList = Array.isArray(klimaConfig)
     ? klimaConfig
-    : (klimaConfig && typeof klimaConfig === 'object' && (klimaConfig.enabled || klimaConfig.packageId || klimaHasUnits(klimaConfig))
+    : (klimaConfig && typeof klimaConfig === 'object' && (
+      klimaConfig.enabled || klimaConfig.packageId || klimaHasUnits(klimaConfig)
+      || Number(klimaConfig.extraPipingMeters) > 0 || klimaConfig.condensatePump
+    )
       ? [klimaConfig]
       : []);
 
@@ -484,37 +486,12 @@ function expandKlimaLines(klimaConfig) {
         package: pkg,
       });
 
-      const extraM = Math.max(0, Number(entry.extraPipingMeters) || 0);
-      if (extraM > 0) {
-        const p = KLIMA_EXTRAS.piping;
-        lines.push({
-          key: p.key,
-          label: `${p.label} (${extraM} m)`,
-          desc: p.hint,
-          price: extraM * p.pricePerMeter,
-          qty: extraM,
-          mode,
-        });
-      }
-
-      const pumpQty = entry.condensatePump === true
-        ? 1
-        : (entry.condensatePump === false || entry.condensatePump == null
-          ? 0
-          : Math.max(0, Math.round(Number(entry.condensatePump) || 0)));
-      if (pumpQty > 0) {
-        const p = KLIMA_EXTRAS.condensatePump;
-        lines.push({
-          key: p.key,
-          label: pumpQty > 1 ? `${p.label} (${pumpQty}×)` : p.label,
-          desc: '',
-          price: p.price * pumpQty,
-          qty: pumpQty,
-          mode,
-        });
-      }
+      pushKlimaExtras(lines, entry, mode);
       continue;
     }
+
+    const extrasOnly = pushKlimaExtras(lines, entry, mode);
+    if (extrasOnly) continue;
 
     // Manuelle / bereits expandierte Zeile
     const label = String(entry.label || '').trim();
@@ -620,6 +597,42 @@ function priceKlimaCombination(outdoors, indoors) {
   };
 }
 
+/** Leitung und Pumpe auch ohne Klimapaket. Liefert true, wenn eine Zeile entstand. */
+function pushKlimaExtras(lines, entry, mode) {
+  const extraM = Math.max(0, Number(entry && entry.extraPipingMeters) || 0);
+  const pumpQty = entry && entry.condensatePump === true
+    ? 1
+    : (entry && (entry.condensatePump === false || entry.condensatePump == null)
+      ? 0
+      : Math.max(0, Math.round(Number(entry && entry.condensatePump) || 0)));
+  let wrote = false;
+  if (extraM > 0) {
+    const p = KLIMA_EXTRAS.piping;
+    lines.push({
+      key: p.key,
+      label: `${p.label} (${extraM} m)`,
+      desc: p.hint,
+      price: extraM * p.pricePerMeter,
+      qty: extraM,
+      mode,
+    });
+    wrote = true;
+  }
+  if (pumpQty > 0) {
+    const p = KLIMA_EXTRAS.condensatePump;
+    lines.push({
+      key: p.key,
+      label: pumpQty > 1 ? `${p.label} (${pumpQty}×)` : p.label,
+      desc: '',
+      price: p.price * pumpQty,
+      qty: pumpQty,
+      mode,
+    });
+    wrote = true;
+  }
+  return wrote;
+}
+
 function klimaPumpQty(entry) {
   if (!entry || entry.condensatePump === true) return entry && entry.condensatePump === true ? 1 : 0;
   if (entry.condensatePump === false || entry.condensatePump == null) return 0;
@@ -700,6 +713,42 @@ function resolvePackageForModules(brand, moduleCount) {
   if (floor) return floor;
   const t = tiers[0];
   return { kwpPackage: t, packageModules: MODULES_PER_KWP[t] || 0 };
+}
+
+/**
+ * PV ohne Speicher: größte vorhandene Stufe mit Modulzahl ≤ Wunsch.
+ * Keine Stufe über 17,8 kWp. Zusatzmodule bleiben EXTRA_MODULE_PRICE netto.
+ * @returns {{ kwp: number, modules: number, netto: number } | null}
+ */
+function resolvePvOnlyByModules(moduleCount) {
+  const m = Math.round(Number(moduleCount) || 0);
+  if (!(m > 0)) return null;
+  const rows = pvOnlyRows();
+  let floor = null;
+  for (const row of rows) {
+    if (row.modules <= m && (!floor || row.modules > floor.modules)) floor = row;
+  }
+  return floor;
+}
+
+function pvOnlyRows() {
+  return Object.entries(PV_ONLY_NETTO).map(([kwp, row]) => ({
+    kwp: Number(kwp),
+    modules: Number(row.modules),
+    netto: Number(row.netto),
+  })).filter((row) => row.modules > 0 && row.netto > 0)
+    .sort((a, b) => a.modules - b.modules);
+}
+
+function pvOnlyPackageShape(moduleCount) {
+  const row = resolvePvOnlyByModules(moduleCount) || pvOnlyRows()[0];
+  if (!row) return null;
+  return {
+    kwpPackage: row.kwp,
+    packageModules: row.modules,
+    netto: row.netto,
+    pvOnly: true,
+  };
 }
 
 /** kWp-Stufe aus gewünschter Modulanzahl (nächstgelegenes Paket – Legacy/KI). */
@@ -1911,22 +1960,37 @@ function computeOffer(config) {
   let moduleAufschlag = 0;
   let selectedInverter = null;
 
+  const noStoragePlant = includePv && (
+    config.speicher === 0 || config.speicher === '0'
+    || Number(config.speicher) === 0 && config.speicher != null && config.speicher !== ''
+  );
+
   if (includePv) {
     if (hasExplicitModules) {
       moduleCount = Math.round(requestedModules);
-      pkg = resolvePackageForModules(brand, moduleCount);
+      pkg = noStoragePlant
+        ? pvOnlyPackageShape(moduleCount)
+        : resolvePackageForModules(brand, moduleCount);
     } else if (hasExplicitKwp) {
-      const snapped = snapKwp(brand, config.kwp);
-      pkg = { kwpPackage: snapped, packageModules: MODULES_PER_KWP[snapped] || Math.round((snapped * 1000) / mod.wp) };
-      moduleCount = pkg.packageModules;
+      if (noStoragePlant) {
+        moduleCount = Math.max(1, Math.round((Number(config.kwp) * 1000) / mod.wp));
+        pkg = pvOnlyPackageShape(moduleCount);
+      } else {
+        const snapped = snapKwp(brand, config.kwp);
+        pkg = { kwpPackage: snapped, packageModules: MODULES_PER_KWP[snapped] || Math.round((snapped * 1000) / mod.wp) };
+        moduleCount = pkg.packageModules;
+      }
     } else {
       pkg = resolvePackageForModules(brand, 0);
       moduleCount = pkg ? pkg.packageModules : 11;
     }
-    if (!pkg) {
+    if (!pkg && !noStoragePlant) {
       const tiers = listKwpTiers(brand);
       const t = tiers[0] || 5.01;
       pkg = { kwpPackage: t, packageModules: MODULES_PER_KWP[t] || moduleCount };
+    }
+    if (!pkg) {
+      pkg = { kwpPackage: 0, packageModules: moduleCount || 0, netto: 0, pvOnly: !!noStoragePlant };
     }
 
     kwpPackage = pkg.kwpPackage;
@@ -2005,7 +2069,34 @@ function computeOffer(config) {
       dachSegmente = [{ key: dach.key, label: dach.label, modules: moduleCount, aufschlag: dachAufschlag, aufschlagProKwp: DACH_AUFSCHLAG[dach.key] || 0 }];
     }
 
-    basePrice = ((PRICELIST[brand] || {})[kwpPackage] || {})[speicher] || 0;
+    if (noStoragePlant || (pkg && pkg.pvOnly) || speicher === 0) {
+      const row = resolvePvOnlyByModules(moduleCount) || pvOnlyRows()[0];
+      if (row) {
+        kwpPackage = row.kwp;
+        packageModuleCount = row.modules;
+        extraModules = Math.max(0, moduleCount - packageModuleCount);
+        moduleExtraCostNetto = extraModules * EXTRA_MODULE_PRICE;
+        moduleExtraCost = moduleExtraCostNetto * (1 + MWST_RATE);
+        basePrice = Math.round(row.netto * (1 + MWST_RATE));
+      } else {
+        basePrice = 0;
+      }
+      speicherBloecke = [];
+      optionalStorageBlocks = [];
+      speicherZusatzKwh = 0;
+      speicherZusatzPreis = 0;
+      speicherGesamt = 0;
+      speicher = 0;
+      speicherAusgewiesen = 0;
+      selectedInverter = selectInverter(brand, {
+        moduleKwp: kwpCalculated,
+        packageKwp: kwpPackage,
+        acKw: config.inverterKw != null ? config.inverterKw : config.acKw,
+        manualLabel: config.inverterModel,
+      });
+    } else {
+      basePrice = ((PRICELIST[brand] || {})[kwpPackage] || {})[speicher] || 0;
+    }
     aikoAufschlag = mod.aufschlagProModul * moduleCount;
     moduleAufschlag = aikoAufschlag + moduleExtraCost;
 
@@ -2022,7 +2113,32 @@ function computeOffer(config) {
   const optionaleKomponenten = [];
   const optionenInput = Array.isArray(config.optionen) ? config.optionen : null;
 
-  if (includePv) {
+  if (!includePv) {
+    const manualZusatz = Array.isArray(config.speicherZusatz)
+      ? config.speicherZusatz.filter((b) => b && (Number(b.kwh) || Number(b.price) || b.kwh === 0))
+      : [];
+    for (const b of manualZusatz) {
+      const resolved = resolveStorageBlock(b.brand || brand, b);
+      if (!resolved) continue;
+      if (b.mode === 'optional') optionalStorageBlocks.push(resolved);
+      else {
+        speicherBloecke.push({ kwh: resolved.kwh, price: resolved.price, label: resolved.label });
+        speicherZusatzKwh += resolved.kwh;
+        speicherZusatzPreis += resolved.price;
+      }
+    }
+    if (speicherBloecke.length) {
+      speicher = speicherBloecke[0].kwh;
+      speicherGesamt = speicherZusatzKwh;
+      if (isSigenergyBrand(brand)) {
+        speicherAusgewiesen = Math.round(speicherBloecke.reduce((s, b) => s + sigenergyUsableKwh(b.kwh), 0) * 100) / 100;
+      } else {
+        speicherAusgewiesen = Math.round(speicherZusatzKwh * 100) / 100;
+      }
+    }
+  }
+
+  if (includePv || optionenInput) {
     if (optionenInput) {
       for (const o of optionenInput) {
         if (!o) continue;
@@ -2071,14 +2187,15 @@ function computeOffer(config) {
           continue;
         }
 
-        if (key === 'speichererweiterung') {
-          const resolved = resolveSpeicherErweiterungOption(brand, o);
+        if (key === 'speichererweiterung' || key === 'speicherblock') {
+          const blockBrand = o.brand || brand;
+          const resolved = resolveSpeicherErweiterungOption(blockBrand, o);
           const mode = o.mode === 'fix' ? 'fix' : 'optional';
           const entry = {
             key: 'speichererweiterung',
             label: resolved.label,
             price: resolved.price,
-            hint: resolved.hint || (brand === 'fronius'
+            hint: resolved.hint || (normalizeBrand(blockBrand) === 'fronius'
               ? 'Optionales Reserva-Batteriemodul (+3,2 kWh).'
               : `Optionaler SigenStor-BAT-Block ${sigenergyNominalLabel(resolved.kwh)} (${formatDe(sigenergyUsableKwh(resolved.kwh))} kWh).`),
             kwh: resolved.kwh,
@@ -2101,14 +2218,16 @@ function computeOffer(config) {
         if (o.price == null || o.price === '' || !Number.isFinite(price)) {
           if (key === 'wallbox' || key === 'notstrom') price = brandOptionPrice(brand, key);
           else if (key === 'optimierer') price = OPTIMIERER_UNIT_PRICE * moduleCount;
-          else price = base ? (base.perModule ? base.price * moduleCount : base.price) : 0;
+          else if (key === 'zusatzmodul') price = Math.round(EXTRA_MODULE_PRICE * (1 + MWST_RATE));
+          else if (base) price = base.perModule ? base.price * moduleCount : base.price;
+          else price = null;
         }
         const mode = o.mode === 'fix' ? 'fix' : 'optional';
         const hint = String(o.hint || o.note || o.beschreibung || '').trim() || null;
-        if (!label && !price) continue;
-        const entry = { key, label, price, hint };
+        if (!label && price == null) continue;
+        const entry = { key, label, price, hint, priceMissing: price == null };
         if (mode === 'fix') {
-          optionenSumme += price;
+          if (price != null) optionenSumme += price;
           inkludiert.push(entry);
         } else {
           optionaleKomponenten.push(entry);
@@ -2133,6 +2252,18 @@ function computeOffer(config) {
         }
       }
     }
+    for (const block of optionalStorageBlocks) {
+      optionaleKomponenten.push({
+        key: 'speicherblock',
+        label: block.label,
+        price: block.price,
+        hint: block.hint || null,
+        kwh: block.kwh,
+        usableKwh: block.usableKwh,
+        mode: 'optional',
+      });
+    }
+  } else {
     for (const block of optionalStorageBlocks) {
       optionaleKomponenten.push({
         key: 'speicherblock',
@@ -2185,6 +2316,8 @@ function computeOffer(config) {
     brutto = basePrice + dachAufschlag + aikoAufschlag + moduleExtraCost
       + optionenSumme + speicherZusatzPreis;
     brutto = roundEuro(brutto);
+  } else {
+    brutto = roundEuro(optionenSumme + speicherZusatzPreis);
   }
   brutto += klimaSumme;
   if (klimaSumme) brutto = roundEuro(brutto);
@@ -2371,6 +2504,30 @@ function computeOffer(config) {
         qty,
       });
     });
+  } else {
+    speicherBloecke.forEach((b, idx) => {
+      const usable = isSigenergyBrand(brand) ? sigenergyUsableKwh(b.kwh) : b.kwh;
+      pushLine({
+        id: `part:sto:${idx}`,
+        role: 'storage',
+        section: 'Positionen',
+        name: b.label || storageModel(brand, b.kwh) || 'Speicherblock',
+        desc: isSigenergyBrand(brand)
+          ? `Speicherblock ${formatDe(usable)} kWh | Katalogpreis`
+          : `Speicherblock ${formatNum(b.kwh)} kWh | Katalogpreis`,
+        qty: '1 Stück',
+      });
+    });
+    inkludiert.forEach((it, idx) => {
+      pushLine({
+        id: `part:opt:${it.key || 'custom'}:${idx}`,
+        role: it.key === 'notstrom' ? 'notstrom' : 'option',
+        section: 'Positionen',
+        name: it.label || 'Position',
+        desc: it.hint || (it.price == null ? 'Preis offen' : ''),
+        qty: '1 Stück',
+      });
+    });
   }
 
   const offerNotes = Array.isArray(config.offerNotes)
@@ -2489,7 +2646,23 @@ function computeOffer(config) {
     : null;
 
   const hasKlimaAny = klimaFix.length + klimaOptional.length > 0;
-  const offerKind = includePv && hasKlimaAny ? 'combo' : (hasKlimaAny && !includePv ? 'klima' : 'pv');
+  const hasKlimaPackage = klimaFix.concat(klimaOptional).some((k) => k && (k.packageId || (k.packageIds && k.packageIds.length)));
+  const hasStandalone = !includePv && (
+    speicherBloecke.length > 0
+    || optionalStorageBlocks.length > 0
+    || inkludiert.length > 0
+    || optionaleKomponenten.some((o) => o && !String(o.key || '').startsWith('klima') && o.key !== 'piping_extra' && o.key !== 'condensate_pump')
+  );
+  const klimaExtrasOnly = !includePv && hasKlimaAny && !hasKlimaPackage;
+  const offerKind = includePv && hasKlimaAny
+    ? 'combo'
+    : includePv
+      ? 'pv'
+      : (hasStandalone || klimaExtrasOnly)
+        ? 'einzel'
+        : hasKlimaAny
+          ? 'klima'
+          : 'einzel';
 
   return {
     meta: {

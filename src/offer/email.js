@@ -191,6 +191,10 @@ function buildOverviewLine(offer) {
   const klimaFix = ((offer.klima && offer.klima.fix) || []).filter((k) => k && k.packageId);
   const klimaLbl = klimaFix.map((k) => k.label).filter(Boolean).join(', ');
 
+  if (kind === 'einzel') {
+    const names = activeLineNames(offer);
+    return names.join(' + ') || 'Einzelpositionen';
+  }
   if (kind === 'klima') {
     return `${klimaLbl || 'Klimapaket LG STANDARD II'}, schlüsselfertig`;
   }
@@ -214,6 +218,11 @@ function buildSubject(offer) {
   const klimaFix = ((offer.klima && offer.klima.fix) || []).filter((k) => k && k.packageId);
   const klimaShort = klimaFix.length ? (klimaFix[0].label || 'Klima') : 'Klima';
 
+  if (kind === 'einzel') {
+    const names = activeLineNames(offer);
+    const mid = names.slice(0, 3).join(' + ') || 'Positionen';
+    return `Ihr Angebot: ${mid}`;
+  }
   if (kind === 'klima') {
     return `Ihr Klima-Angebot: ${klimaShort}`;
   }
@@ -229,7 +238,14 @@ function buildSubject(offer) {
 function offerProductLabel(kind) {
   if (kind === 'klima') return 'Ihre Klimaanlage';
   if (kind === 'combo') return 'Ihre Photovoltaikanlage und Klimaanlage';
+  if (kind === 'einzel') return 'die genannten Positionen';
   return 'Ihre Photovoltaikanlage';
+}
+
+function activeLineNames(offer) {
+  return ((offer && offer.quoteLines) || [])
+    .filter((l) => l && l.active !== false && String(l.name || '').trim())
+    .map((l) => String(l.name).trim());
 }
 
 function roleActive(offer, role) {
@@ -331,6 +347,13 @@ function buildIncludeBullets(offer) {
   const brand = cfg.brandLabel || 'Sigenergy';
   const bullets = [];
 
+  if (kind === 'einzel') {
+    const names = activeLineNames(offer);
+    if (names.length) names.forEach((name) => bullets.push(`- ${name}.`));
+    else bullets.push('- Die genannten Positionen.');
+    return bullets;
+  }
+
   if (kind !== 'klima') {
     if (roleActive(offer, 'module')) bullets.push(buildModuleBullet(offer));
     if (roleActive(offer, 'inverter')) {
@@ -397,7 +420,7 @@ function appendDatasheetLines(body, offer) {
 }
 
 function buildDocumentList(kind) {
-  if (kind === 'klima') {
+  if (kind === 'klima' || kind === 'einzel') {
     return [
       '- Ausweiskopie',
       '- Meldezettel',
@@ -453,9 +476,11 @@ function buildEmailText({ customer, offer, extraText, salutationOverride }) {
   const docs = buildDocumentList(kind);
   const heading = kind === 'klima'
     ? 'Unser Klima-Angebot beinhaltet:'
-    : (kind === 'combo'
+    : (kind === 'einzel'
       ? 'Unser Angebot beinhaltet:'
-      : 'Unser Photovoltaik-Angebot beinhaltet:');
+      : (kind === 'combo'
+        ? 'Unser Angebot beinhaltet:'
+        : 'Unser Photovoltaik-Angebot beinhaltet:'));
 
   const body = [
     sal.greeting,
@@ -474,7 +499,7 @@ function buildEmailText({ customer, offer, extraText, salutationOverride }) {
     '',
   ];
 
-  if (kind !== 'klima') {
+  if (kind === 'pv' || kind === 'combo') {
     body.push('Sobald alle Genehmigungen vorliegen, meldet sich das Büro bezüglich Ihres Montagetermins.');
     body.push('');
   }
@@ -565,6 +590,7 @@ ANGEBOTSART (offerKind):
   VERBOTEN: Jede Formulierung zu "10-30 Jahre Herstellergarantie" / Herstellergarantie auf Klimageräte.
   Keine PV-Unterlagen (keine Vollmacht, keine Stromrechnung, keine ÖMAG-IBAN), kein Genehmigungs-/Montage-Satz der PV.
 - combo: PV- und Klima-Inhalte kombinieren; Klima-Garantie-Satz weiterhin VERBOTEN.
+- einzel: nur die genannten Positionen. Überschrift aus den Zeilen, nicht „kWp-Anlage, schlüsselfertig“. Keine Vollmacht, keine Stromrechnung, kein ÖMAG-Hinweis, kein Klimaanlagen-Zusatz wie bei einem PV-Angebot.
 
 UNTERKONSTRUKTION / OPTIMIERER:
 - Bei mehreren Dachflächen: eine Zeile wie "- ALU-Unterkonstruktion: 6 Module Falzblech, 14 Module Flachdach."
@@ -589,6 +615,7 @@ STIL:
 - zusatztext_vom_vertrieb sinnvoll einbauen
 - Modulzeile MUSS moduleModel/moduleType widerspiegeln (AIKO namentlich, wenn gewählt)
 - Bei offerKind=pv: kurzer Hinweis auf Klimaanlagen-Angebot für jetzt oder später
+- Bei offerKind=einzel: diesen Klima-Hinweis weglassen
 - Betreff kompakt mit Speichergröße, z. B. "Ihr PV-Angebot: 9,1 kWp + 6 kWh Speicher" bzw. Klima/Kombi`;
 
 function stripMailMarkdown(text) {
@@ -602,6 +629,14 @@ function stripMailMarkdown(text) {
 function sanitizeEmailBody(body, offerKind) {
   let t = stripMailMarkdown(body);
   // Klima: Herstellergarantie-Sätze zu Klimageräten entfernen
+  if (offerKind === 'einzel') {
+    t = t
+      .replace(/^.*Vollmacht.*$/gim, '')
+      .replace(/^.*ÖMAG.*$/gim, '')
+      .replace(/^.*Stromrechnung.*$/gim, '')
+      .replace(/^.*Klimaanlagen an.*$/gim, '')
+      .replace(/^.*künftig eine Klimatisierung.*$/gim, '');
+  }
   if (offerKind === 'klima' || offerKind === 'combo') {
     t = t
       .replace(/^.*10\s*[-–—]\s*30\s*Jahre\s+Herstellergarantie.*$/gim, '')
@@ -657,9 +692,11 @@ async function buildEmailTextAI(params) {
     salutationOverride: salutationOverride || null,
     suggestedGender: sal.gender,
     suggestedGreeting: sal.greeting,
-    konfiguration: cfg.includePv === false
-      ? (klimaLabels.join(', ') || 'Klimapaket')
-      : `${cfg.kwpLabel} (${cfg.moduleCount} Module), Speicher ${cfg.speicherLabel}, ${cfg.brandLabel}, Dach ${cfg.dach}${klimaLabels.length ? `; Klima: ${klimaLabels.join(', ')}` : ''}`,
+    konfiguration: kind === 'einzel'
+      ? (activeLineNames(offer).join(', ') || 'Einzelpositionen')
+      : (cfg.includePv === false
+        ? (klimaLabels.join(', ') || 'Klimapaket')
+        : `${cfg.kwpLabel} (${cfg.moduleCount} Module), Speicher ${cfg.speicherLabel}, ${cfg.brandLabel}, Dach ${cfg.dach}${klimaLabels.length ? `; Klima: ${klimaLabels.join(', ')}` : ''}`),
     kwpLabel: cfg.kwpLabel || null,
     moduleCount: cfg.moduleCount || null,
     moduleType: cfg.moduleType || null,

@@ -9,7 +9,7 @@ const DEEPSEEK_MODEL = 'deepseek-chat';
 
 const SYSTEM_PROMPT_OFFER = `Du bist der Angebots-Assistent von NOORTEC (Photovoltaik + Klimageräte LG STANDARD II, Wien/Österreich).
 Aus einem freien Sprach-/Textbefehl des Vertriebs extrahierst du strukturierte Daten für ein Angebot.
-Angebote können NUR PV, NUR Klima oder KOMBI (PV + Klima) sein.
+Angebote können PV, Klima, KOMBI (PV + Klima) oder EINZEL (nur genannte Positionen, ohne Photovoltaikpaket) sein.
 
 Trenne strikt zwischen KUNDENDATEN und ANFORDERUNGEN.
 
@@ -98,10 +98,16 @@ Klimapakete (LG STANDARD II, Brutto-Installationspreis):
 Zubehör: Kältemittelleitung inkl. 10 m je Innengerät, jeder weitere Meter 40 €; Kondensatwasserpumpe 240 €.
 
 Regeln:
-- Marke PV: Default immer "sigenergy" (Wechselrichter Sigen Hybrid TP2). Ohne Angabe bleibt Sigenergy.
+- Marke PV: Default immer "sigenergy" (Wechselrichter Sigen Hybrid TP2), solange eine Anlage gewünscht ist. Ohne Angabe bleibt Sigenergy.
   • "Fronius"/"GEN24"/"Reserva" → "fronius". "Fronius Symo" ohne GEN24/Reserva → "fronius_symo".
-  • "ohne Speicher"/"kein Speicher"/"nur PV" → speicher=0. Marke bleibt die genannte, sonst sigenergy.
-  • Kein Huawei. Dach ohne Angabe = "Ziegel". Dafür keine Rückfrage.
+  • "ohne Speicher"/"kein Speicher"/"nur PV" ist eine Anlage mit speicher=0, keine Einzelposition. Kein Wechsel auf Huawei.
+    Marke bleibt die genannte. "Sigenergy ohne Speicher" bleibt sigenergy. Ohne Markenname → "fronius_symo".
+  • Kein Huawei. Dach ohne Angabe = "Ziegel", aber nur wenn eine Anlage im Angebot ist. Dafür keine Rückfrage.
+- EINZELANGEBOT (includePv false, kein Modul, kein kWp, kein Dach): eine genannte Position ohne Anlage.
+  "Speichererweiterung", "Speicherblock" oder "nur Speicher" ist ein Zusatzblock zum Katalogpreis, nicht das Speicherpaket einer Anlage.
+  Sigenergy 6.0 = 2400 € (6,02 kWh), 10.0 = 3600 € (9,04 kWh). "9 kWh" bei einer Erweiterung ist der Block 10.0, nicht ein 9-kWh-Paket.
+  Fronius-Erweiterung immer +3,2 kWh = 1320 €. Montage nur mit genanntem Betrag; ohne Betrag price null, nichts erfinden.
+  "22 Module und Speicher" bleibt eine Anlage (includePv true).
 - Telefonnummern in +43… normalisieren.
 - "AIKO" → moduleType "aiko", sonst "das".
 - kwp/speicher als reine Zahlen. Ohne Speicher: speicher=0.
@@ -147,7 +153,7 @@ Regeln:
   → optionen.optimierer=true UND optionDetails key=optimierer, mode=fix (außer explizit "optional"),
   price=null (Server: 50 × Modulanzahl), hint z. B. "Ein Optimierer pro Modul für optimale Leistung."
   NICHT nur in offerNotes schreiben – immer als Preisposition.
-- includePv: false wenn NUR Klima gewünscht; true bei PV oder Kombi; null wenn unklar.
+- includePv: false wenn NUR Klima oder ein Einzelangebot (keine Anlage, aber eine genannte Position); true bei PV oder Kombi; null wenn unklar.
 - Klima-Erkennung: Formulierungen wie "zweimal 2,5 kW Innengerät und 4,1 kW Außengerät" → outdoorKw:4.1, indoor:[{kw:2.5,qty:2}], packageId lg-std2-multi-41.
 - Wenn Klima erwähnt aber Paket nicht eindeutig zuordenbar → packageId null UND clarifications mit konkreten Rückfragen UND answers-Buttons (z. B. die 4 Klimapakete).
 - Wenn Klima und PV gemischt ("PV mit 12 Modulen plus optional Klima…") → includePv true, klima.wanted true, klima.mode "optional" wenn "optional" gesagt, sonst "fix".
@@ -819,7 +825,9 @@ function normalizeClarifications(rawList) {
         text,
       };
     }).filter(Boolean);
-    if (!answers.length) answers = heuristicAnswersForQuestion(question);
+    if (!answers.length && item.id !== 'montage_price' && item.id !== 'parts_only') {
+      answers = heuristicAnswersForQuestion(question);
+    }
     out.push({
       id: String(item.id || `q${idx}`),
       question,
@@ -888,10 +896,81 @@ function filterPriceClarifications(list, ctx) {
   return (Array.isArray(list) ? list : []).filter((item) => {
     if (!item) return false;
     const q = `${item.id || ''} ${item.question || ''}`.toLowerCase();
+    if (item.id === 'parts_only' || item.id === 'montage_price' || item.id === 'speicher_block') return true;
     if (item.id === 'klima_package' || /klimapaket|welches klima/.test(q)) return missingKlima;
     if (item.id === 'pv_modules' || /modul|paneel|\bkwp\b/.test(q)) return missingModules;
     return false;
   });
+}
+
+function textHasRoof(text) {
+  if (extractDachSegmenteFromText(text).length) return true;
+  return /\b(dach|ziegel|flachdach|falzblech|trapez|welleternit|biberschwanz|prefa|rhombus|schindel)\b/i.test(String(text || ''));
+}
+
+function wantsFullPlantAgain(text) {
+  return /doch\s+mit\s+(?:der\s+)?(?:photovoltaik|pv|anlage)/i.test(String(text || ''));
+}
+
+function mentionsNoStorage(text, speicher) {
+  if (speicher === 0 || speicher === '0') return true;
+  return /ohne\s+speicher|kein(?:en)?\s+speicher|nur\s+pv\b/i.test(String(text || ''));
+}
+
+function namedPartsSignal(text, req) {
+  const t = String(text || '');
+  if (/speichererweiterung|speicherblock|nur\s+speicher/i.test(t)) return true;
+  if (/\bmontage\b/i.test(t)) return true;
+  if (/wallbox|gateway|notstrom|optimier|ohmpilot|überspannung|ueberspannung|lasttrenn|wärmepumpe|waermepumpe|smart\s*meter|kondensat|kältemittel|kaeltemittel/i.test(t)) return true;
+  const customs = req && Array.isArray(req.customOptions) ? req.customOptions : [];
+  if (customs.some((c) => c && String(c.label || '').trim())) return true;
+  const opt = req && req.optionen && typeof req.optionen === 'object' ? req.optionen : {};
+  return Object.values(opt).some((v) => v === true || v === 'true' || v === 1);
+}
+
+function plantSignalFromText(text) {
+  return !!(extractModuleCountFromText(text) || extractKwpFromText(text) || textHasRoof(text));
+}
+
+function brandFromMention(text, reqBrand) {
+  const blob = `${reqBrand || ''} ${text || ''}`.toLowerCase();
+  if (/symo/.test(blob)) return 'fronius_symo';
+  if (/sigenergy_alt|\btp1\b|alte preisliste|sigen\w*\s+alt/.test(blob)) return 'sigenergy_alt';
+  if (/sigen/.test(blob)) return 'sigenergy';
+  if (/gen24|reserva/.test(blob)) return 'fronius';
+  if (/fronius/.test(blob)) return 'fronius';
+  if (/huawei|sun2000/.test(blob)) return 'huawei';
+  return null;
+}
+
+function nominalExtensionKwh(brand, raw) {
+  const b = catalog.normalizeBrand(brand);
+  const k = Number(raw);
+  if (b === 'fronius') return 3.2;
+  if (!Number.isFinite(k)) return null;
+  if (Math.abs(k - 6) < 0.2 || Math.abs(k - 6.02) < 0.03) return 6;
+  if (Math.abs(k - 10) < 0.2 || Math.abs(k - 9) < 0.25 || Math.abs(k - 9.04) < 0.03) return 10;
+  return null;
+}
+
+function extractExtensionKwh(text) {
+  const t = String(text || '').toLowerCase().replace(/,/g, '.');
+  const near = t.match(/(?:speichererweiterung|speicherblock|nur\s+speicher)[^\d]{0,30}(\d+(?:\.\d+)?)/)
+    || t.match(/(\d+(?:\.\d+)?)\s*(?:kwh)?[^\n]{0,40}(?:speichererweiterung|speicherblock)/);
+  if (!near) return null;
+  const n = Number(near[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractMontageLine(text) {
+  const raw = String(text || '');
+  if (!/\bmontage\b/i.test(raw)) return null;
+  const m = raw.match(/montage[^\d]{0,20}(\d+(?:[.,]\d+)?)\s*(?:€|eur|euro)?/i)
+    || raw.match(/(\d+(?:[.,]\d+)?)\s*(?:€|eur|euro)[^\n]{0,16}montage/i);
+  if (!m) return { label: 'Montage', price: null, mode: 'fix', priceMissing: true };
+  const n = Number(String(m[1]).replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return { label: 'Montage', price: null, mode: 'fix', priceMissing: true };
+  return { label: 'Montage', price: n, mode: 'fix' };
 }
 
 function draftOfferFromText(text) {
@@ -932,17 +1011,10 @@ function normalizeOffer(raw, sourceText = '') {
     const n = Number(String(v).replace(',', '.').replace(/[^0-9.]/g, ''));
     return Number.isFinite(n) ? n : null;
   };
-  const brand = (() => {
-    const s = str(req.brand).toLowerCase();
-    if (s.includes('fronius')) return 'fronius';
-    if (s.includes('sigen')) return 'sigenergy';
-    return s || null;
-  })();
-
   const clarificationsRaw = Array.isArray(r.clarifications) ? r.clarifications.slice() : [];
 
   const klima = normalizeKlimaReq(req.klima, clarificationsRaw);
-  const resolvedBrand = brand || 'sigenergy';
+  let resolvedBrand = brandFromMention(sourceText, req.brand) || 'sigenergy';
   const optionenList = buildOptionenList(req, resolvedBrand, sourceText);
   const offerNotes = normalizeOfferNotes(req);
 
@@ -1008,16 +1080,15 @@ function normalizeOffer(raw, sourceText = '') {
   const textKwp = extractKwpFromText(sourceText);
   if (moduleCount == null && textModules != null) moduleCount = textModules;
 
-  const missingModules = !!(includePv && moduleCount == null && numOrNull(req.kwp) == null && textKwp == null);
+  const missingModulesEarly = !!(includePv && moduleCount == null && numOrNull(req.kwp) == null && textKwp == null);
   const missingKlima = !!(klima.wanted && !klima.packageId);
-  if (missingModules && !clarificationsEarly.some((c) => c.id === 'pv_modules')) {
+  if (missingModulesEarly && !clarificationsEarly.some((c) => c.id === 'pv_modules')) {
     clarificationsEarly.push({
       id: 'pv_modules',
       question: 'Wie viele PV-Module (oder welche kWp) sollen ins Angebot?',
       answers: heuristicAnswersForQuestion('PV Module kWp'),
     });
   }
-  const clarifications = filterPriceClarifications(clarificationsEarly, { missingModules, missingKlima });
   let dach = str(req.dach) || (dachSegmente[0] && dachSegmente[0].dach) || null;
   if (includePv && !dach) dach = 'Ziegel';
 
@@ -1039,6 +1110,86 @@ function normalizeOffer(raw, sourceText = '') {
       optionenBool.speichererweiterung = false;
     }
   }
+
+  const plantText = plantSignalFromText(sourceText);
+  const fullAgain = wantsFullPlantAgain(sourceText);
+  const noStoreText = /ohne\s+speicher|kein(?:en)?\s+speicher|nur\s+pv\b/i.test(String(sourceText || ''));
+  const partsOnly = !fullAgain && !plantText && namedPartsSignal(sourceText, req) && !noStoreText;
+  let speicherZusatz = [];
+  if (partsOnly) {
+    includePv = false;
+    moduleCount = 0;
+    dachSegmente = [];
+    dach = null;
+    speicherKwh = null;
+    const named = brandFromMention(sourceText, req.brand);
+    resolvedBrand = named || 'sigenergy';
+    cleanedOptionenList = buildOptionenList(req, resolvedBrand, sourceText)
+      .filter((o) => o && o.key !== 'speichererweiterung' && o.key !== 'speicherblock');
+    const wantsBlock = /speichererweiterung|speicherblock|nur\s+speicher/i.test(String(sourceText || ''));
+    const nominal = nominalExtensionKwh(resolvedBrand, extractExtensionKwh(sourceText));
+    if (wantsBlock && nominal == null) {
+      clarificationsEarly.push({
+        id: 'speicher_block',
+        question: 'Welcher Speicherblock soll ins Angebot?',
+        answers: [
+          { label: 'Block 6.0', text: 'Speichererweiterung 6.0' },
+          { label: 'Block 10.0', text: 'Speichererweiterung 10.0' },
+        ],
+      });
+    } else if (wantsBlock && nominal != null) {
+      const block = catalog.resolveSpeicherErweiterungOption(resolvedBrand, { kwh: nominal });
+      speicherZusatz = [{
+        kwh: block.kwh,
+        label: block.label,
+        mode: 'fix',
+        brand: resolvedBrand,
+      }];
+    }
+    const montage = extractMontageLine(sourceText);
+    if (montage) {
+      cleanedOptionenList = cleanedOptionenList.filter((o) => !/montage/i.test(o.label || ''));
+      cleanedOptionenList.push({
+        key: null,
+        label: 'Montage',
+        mode: 'fix',
+        price: montage.price,
+        hint: montage.price == null ? 'Preis offen' : null,
+      });
+      if (montage.price == null) {
+        clarificationsEarly.push({
+          id: 'montage_price',
+          question: 'Welcher Betrag gilt für die Montage?',
+          answers: [{ label: 'Betrag nennen', text: 'Montagebetrag im Feld nachtragen' }],
+        });
+      }
+    }
+    clarificationsEarly.push({
+      id: 'parts_only',
+      question: 'Angebot nur für diese Positionen',
+      answers: [{ label: 'Doch mit Anlage', text: 'doch mit Photovoltaikanlage' }],
+    });
+  } else if (fullAgain || plantText) {
+    includePv = true;
+    if (!dach) dach = 'Ziegel';
+  }
+  if (includePv && noStoreText && !partsOnly) {
+    const named = brandFromMention(sourceText, req.brand);
+    resolvedBrand = (!named || named === 'huawei') ? 'fronius_symo' : named;
+    cleanedOptionenList = buildOptionenList(req, resolvedBrand, sourceText);
+    speicherKwh = 0;
+    if (moduleCount == null) {
+      const kw = numOrNull(req.kwp) != null ? numOrNull(req.kwp) : textKwp;
+      if (kw != null) {
+        const wp = str(req.moduleType).toLowerCase() === 'aiko' ? 490 : 455;
+        moduleCount = Math.max(1, Math.round((kw * 1000) / wp));
+      }
+    }
+  }
+
+  const missingModules = !!(includePv && moduleCount == null && numOrNull(req.kwp) == null && textKwp == null);
+  let clarifications = filterPriceClarifications(clarificationsEarly, { missingModules, missingKlima });
+  if (partsOnly) clarifications = clarifications.filter((c) => c.id !== 'pv_modules');
 
   let vorname = str(c.vorname) || str(c.firstName) || '';
   let nachname = str(c.nachname) || str(c.lastName) || '';
@@ -1068,9 +1219,10 @@ function normalizeOffer(raw, sourceText = '') {
     requirements: {
       includePv,
       brand: resolvedBrand,
-      kwp: numOrNull(req.kwp) != null ? numOrNull(req.kwp) : textKwp,
+      kwp: includePv ? (numOrNull(req.kwp) != null ? numOrNull(req.kwp) : textKwp) : null,
       module_count: moduleCount,
       speicher: speicherKwh,
+      speicherZusatz,
       brutto_preis: parseMoneyLike(req.brutto_preis),
       dach,
       dachSegmente,
@@ -1084,7 +1236,7 @@ function normalizeOffer(raw, sourceText = '') {
       notes: str(req.notes),
     },
     clarifications,
-    needsClarification: clarifications.length > 0,
+    needsClarification: clarifications.some((c) => c && c.id !== 'parts_only'),
     contactType: ['telefonisch', 'schriftlich'].includes(str(r.contactType).toLowerCase())
       ? str(r.contactType).toLowerCase() : null,
   };

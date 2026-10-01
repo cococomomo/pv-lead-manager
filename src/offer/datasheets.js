@@ -290,10 +290,10 @@ function selectDatasheetsForOffer(offer, opts = {}) {
       ok = includePv && entry.moduleTypes.includes(moduleType);
       if (presence && presence.module === false) ok = false;
     } else if (entry.brands) {
-      if (!brand || !entry.brands.includes(brand) || !includePv) ok = false;
+      if (!brand || !entry.brands.includes(brand)) ok = false;
       else if (entry.kind === 'storage') ok = hasSpeicher;
       else if (entry.kind === 'meter') {
-        ok = presence ? !!presence.meter : (hasSpeicher || optionKeys.has('smartmeter'));
+        ok = presence ? !!presence.meter : (hasSpeicher && includePv);
       }
       else if (entry.kind === 'gateway') {
         ok = presence ? !!presence.notstrom : optionKeys.has('notstrom');
@@ -303,7 +303,7 @@ function selectDatasheetsForOffer(offer, opts = {}) {
         }
       }
       else if (entry.kind === 'inverter') {
-        ok = presence ? !!presence.inverter : true;
+        ok = includePv && (presence ? !!presence.inverter : true);
         if (Number.isFinite(acKw)) {
           if (entry.maxAcKw != null && acKw > entry.maxAcKw) ok = false;
           if (entry.minAcKw != null && acKw < entry.minAcKw) ok = false;
@@ -312,7 +312,7 @@ function selectDatasheetsForOffer(offer, opts = {}) {
           ok = false;
         }
       } else {
-        ok = true;
+        ok = includePv;
       }
     }
     if (!ok) continue;

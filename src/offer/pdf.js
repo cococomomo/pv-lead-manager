@@ -305,14 +305,17 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
 
       // ── 3 Brief ──
       y = startContentPage();
-      y = drawLetterPage(doc, y, texts);
+      y = drawLetterPage(doc, y, texts, offer);
 
       // ── 4 Auf einen Blick (house-system-diagram v2, no QR) ──
       y = startContentPage();
       y = drawGlancePage(doc, y, offer, eco);
 
+      const offerKind = (offer.meta && offer.meta.offerKind) || 'pv';
+      const einzel = offerKind === 'einzel';
+
       // ── 5 Belegungsplan nur, wenn ein Plan existiert ──
-      const layoutPages = collectLayoutPages(opts);
+      const layoutPages = einzel ? [] : collectLayoutPages(opts);
       if (layoutPages.length && cfg.includePv !== false && Number(cfg.moduleCount) > 0) {
         layoutPages.forEach((lp, idx) => {
           y = startContentPage();
@@ -338,16 +341,18 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       // Dann bleibt die Seite bei den Leistungen und die Ertragsberechnung beginnt danach.
       const ERTRAG_BLOCK_MIN = 470;
       const leistungen = activeLeistungen(groups.services);
-      if (leistungen.length) {
-        y = startContentPage();
-        y = drawLeistungenBlock(doc, y, groups.services);
-        if (y + ERTRAG_BLOCK_MIN > CONTENT_BOTTOM) y = startContentPage();
-      } else {
-        y = startContentPage();
+      if (!einzel) {
+        if (leistungen.length) {
+          y = startContentPage();
+          y = drawLeistungenBlock(doc, y, groups.services);
+          if (y + ERTRAG_BLOCK_MIN > CONTENT_BOTTOM) y = startContentPage();
+        } else {
+          y = startContentPage();
+        }
+        y = drawErtragPage(doc, y, eco);
       }
-      y = drawErtragPage(doc, y, eco);
 
-      if (eco.consumptionEntered) {
+      if (!einzel && eco.consumptionEntered) {
         y = startContentPage();
         y = drawHaushaltPage(doc, y, eco);
         y = startContentPage();
@@ -564,19 +569,35 @@ function drawAboutPage(doc) {
   }
 }
 
-function drawLetterPage(doc, y, texts) {
-  doc.font(F.bold).fontSize(26).fillColor(COLORS.text).text('Ihr Angebot', MARGIN, y);
+function einzelPositionNames(offer) {
+  return ((offer && offer.quoteLines) || [])
+    .filter((l) => l && l.active !== false && String(l.name || '').trim())
+    .map((l) => String(l.name).trim());
+}
+
+function drawLetterPage(doc, y, texts, offer) {
+  const einzel = !!(offer && offer.meta && offer.meta.offerKind === 'einzel');
+  const names = einzel ? einzelPositionNames(offer) : [];
+  const headline = einzel
+    ? (names.slice(0, 3).join(', ') || 'Positionen')
+    : 'Ihr Angebot';
+  doc.font(F.bold).fontSize(26).fillColor(COLORS.text).text(headline, MARGIN, y);
   y = doc.y + 18;
   doc.font(F.regular).fontSize(11).fillColor(COLORS.text)
     .text(texts.greeting || 'Guten Tag,', MARGIN, y);
   y = doc.y + 12;
+  const intro = einzel
+    ? `vielen Dank für Ihre Anfrage. Wir freuen uns, Ihnen ein Angebot für ${names.join(', ') || 'die genannten Positionen'} zu unterbreiten.`
+    : (texts.intro || DEFAULT_INTRO);
   doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
-    .text(texts.intro || DEFAULT_INTRO, MARGIN, y, { width: CONTENT_W, lineGap: 3 });
+    .text(intro, MARGIN, y, { width: CONTENT_W, lineGap: 3 });
   y = doc.y + 14;
   doc.font(F.bold).fontSize(11).fillColor(COLORS.text)
     .text('Unser Angebot beinhaltet:', MARGIN, y);
   y = doc.y + 10;
-  const bullets = Array.isArray(texts.bullets) && texts.bullets.length ? texts.bullets : DEFAULT_BULLETS;
+  const bullets = einzel
+    ? (names.length ? names : ['Die genannten Positionen.'])
+    : (Array.isArray(texts.bullets) && texts.bullets.length ? texts.bullets : DEFAULT_BULLETS);
   for (const b of bullets) {
     doc.font(F.bold).fontSize(12).fillColor(COLORS.yellow).text('+', MARGIN, y);
     doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
@@ -584,14 +605,18 @@ function drawLetterPage(doc, y, texts) {
     y = doc.y + 6;
   }
   y += 10;
-  doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
-    .text('Wir sind überzeugt, dass unsere Photovoltaiklösungen Ihnen helfen werden, unabhängig von schwankenden Strompreisen zu werden und gleichzeitig einen Beitrag zum Umweltschutz zu leisten.', MARGIN, y, { width: CONTENT_W, lineGap: 3 });
-  y = doc.y + 12;
+  if (!einzel) {
+    doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
+      .text('Wir sind überzeugt, dass unsere Photovoltaiklösungen Ihnen helfen werden, unabhängig von schwankenden Strompreisen zu werden und gleichzeitig einen Beitrag zum Umweltschutz zu leisten.', MARGIN, y, { width: CONTENT_W, lineGap: 3 });
+    y = doc.y + 12;
+  }
   doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
     .text('Bitte überprüfen Sie die Details des Angebots und zögern Sie nicht, mich bei Fragen oder für weitere Informationen zu kontaktieren.', MARGIN, y, { width: CONTENT_W, lineGap: 3 });
   y = doc.y + 12;
   doc.font(F.regular).fontSize(10.5).fillColor(COLORS.text)
-    .text('Wir freuen uns darauf, Sie auf dem Weg zu einer nachhaltigeren Energieversorgung zu begleiten.', MARGIN, y, { width: CONTENT_W });
+    .text(einzel
+      ? 'Wir freuen uns auf Ihre Rückmeldung.'
+      : 'Wir freuen uns darauf, Sie auf dem Weg zu einer nachhaltigeren Energieversorgung zu begleiten.', MARGIN, y, { width: CONTENT_W });
   return doc.y;
 }
 
@@ -605,8 +630,12 @@ function drawGlancePage(doc, y, offer, eco) {
   doc.font(F.bold).fontSize(20).fillColor(COLORS.text)
     .text('Auf einen Blick', MARGIN + pad, yy);
   yy = doc.y + 6;
+  const einzelNames = (offer.meta && offer.meta.offerKind === 'einzel') ? einzelPositionNames(offer) : null;
+  const glanceText = einzelNames
+    ? `Ihr Angebot umfasst: ${einzelNames.join(', ') || 'die genannten Positionen'}.`
+    : 'Ihr Angebot auf einen Blick:  Mit Ihrer Photovoltaikanlage produzieren Sie CO2-neutral Strom. Mit Ihrem Stromspeicher erreichen Sie eine höhere Unabhängigkeit. Graue Komponenten sind nicht Bestandteil dieses Angebots.';
   doc.font(F.regular).fontSize(10).fillColor(COLORS.text)
-    .text('Ihr Angebot auf einen Blick:  Mit Ihrer Photovoltaikanlage produzieren Sie CO2-neutral Strom. Mit Ihrem Stromspeicher erreichen Sie eine höhere Unabhängigkeit. Graue Komponenten sind nicht Bestandteil dieses Angebots.', MARGIN + pad, yy, {
+    .text(glanceText, MARGIN + pad, yy, {
       width: CONTENT_W - pad * 2,
       lineGap: 1.5,
     });
@@ -640,10 +669,14 @@ function drawGlancePage(doc, y, offer, eco) {
 
   const sel = resolveHouseDiagramSelection(offer);
   const rows = [];
-  if (sel.flags.pv) rows.push(['Photovoltaikanlage', eco.labels.peak]);
-  if (sel.flags.battery) rows.push(['Stromspeicher', eco.labels.speicher]);
-  if (!rows.length) {
-    rows.push(['Ihr Energiesystem', 'individuell zusammengestellt']);
+  if (offer.meta && offer.meta.offerKind === 'einzel') {
+    const names = einzelPositionNames(offer);
+    if (names.length) names.slice(0, 6).forEach((name) => rows.push([name, '']));
+    else rows.push(['Positionen', 'wie aufgeführt']);
+  } else {
+    if (sel.flags.pv) rows.push(['Photovoltaikanlage', eco.labels.peak]);
+    if (sel.flags.battery) rows.push(['Stromspeicher', eco.labels.speicher]);
+    if (!rows.length) rows.push(['Ihr Energiesystem', 'individuell zusammengestellt']);
   }
   rows.forEach(([label, val], i) => {
     if (i > 0) {
@@ -1546,14 +1579,15 @@ function drawDatasheetsPage(doc, y, sheets) {
   return y;
 }
 
-function pdfPageFlags({ hasLayout, consumptionEntered, serviceCount } = {}) {
+function pdfPageFlags({ hasLayout, consumptionEntered, serviceCount, offerKind } = {}) {
   const services = Number(serviceCount) || 0;
+  const einzel = offerKind === 'einzel';
   return {
-    layout: !!hasLayout,
-    leistungen: services > 0,
-    yield: true,
-    household: !!consumptionEntered,
-    amortization: !!consumptionEntered,
+    layout: !!hasLayout && !einzel,
+    leistungen: services > 0 && !einzel,
+    yield: !einzel,
+    household: !!consumptionEntered && !einzel,
+    amortization: !!consumptionEntered && !einzel,
   };
 }
 
