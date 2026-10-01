@@ -3895,6 +3895,25 @@ function openMailSlot() {
   try { return window.open('about:blank', '_blank'); } catch (_) { return null; }
 }
 
+/** Kurz warten, damit Outlook den Link bekommt, dann den leeren Tab schließen. */
+function closeMailSlotSoon(slot) {
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      if (!slot) { resolve(false); return; }
+      let already = false;
+      try { already = !!slot.closed; } catch (_) { already = true; }
+      if (already) { resolve(true); return; }
+      try {
+        slot.close();
+      } catch (_) {
+        resolve(false);
+        return;
+      }
+      try { resolve(!!slot.closed); } catch (_) { resolve(true); }
+    }, 400);
+  });
+}
+
 function pointMailSlot(slot, url) {
   if (!slot || slot.closed || !url) return false;
   try {
@@ -3906,7 +3925,7 @@ function pointMailSlot(slot, url) {
 }
 
 /** Nur Betreff und Nachricht. Kein PDF, keine neue Nummer, keine Status-Frage. */
-function openOutlookDraft() {
+async function openOutlookDraft() {
   const email = $('c-email').value.trim();
   if (!email) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
   const subject = $('m-subject').value.trim();
@@ -3916,7 +3935,8 @@ function openOutlookDraft() {
     return;
   }
   const mailWin = openMailSlot();
-  const opened = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
+  let opened = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
+  if (opened) opened = await closeMailSlotSoon(mailWin);
   if (!opened) toast('Outlook wurde blockiert. Pop-up für diese Seite erlauben.', 'error');
   else toast('Outlook geöffnet. Es wird kein PDF erzeugt.', 'ok');
 }
@@ -3938,12 +3958,14 @@ async function finishOfferOpenOutlook() {
       body = $('m-body').value.trim();
     }
     pointed = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
+    const mailClosed = pointed ? closeMailSlotSoon(mailWin) : null;
     const payload = basePayload();
     payload.subject = subject;
     payload.body = body;
     payload.finalize = true;
     const pdfRes = await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
     markFinalizeDone(pdfRes.headers);
+    if (mailClosed) pointed = await mailClosed;
     if (pointed) toast('Angebot fertig. PDF wurde geladen – bitte in Outlook anhängen.', 'ok');
     else toast('PDF geladen. Outlook wurde blockiert – Pop-up erlauben.', 'error');
     await maybeAskOfferSentStatus(pdfRes.headers);

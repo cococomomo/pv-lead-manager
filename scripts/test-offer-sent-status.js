@@ -187,6 +187,14 @@ async function main() {
   const finish = sourceOf(html, 'finishOfferOpenOutlook');
   assert.ok(finish.indexOf('openMailSlot') >= 0 && finish.indexOf('openMailSlot') < finish.indexOf('await'), 'Mailto-Fenster noch im Klick');
   assert.ok(finish.includes('payload.finalize = true'), 'Fertigstellen speichert den Versand');
+  assert.ok(finish.includes('closeMailSlotSoon'), 'Fertigstellen schließt den leeren Tab');
+  assert.ok(finish.includes("toast('PDF geladen. Outlook wurde blockiert – Pop-up erlauben.', 'error')"), 'bestehender Popup-Hinweis bleibt');
+  const textMail = sourceOf(html, 'openOutlookDraft');
+  assert.ok(textMail.includes('closeMailSlotSoon'), 'Text-Knopf schließt den leeren Tab');
+  assert.ok(textMail.includes("toast('Outlook wurde blockiert. Pop-up für diese Seite erlauben.', 'error')"), 'bestehender Text-Popup-Hinweis bleibt');
+  assert.ok(!sourceOf(html, 'downloadPdf').includes('closeMailSlotSoon'), 'PDF-Download öffnet kein Mailto');
+  const closeSlot = sourceOf(html, 'closeMailSlotSoon');
+  assert.ok(closeSlot.includes('setTimeout') && closeSlot.includes('slot.close()'), 'Tab schließt nach kurzer Wartezeit');
 
   const routes = fs.readFileSync(path.join(root, 'src/offer/routes.js'), 'utf8');
   const saveAt = routes.indexOf('savedVersion = await persist.saveOfferVersion');
