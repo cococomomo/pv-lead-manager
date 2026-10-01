@@ -436,6 +436,63 @@
   const POLYGON_DRAW_HINT =
     'Polygon zeichnen: Erste Linie = Dachaußenkante – daran orientieren sich die Module';
 
+  // Dieselben Schwellen wie isEmptyTileImage in src/offer/map-providers.js.
+  const EMPTY_TILE_MIN_CHANNEL = 245;
+  const EMPTY_TILE_MAX_VARIANCE = 16;
+  const EMPTY_TILE_MAX_SPREAD = 8;
+  const DEFAULT_RASTER_ORDER = ['basemap_at', 'esri_world', 'osm'];
+
+  /** Leere Kachel: fehlt, oder eine einzige sehr helle Farbe. Heller Kontrast zählt nicht. */
+  function isEmptyTileImage(image) {
+    if (!image || !image.data || !image.width || !image.height) return true;
+    const width = image.width | 0;
+    const height = image.height | 0;
+    const data = image.data;
+    if (width < 1 || height < 1 || data.length < width * height * 4) return true;
+    let n = 0;
+    let sr = 0;
+    let sg = 0;
+    let sb = 0;
+    let sr2 = 0;
+    let sg2 = 0;
+    let sb2 = 0;
+    let minR = 255;
+    let maxR = 0;
+    let minG = 255;
+    let maxG = 0;
+    let minB = 255;
+    let maxB = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        n += 1;
+        sr += r;
+        sg += g;
+        sb += b;
+        sr2 += r * r;
+        sg2 += g * g;
+        sb2 += b * b;
+        if (r < minR) minR = r;
+        if (r > maxR) maxR = r;
+        if (g < minG) minG = g;
+        if (g > maxG) maxG = g;
+        if (b < minB) minB = b;
+        if (b > maxB) maxB = b;
+      }
+    }
+    if (!n) return true;
+    const mr = sr / n;
+    const mg = sg / n;
+    const mb = sb / n;
+    const variance = Math.max(sr2 / n - mr * mr, sg2 / n - mg * mg, sb2 / n - mb * mb);
+    const spread = Math.max(maxR - minR, maxG - minG, maxB - minB);
+    const bright = mr >= EMPTY_TILE_MIN_CHANNEL && mg >= EMPTY_TILE_MIN_CHANNEL && mb >= EMPTY_TILE_MIN_CHANNEL;
+    return bright && variance <= EMPTY_TILE_MAX_VARIANCE && spread <= EMPTY_TILE_MAX_SPREAD;
+  }
+
   /** Magnetisches Einrasten: etwas großzügiger als Modulspalt (~2 cm). */
   const SNAP_DIST_M = 0.45;
   const SNAP_ANGLE_DEG = 8;
@@ -460,6 +517,14 @@
     let baseLayers = {};
     let activeBaseLayer = null;
     let currentProvider = 'basemap_at';
+    let rasterFallbackOrder = Array.isArray(opts.rasterFallbackOrder) && opts.rasterFallbackOrder.length
+      ? opts.rasterFallbackOrder.slice()
+      : DEFAULT_RASTER_ORDER.slice();
+    let fallbackTried = new Set();
+    let basemapCheckToken = 0;
+    let basemapChecksArmed = false;
+    let centerTileBroken = false;
+    let basemapReplacedFrom = null;
     let modules = [];
     let selectedPoly = null;
     let selectedModuleIdxs = []; // multi-select
@@ -1369,22 +1434,161 @@
       else if (list[0]) sel.value = list[0].id;
     }
 
-    function switchBasemap(providerId) {
+    function providerLabel(id) {
+      const p = (providers || []).find((x) => x && x.id === id);
+      return (p && p.label) || id;
+    }
+
+    function setBasemapHint(id, replacedId) {
+      const el = document.getElementById('layout-basemap-hint');
+      if (!el) return;
+      const now = providerLabel(id);
+      if (replacedId && replacedId !== id) {
+        el.textContent = providerLabel(replacedId) + ' ohne Luftbild – jetzt ' + now;
+      } else {
+        el.textContent = 'Karte: ' + now;
+      }
+    }
+
+    function rasterIds() {
+      const enabled = enabledProviders();
+      const ids = rasterFallbackOrder.filter((id) => enabled.some((p) => p.id === id));
+      enabled.forEach((p) => {
+        if (!ids.includes(p.id)) ids.push(p.id);
+      });
+      return ids;
+    }
+
+    function nextRasterId(currentId) {
+      const ids = rasterIds();
+      if (!ids.length) return null;
+      const start = ids.indexOf(currentId);
+      const base = start < 0 ? 0 : start;
+      for (let step = 1; step <= ids.length; step++) {
+        const id = ids[(base + step) % ids.length];
+        if (!fallbackTried.has(id)) return id;
+      }
+      return null;
+    }
+
+    function makeTileLayer(p) {
+      const layer = L.tileLayer(p.url, {
+        maxZoom: 23,
+        maxNativeZoom: p.maxZoom || 19,
+        attribution: p.attribution || '',
+        crossOrigin: true,
+      });
+      layer.on('load', () => onBasemapTilesReady(layer));
+      layer.on('tileerror', (ev) => onBasemapTileError(layer, ev));
+      return layer;
+    }
+
+    function centerTileCoords(layer) {
+      if (!map || !layer || layer._tileZoom == null) return null;
+      const z = layer._tileZoom;
+      const tileSize = layer.getTileSize();
+      const px = map.project(map.getCenter(), z);
+      const tw = tileSize && tileSize.x ? tileSize.x : 256;
+      const th = tileSize && tileSize.y ? tileSize.y : 256;
+      return { x: Math.floor(px.x / tw), y: Math.floor(px.y / th), z: z };
+    }
+
+    function centerTileImage(layer) {
+      const coords = centerTileCoords(layer);
+      if (!coords || !layer._tiles) return null;
+      const key = typeof layer._tileCoordsToKey === 'function'
+        ? layer._tileCoordsToKey(coords)
+        : (coords.x + ':' + coords.y + ':' + coords.z);
+      const rec = layer._tiles[key];
+      return rec && rec.el ? rec.el : null;
+    }
+
+    function centerTileLooksEmpty(layer) {
+      const img = centerTileImage(layer);
+      if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return true;
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return true;
+      try {
+        ctx.drawImage(img, 0, 0, w, h);
+        const data = ctx.getImageData(0, 0, w, h).data;
+        return isEmptyTileImage({ width: w, height: h, data: data });
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function onBasemapTileError(layer, ev) {
+      if (!layer || layer !== activeBaseLayer) return;
+      const center = centerTileCoords(layer);
+      const c = ev && ev.coords;
+      if (!center || !c) return;
+      if (c.x === center.x && c.y === center.y && c.z === center.z) centerTileBroken = true;
+    }
+
+    function scheduleBasemapCheck() {
+      if (!basemapChecksArmed || !map || !activeBaseLayer) return;
+      const layer = activeBaseLayer;
+      const providerId = currentProvider;
+      const token = ++basemapCheckToken;
+      setTimeout(() => {
+        if (token !== basemapCheckToken) return;
+        if (!basemapChecksArmed || layer !== activeBaseLayer || currentProvider !== providerId) return;
+        if (layer._loading) return;
+        evaluateBasemap(layer, providerId);
+      }, 50);
+    }
+
+    function onBasemapTilesReady(layer) {
+      if (!basemapChecksArmed || !layer || layer !== activeBaseLayer) return;
+      scheduleBasemapCheck();
+    }
+
+    function evaluateBasemap(layer, providerId) {
+      if (!layer || layer !== activeBaseLayer || fallbackTried.has(providerId)) return;
+      const empty = centerTileBroken || centerTileLooksEmpty(layer);
+      centerTileBroken = false;
+      if (!empty) {
+        if (!basemapReplacedFrom) setBasemapHint(providerId, null);
+        return;
+      }
+      fallbackTried.add(providerId);
+      const next = nextRasterId(providerId);
+      if (!next || !baseLayers[next]) {
+        setBasemapHint(providerId, basemapReplacedFrom);
+        return;
+      }
+      basemapReplacedFrom = providerId;
+      switchBasemap(next, { replaced: providerId });
+    }
+
+    function switchBasemap(providerId, reason) {
       if (!map) return;
       const list = enabledProviders();
       const p = list.find((x) => x.id === providerId) || list[0];
       if (!p) return;
       const next = baseLayers[p.id];
       if (!next) return;
-      if (activeBaseLayer && map.hasLayer(activeBaseLayer)) {
-        map.removeLayer(activeBaseLayer);
+      const same = activeBaseLayer === next && currentProvider === p.id;
+      if (!same) {
+        if (activeBaseLayer && map.hasLayer(activeBaseLayer)) {
+          map.removeLayer(activeBaseLayer);
+        }
+        next.addTo(map);
+        if (typeof next.bringToBack === 'function') next.bringToBack();
+        activeBaseLayer = next;
+        currentProvider = p.id;
       }
-      next.addTo(map);
-      if (typeof next.bringToBack === 'function') next.bringToBack();
-      activeBaseLayer = next;
-      currentProvider = p.id;
       const sel = document.getElementById('layout-basemap');
       if (sel && sel.value !== p.id) sel.value = p.id;
+      const replaced = reason && reason.replaced;
+      if (replaced) setBasemapHint(p.id, replaced);
+      else if (!basemapReplacedFrom) setBasemapHint(p.id, null);
+      scheduleBasemapCheck();
     }
 
     function currentDrawMode() {
@@ -1473,13 +1677,7 @@
 
       baseLayers = {};
       enabledProviders().forEach((p) => {
-        const nativeMax = p.maxZoom || 19;
-        baseLayers[p.id] = L.tileLayer(p.url, {
-          maxZoom: 23,
-          maxNativeZoom: nativeMax,
-          attribution: p.attribution || '',
-          crossOrigin: true,
-        });
+        baseLayers[p.id] = makeTileLayer(p);
       });
 
       populateBasemapSelect();
@@ -1575,7 +1773,15 @@
         });
       }
 
-      map.on('moveend', scheduleHouseNumbers);
+      map.on('moveend', () => {
+        if (basemapChecksArmed) {
+          fallbackTried.clear();
+          centerTileBroken = false;
+          basemapReplacedFrom = null;
+          scheduleBasemapCheck();
+        }
+        scheduleHouseNumbers();
+      });
       map.on('zoomend', scheduleHouseNumbers);
       map.on('mousemove', onModuleDragMove);
       map.on('mousedown', onMapSelectMouseDown);
@@ -3161,6 +3367,11 @@
     function open(ctx) {
       ctx = ctx || {};
       armAddressAutofocusBlock();
+      basemapChecksArmed = false;
+      fallbackTried.clear();
+      centerTileBroken = false;
+      basemapReplacedFrom = null;
+      if (ctx.layout && ctx.layout.basemapProvider) currentProvider = ctx.layout.basemapProvider;
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
       ensureMap();
@@ -3210,6 +3421,10 @@
         refreshPitchArrows();
         updateCountUi();
         if (addrEl && document.activeElement === addrEl) addrEl.blur();
+        basemapChecksArmed = true;
+        fallbackTried.clear();
+        centerTileBroken = false;
+        scheduleBasemapCheck();
       }, 80);
 
       open._ctx = ctx;
@@ -3285,6 +3500,10 @@
       const basemapSel = document.getElementById('layout-basemap');
       if (basemapSel) {
         basemapSel.addEventListener('change', () => {
+          fallbackTried.clear();
+          centerTileBroken = false;
+          basemapReplacedFrom = null;
+          basemapCheckToken += 1;
           switchBasemap(basemapSel.value);
         });
       }
@@ -3539,11 +3758,7 @@
         if (map) {
           enabledProviders().forEach((pr) => {
             if (baseLayers[pr.id]) return;
-            baseLayers[pr.id] = L.tileLayer(pr.url, {
-              maxZoom: 23,
-              maxNativeZoom: pr.maxZoom || 19,
-              attribution: pr.attribution || '',
-            });
+            baseLayers[pr.id] = makeTileLayer(pr);
           });
           if (currentProvider) switchBasemap(currentProvider);
         }

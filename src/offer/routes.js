@@ -340,6 +340,7 @@ function mountOfferRoutes(app, deps) {
       })),
       moduleDimensions: mapProviders.MODULE_DIMENSIONS,
       mapProviders: mapProviders.listMapProviders(),
+      rasterFallbackOrder: mapProviders.rasterFallbackIds(),
     });
   });
 
@@ -516,6 +517,7 @@ function mountOfferRoutes(app, deps) {
           });
           if (png && png.length > 100) {
             persist.saveLayoutSnapshotBuffer(layoutPlanId, png);
+            if (png.basemapProvider) persist.rememberLayoutBasemap(layoutPlanId, png.basemapProvider);
           }
         } catch (e) {
           console.warn('[NOORTEC] Ortho-Belegungsplan:', e.message);

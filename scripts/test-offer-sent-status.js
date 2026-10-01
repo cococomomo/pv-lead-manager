@@ -175,12 +175,18 @@ async function main() {
   const root = path.join(__dirname, '..');
   const html = fs.readFileSync(path.join(root, 'public/offer.html'), 'utf8');
   assert.ok(html.includes('Status dieses Leads auf „Angebot gesendet“ setzen?'));
-  for (const name of ['downloadPdf', 'openOutlookDraft', 'finishOfferOpenOutlook']) {
+  for (const name of ['downloadPdf', 'finishOfferOpenOutlook']) {
     assert.ok(sourceOf(html, name).includes('maybeAskOfferSentStatus'), name + ' fragt nach dem Versand');
   }
-  for (const name of ['refreshPreview', 'saveOfferVersionManual']) {
+  for (const name of ['refreshPreview', 'saveOfferVersionManual', 'openOutlookDraft']) {
     assert.ok(!sourceOf(html, name).includes('maybeAskOfferSentStatus'), name + ' fragt nicht');
   }
+  const textOnly = sourceOf(html, 'openOutlookDraft');
+  assert.ok(!textOnly.includes('/api/offer/pdf'), 'aktueller Text lädt kein PDF');
+  assert.ok(!textOnly.includes('outlook-draft'), 'aktueller Text vergibt keine neue Nummer');
+  const finish = sourceOf(html, 'finishOfferOpenOutlook');
+  assert.ok(finish.indexOf('openMailSlot') >= 0 && finish.indexOf('openMailSlot') < finish.indexOf('await'), 'Mailto-Fenster noch im Klick');
+  assert.ok(finish.includes('payload.finalize = true'), 'Fertigstellen speichert den Versand');
 
   const routes = fs.readFileSync(path.join(root, 'src/offer/routes.js'), 'utf8');
   const saveAt = routes.indexOf('savedVersion = await persist.saveOfferVersion');

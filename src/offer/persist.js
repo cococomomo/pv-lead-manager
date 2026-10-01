@@ -203,6 +203,17 @@ function updateLayout(id, input) {
   return getLayout(id);
 }
 
+/** Eine Zeile: die Karte merken, die beim Rendern wirklich ein Bild hatte. */
+function rememberLayoutBasemap(id, usedProvider) {
+  const layoutId = Number(id);
+  const used = String(usedProvider || '').trim();
+  if (!Number.isFinite(layoutId) || layoutId < 1 || !used) return null;
+  const cur = getLayout(layoutId);
+  if (!cur) return null;
+  if (String(cur.basemapProvider || 'basemap_at') === used) return cur;
+  return updateLayout(layoutId, { basemapProvider: used });
+}
+
 function deleteLayout(id) {
   const cur = getLayout(id);
   if (!cur) return false;
@@ -936,6 +947,7 @@ module.exports = {
   getLayout,
   createLayout,
   updateLayout,
+  rememberLayoutBasemap,
   deleteLayout,
   saveLayoutSnapshot,
   saveLayoutSnapshotBuffer,

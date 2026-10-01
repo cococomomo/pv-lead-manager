@@ -59,6 +59,14 @@
   .btn.dark { background: var(--dark); }
   .btn.dark:hover { background: #2b3242; }
   .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
+  .mail-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-top: 0.35rem; }
+  .mail-label-row label { margin: 0; }
+  .mail-open-line {
+    display: inline-block; margin-top: 0.45rem; background: none; border: none; padding: 0;
+    color: var(--dark); font-weight: 600; font-size: 0.85rem; text-decoration: underline; cursor: pointer;
+  }
+  .mail-open-line:hover { color: var(--accent-dark); }
+  .mail-open-line:disabled { opacity: 0.55; cursor: default; }
 
   .optlist { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
   .optrow { display: grid; grid-template-columns: 96px 1fr 104px 20px; gap: 0.4rem 0.4rem; align-items: start; }
@@ -721,15 +729,6 @@
       <div class="quote-lines" id="quote-lines"></div>
       <div class="optional-lines" id="optional-lines"></div>
       <div class="hint">Jede Zeile ist an, bis sie entfernt wird. Unterkonstruktion und Montage bleiben, bis sie selbst gestrichen werden. Der Paketpreis ändert sich dadurch nicht. Optionale Speicherblöcke stehen darunter und bleiben außerhalb des Pakets.</div>
-      <div class="btn-row">
-        <button class="btn dark" id="btn-finish-outlook" title="KI-E-Mail erzeugen, PDF inkl. Vollmacht (bei PV) laden und Outlook-Draft öffnen">Angebot fertigstellen → Outlook-Draft</button>
-        <button class="btn" id="btn-preview">PDF-Vorschau aktualisieren</button>
-        <button class="btn secondary" id="btn-download">PDF herunterladen</button>
-        <button class="btn secondary" id="btn-save-version" title="Aktuelle Konfiguration inkl. PDF als Version speichern (ohne Versand)">Version speichern</button>
-        <button class="btn secondary" id="btn-emailtext">E-Mail-Text neu erzeugen (KI)</button>
-        <button class="btn secondary" id="btn-eml">Outlook öffnen (aktueller Text)</button>
-      </div>
-      <div class="hint">Du kannst Angebot und E-Mail-Text jederzeit nachbearbeiten. „Fertigstellen“ erzeugt den KI-Text frisch, lädt das PDF und öffnet einen Outlook-Draft. „Version speichern“ legt eine Kunden-Version (V1, V2, …) ab.</div>
     </div>
 
     <div class="panel" id="offer-history-panel">
@@ -739,15 +738,27 @@
 
     <div class="panel">
       <h2>E-Mail</h2>
-      <label>Betreff</label>
+      <label for="m-subject">Betreff</label>
       <input id="m-subject" />
-      <label>Nachricht</label>
+      <div class="mail-label-row">
+        <label for="m-body">Nachricht</label>
+        <button type="button" class="btn secondary" id="btn-emailtext">E-Mail-Text neu erzeugen</button>
+      </div>
       <textarea id="m-body" rows="8"></textarea>
-      <div class="hint">Text ist editierbar. Outlook öffnet eine neue Draft-Mail; das PDF wird parallel heruntergeladen und kann angehängt werden.</div>
+      <button type="button" class="mail-open-line" id="btn-eml">Diesen Text in Outlook öffnen</button>
+      <div class="btn-row">
+        <button class="btn dark" id="btn-finish-outlook" title="PDF laden, Version als gesendet speichern und Outlook öffnen">Angebot fertigstellen</button>
+      </div>
+      <div class="hint">Das PDF hängst du in Outlook selbst an, weil der Browser die Datei nicht in den Entwurf legen kann.</div>
     </div>
 
     <div class="panel">
       <h2>PDF-Vorschau</h2>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn" id="btn-preview">PDF-Vorschau aktualisieren</button>
+        <button class="btn secondary" id="btn-download">PDF herunterladen</button>
+        <button class="btn secondary" id="btn-save-version" title="Aktuelle Konfiguration inkl. PDF als Version speichern (ohne Versand)">Version speichern</button>
+      </div>
       <div id="pdf-preview-status" class="hint" style="margin-bottom:0.45rem">Noch keine Vorschau – wird nach der Kalkulation automatisch geladen.</div>
       <iframe class="preview" id="pdf-frame" title="Angebotsvorschau"></iframe>
     </div>
@@ -822,6 +833,10 @@
       <div class="field" style="min-width:140px" data-step="building">
         <label>Kartengrundlage</label>
         <select id="layout-basemap"></select>
+      </div>
+      <div class="field" data-step="always" style="min-width:180px;max-width:280px">
+        <label>Aktuelle Karte</label>
+        <div id="layout-basemap-hint" class="layout-size-hint">Karte: basemap.at Orthofoto</div>
       </div>
 
       <div class="layout-tool-group" data-step="building">
@@ -918,7 +933,7 @@
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="/layout-roof-label.js?v=20261001-belegungsplan"></script>
-<script src="/layout-editor.js?v=20261001-auto-row"></script>
+<script src="/layout-editor.js?v=20261001-kartenfolge"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let CATALOG = null;
@@ -3629,7 +3644,7 @@ async function genEmailText(opts) {
     if (!silent) toast('Fehler: ' + e.message, 'error');
     throw e;
   } finally {
-    if (!silent) { btn.disabled = false; btn.textContent = 'E-Mail-Text neu erzeugen (KI)'; }
+    if (!silent) { btn.disabled = false; btn.textContent = 'E-Mail-Text neu erzeugen'; }
   }
 }
 
@@ -3698,65 +3713,77 @@ function showEmailSalutationClarifications(items) {
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function openMailtoDraft(url) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+function buildClientMailto(to, subject, body) {
+  const parts = [];
+  if (subject) parts.push('subject=' + encodeURIComponent(subject));
+  if (body) parts.push('body=' + encodeURIComponent(body));
+  const qs = parts.length ? '?' + parts.join('&') : '';
+  return 'mailto:' + encodeURIComponent(String(to || '').trim()) + qs;
 }
 
-/** Aktuellen (ggf. nachbearbeiteten) E-Mail-Text + PDF → Outlook. */
-async function openOutlookDraft() {
-  if (!$('c-email').value.trim()) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
-  const btn = $('btn-eml');
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> …';
+/** Mailto-Fenster noch im Klick öffnen, die Adresse danach setzen. */
+function openMailSlot() {
+  try { return window.open('about:blank', '_blank'); } catch (_) { return null; }
+}
+
+function pointMailSlot(slot, url) {
+  if (!slot || slot.closed || !url) return false;
   try {
-    const payload = basePayload();
-    payload.useAI = true;
-    payload.subject = $('m-subject').value.trim();
-    payload.body = $('m-body').value.trim();
-    // Wenn noch kein Text: zuerst KI erzeugen (editierbar vor erneutem Klick)
-    if (!payload.subject || !payload.body) {
-      await genEmailText({ silent: true });
-      payload.subject = $('m-subject').value.trim();
-      payload.body = $('m-body').value.trim();
-    }
-    const res = await api('/api/offer/outlook-draft', { method: 'POST', body: JSON.stringify(payload) });
-    const j = await res.json();
-    if (j.angebotsnummer && payload.allocateNewNumber) $('f-nummer').value = j.angebotsnummer;
-    const pdfRes = await downloadBlob('/api/offer/pdf', Object.assign({}, payload, { finalize: true }), j.attachmentFilename || 'angebot.pdf');
-    markFinalizeDone(pdfRes.headers);
-    openMailtoDraft(j.mailtoUrl);
-    toast('Outlook-Draft geöffnet. PDF wurde heruntergeladen – bitte anhängen.', 'ok');
-    await maybeAskOfferSentStatus(pdfRes.headers);
-  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'Outlook öffnen (aktueller Text)'; }
+    slot.location.href = url;
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
-/** Fertigstellen: frischer KI-Text + PDF + Outlook-Draft. */
+/** Nur Betreff und Nachricht. Kein PDF, keine neue Nummer, keine Status-Frage. */
+function openOutlookDraft() {
+  const email = $('c-email').value.trim();
+  if (!email) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
+  const subject = $('m-subject').value.trim();
+  const body = $('m-body').value.trim();
+  if (!subject && !body) {
+    toast('Bitte zuerst einen E-Mail-Text eintragen.', 'error');
+    return;
+  }
+  const mailWin = openMailSlot();
+  const opened = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
+  if (!opened) toast('Outlook wurde blockiert. Pop-up für diese Seite erlauben.', 'error');
+  else toast('Outlook geöffnet. Es wird kein PDF erzeugt.', 'ok');
+}
+
+/** Fertigstellen: Text aus den Feldern, PDF als Versand, Outlook noch im Klick. */
 async function finishOfferOpenOutlook() {
-  if (!$('c-email').value.trim()) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
+  const email = $('c-email').value.trim();
+  if (!email) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
+  const mailWin = openMailSlot();
   const btn = $('btn-finish-outlook');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Fertigstellen…';
+  let pointed = false;
   try {
-    await genEmailText({ silent: true });
+    let subject = $('m-subject').value.trim();
+    let body = $('m-body').value.trim();
+    if (!body) {
+      await genEmailText({ silent: true });
+      subject = $('m-subject').value.trim();
+      body = $('m-body').value.trim();
+    }
+    pointed = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
     const payload = basePayload();
-    payload.useAI = true;
-    payload.subject = $('m-subject').value.trim();
-    payload.body = $('m-body').value.trim();
-    const res = await api('/api/offer/outlook-draft', { method: 'POST', body: JSON.stringify(payload) });
-    const j = await res.json();
-    if (j.angebotsnummer && payload.allocateNewNumber) $('f-nummer').value = j.angebotsnummer;
-    const pdfRes = await downloadBlob('/api/offer/pdf', Object.assign({}, payload, { finalize: true }), j.attachmentFilename || 'angebot.pdf');
+    payload.subject = subject;
+    payload.body = body;
+    payload.finalize = true;
+    const pdfRes = await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
     markFinalizeDone(pdfRes.headers);
-    openMailtoDraft(j.mailtoUrl);
-    toast('Angebot fertig: KI-Mail + PDF bereit, Outlook-Draft geöffnet.', 'ok');
+    if (pointed) toast('Angebot fertig. PDF wurde geladen – bitte in Outlook anhängen.', 'ok');
+    else toast('PDF geladen. Outlook wurde blockiert – Pop-up erlauben.', 'error');
     await maybeAskOfferSentStatus(pdfRes.headers);
-  } catch (e) { toast('Fehler: ' + e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'Angebot fertigstellen → Outlook-Draft'; }
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'error');
+    if (!pointed && mailWin && !mailWin.closed) {
+      try { mailWin.close(); } catch (_) {}
+    }
+  } finally { btn.disabled = false; btn.textContent = 'Angebot fertigstellen'; }
 }
 
 async function downloadPdf() {
@@ -4193,6 +4220,7 @@ async function init() {
   try {
     layoutEditor = window.LayoutEditor.create({
       providers: (CATALOG && CATALOG.mapProviders) || [],
+      rasterFallbackOrder: (CATALOG && CATALOG.rasterFallbackOrder) || null,
       moduleDimensions: (CATALOG && CATALOG.moduleDimensions) || {},
       onSaved: (layout) => {
         currentLayout = layout;

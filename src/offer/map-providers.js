@@ -125,6 +125,97 @@ function getMapProvider(id) {
   return MAP_PROVIDERS.find((p) => p.id === id) || null;
 }
 
+/**
+ * Aktive Rasterkarten in fester Folge.
+ * Dieselbe Reihenfolge nutzen Editor und PDF, wenn eine Kachel leer ist.
+ */
+const RASTER_FALLBACK_ORDER = ['basemap_at', 'esri_world', 'osm'];
+
+/** Sehr hell und praktisch eine Farbe. Ein hoher Mittelwert allein ist kein leeres Bild. */
+const EMPTY_TILE_MIN_CHANNEL = 245;
+const EMPTY_TILE_MAX_VARIANCE = 16;
+const EMPTY_TILE_MAX_SPREAD = 8;
+
+function rasterFallbackIds() {
+  const enabled = MAP_PROVIDERS.filter((p) => p && p.enabled && p.type === 'raster' && p.url);
+  const ids = [];
+  RASTER_FALLBACK_ORDER.forEach((id) => {
+    if (enabled.some((p) => p.id === id)) ids.push(id);
+  });
+  enabled.forEach((p) => {
+    if (!ids.includes(p.id)) ids.push(p.id);
+  });
+  return ids;
+}
+
+/** Startet bei der gewählten Grundlage und probiert jede Karte höchstens einmal. */
+function rasterTryOrder(startId) {
+  const ids = rasterFallbackIds();
+  const i = ids.indexOf(String(startId || ''));
+  if (i <= 0) return ids.slice();
+  return ids.slice(i).concat(ids.slice(0, i));
+}
+
+/**
+ * Leere Kachel: kein Bild, oder eine einzige sehr helle Farbe (basemap.at ohne Orthofoto).
+ * Ein helles Foto mit Kontrast bleibt ein Bild.
+ * @param {{width:number,height:number,data:(Uint8Array|Buffer|Uint8ClampedArray)}|null} image
+ * @returns {boolean}
+ */
+function isEmptyTileImage(image) {
+  if (!image || !image.data || !image.width || !image.height) return true;
+  const width = image.width | 0;
+  const height = image.height | 0;
+  const data = image.data;
+  if (width < 1 || height < 1 || data.length < width * height * 4) return true;
+  let n = 0;
+  let sr = 0;
+  let sg = 0;
+  let sb = 0;
+  let sr2 = 0;
+  let sg2 = 0;
+  let sb2 = 0;
+  let minR = 255;
+  let maxR = 0;
+  let minG = 255;
+  let maxG = 0;
+  let minB = 255;
+  let maxB = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      n += 1;
+      sr += r;
+      sg += g;
+      sb += b;
+      sr2 += r * r;
+      sg2 += g * g;
+      sb2 += b * b;
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      if (g < minG) minG = g;
+      if (g > maxG) maxG = g;
+      if (b < minB) minB = b;
+      if (b > maxB) maxB = b;
+    }
+  }
+  if (!n) return true;
+  const mr = sr / n;
+  const mg = sg / n;
+  const mb = sb / n;
+  const varR = sr2 / n - mr * mr;
+  const varG = sg2 / n - mg * mg;
+  const varB = sb2 / n - mb * mb;
+  const variance = Math.max(varR, varG, varB);
+  const spread = Math.max(maxR - minR, maxG - minG, maxB - minB);
+  const bright = mr >= EMPTY_TILE_MIN_CHANNEL && mg >= EMPTY_TILE_MIN_CHANNEL && mb >= EMPTY_TILE_MIN_CHANNEL;
+  const flat = variance <= EMPTY_TILE_MAX_VARIANCE && spread <= EMPTY_TILE_MAX_SPREAD;
+  return bright && flat;
+}
+
 function getModuleDimensions(moduleType) {
   const key = String(moduleType || 'das').toLowerCase();
   return MODULE_DIMENSIONS[key] || MODULE_DIMENSIONS.das;
@@ -565,6 +656,13 @@ module.exports = {
   listMapProviders,
   listGeocodeProviders,
   getMapProvider,
+  RASTER_FALLBACK_ORDER,
+  EMPTY_TILE_MIN_CHANNEL,
+  EMPTY_TILE_MAX_VARIANCE,
+  EMPTY_TILE_MAX_SPREAD,
+  rasterFallbackIds,
+  rasterTryOrder,
+  isEmptyTileImage,
   getModuleDimensions,
   normalizeAddressQuery,
   expandAddressQueryVariants,

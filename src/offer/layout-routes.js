@@ -124,6 +124,7 @@ function mountLayoutOfferPersistRoutes(app) {
           });
           if (png && png.length > 100) {
             persist.saveLayoutSnapshotBuffer(req.params.id, png);
+            if (png.basemapProvider) persist.rememberLayoutBasemap(req.params.id, png.basemapProvider);
             layout = persist.getLayout(req.params.id);
           }
         } catch (e) {

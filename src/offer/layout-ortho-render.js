@@ -210,11 +210,8 @@ function strokePolygon(data, w, h, pts, r, g, b, a, width) {
 }
 
 function tileUrlFor(providerId, z, x, y) {
-  const list = mapProviders.listMapProviders ? mapProviders.listMapProviders() : [];
-  const p = list.find((i) => i.id === providerId && i.url) || list.find((i) => i.enabled && i.url);
-  if (!p || !p.url) {
-    return `https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/${z}/${y}/${x}.jpeg`;
-  }
+  const p = mapProviders.getMapProvider ? mapProviders.getMapProvider(providerId) : null;
+  if (!p || !p.url) return null;
   return p.url
     .replace('{z}', String(z))
     .replace('{x}', String(x))
@@ -240,6 +237,8 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
   });
   const midLat = (minLat + maxLat) / 2;
+  const houseLat = midLat;
+  const houseLng = (minLng + maxLng) / 2;
   const mPerDegLat = 111320;
   const mPerDegLng = 111320 * Math.max(0.25, Math.cos(deg2rad(midLat)));
 
@@ -308,7 +307,44 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     png.data[i + 3] = 255;
   }
 
-  const providerId = opts.basemapProvider || planObj.basemapProvider || 'basemap_at';
+  const storedProvider = opts.basemapProvider || planObj.basemapProvider || 'basemap_at';
+  const fetchTile = typeof opts.fetchTile === 'function' ? opts.fetchTile : fetchBuffer;
+  const tileCache = new Map();
+  async function fetchTileCached(url) {
+    if (tileCache.has(url)) return tileCache.get(url);
+    const buf = await fetchTile(url);
+    tileCache.set(url, buf);
+    return buf;
+  }
+
+  async function centerHasPicture(candidateId) {
+    const wp = latLngToWorldPixel(houseLat, houseLng, zoom);
+    const tx = Math.floor(wp.x / TILE);
+    const ty = Math.floor(wp.y / TILE);
+    const url = tileUrlFor(candidateId, zoom, tx, ty);
+    if (!url) return false;
+    try {
+      const buf = await fetchTileCached(url);
+      const img = decodeImageToRgba(buf);
+      return !mapProviders.isEmptyTileImage(img);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Erst die gespeicherte Grundlage. Ist die Hausmitte leer oder fehlt sie,
+  // dasselbe Fenster komplett mit der nächsten Karte zeichnen.
+  let providerId = storedProvider;
+  const tryOrder = mapProviders.rasterTryOrder
+    ? mapProviders.rasterTryOrder(storedProvider)
+    : [storedProvider];
+  for (const candidateId of tryOrder) {
+    if (await centerHasPicture(candidateId)) {
+      providerId = candidateId;
+      break;
+    }
+  }
+
   const jobs = [];
   for (let ty = tMinY; ty <= tMaxY; ty++) {
     for (let tx = tMinX; tx <= tMaxX; tx++) {
@@ -323,8 +359,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     while (idx < jobs.length) {
       const my = jobs[idx++];
       const url = tileUrlFor(providerId, zoom, my.tx, my.ty);
+      if (!url) continue;
       try {
-        const buf = await fetchBuffer(url);
+        const buf = await fetchTileCached(url);
         const img = decodeImageToRgba(buf);
         if (!img) continue;
         const destX0 = Math.floor((my.tx * TILE - originX) * scale);
@@ -407,7 +444,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     { data: png.data, width: outW, height: outH },
     Math.max(1, Math.min(100, Math.round(jpegQuality))),
   );
-  return Buffer.from(encoded.data);
+  const out = Buffer.from(encoded.data);
+  out.basemapProvider = providerId;
+  return out;
 }
 
 module.exports = {
