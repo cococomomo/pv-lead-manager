@@ -1359,6 +1359,40 @@
     html[data-theme="dark"] .popup-row { color: #e2e8f0; }
     .popup-open-btn { margin-top: 8px; background: #1a56db; color: #fff; border: none; border-radius: 5px; padding: 4px 12px; font-size: 0.78rem; cursor: pointer; width: 100%; }
     .popup-open-btn:hover { background: #1e40af; }
+    /* Google-Lens: Nummer isoliert, serifenlos, schwarz auf weiß, E.164 mit Tel: */
+    .pvl-lens-phone {
+      display: inline-block;
+      font-family: Arial, Helvetica, Roboto, "Segoe UI", sans-serif !important;
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      font-style: normal !important;
+      color: #000 !important;
+      background: #fff !important;
+      border: 1px solid #111;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.04em;
+      line-height: 1.3;
+      white-space: nowrap;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+      text-decoration: none !important;
+    }
+    .pvl-lens-phone-prefix { font-weight: 700; margin-right: 0.2em; color: #000 !important; }
+    .pvl-lens-phone-num {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+      color: #000 !important;
+    }
+    .popup-row.popup-row-phone {
+      margin: 8px 0;
+      padding: 0;
+    }
+    .leaflet-popup-content .popup-row a.pvl-lens-phone,
+    html[data-theme="dark"] .leaflet-popup-content .popup-row a.pvl-lens-phone {
+      color: #000 !important;
+      text-decoration: none !important;
+      word-break: keep-all;
+    }
 
     .tel-link { color: var(--pvl-accent); text-decoration: none; font-weight: 600; }
     .tel-link:hover { text-decoration: underline; }
@@ -3190,8 +3224,162 @@
   }
 
   function telHref(phone) {
-    const digits = String(phone || '').replace(/\s/g, '').replace(/^0043/, '+43');
+    const parts = parsePhoneParts(phone);
+    if (parts && parts.cc && parts.national) return 'tel:+' + parts.cc + parts.national;
+    const digits = String(phone || '').replace(/\s/g, '').replace(/^0043/, '+43').replace(/^00/, '+');
     return digits ? `tel:${digits}` : '';
+  }
+
+  /**
+   * Zerlegt eine gespeicherte Nummer in Ländercode + nationale Ziffern (ohne Trunk-0).
+   * AT ist Standard, wenn kein +/00 erkennbar ist.
+   */
+  function parsePhoneParts(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const cleaned = s.replace(/\(0\)/g, '');
+    let digits = cleaned.replace(/\D/g, '');
+    if (!digits) return null;
+    const hasIntl = /^\s*(?:\+|00)/.test(cleaned);
+    if (/^\s*00/.test(cleaned)) digits = digits.replace(/^00/, '');
+    if (hasIntl) {
+      const ccs = ['421', '420', '386', '385', '43', '49', '41', '39', '36', '31', '32', '33', '34', '44', '48'];
+      for (let i = 0; i < ccs.length; i += 1) {
+        const cc = ccs[i];
+        if (digits.startsWith(cc) && digits.length > cc.length + 4) {
+          let national = digits.slice(cc.length);
+          if (national.startsWith('0')) national = national.slice(1);
+          return { cc, national };
+        }
+      }
+      const cc = digits.slice(0, 2);
+      let national = digits.slice(2);
+      if (national.startsWith('0')) national = national.slice(1);
+      return cc && national ? { cc, national } : null;
+    }
+    if (digits.startsWith('43') && digits.length >= 11) {
+      let national = digits.slice(2);
+      if (national.startsWith('0')) national = national.slice(1);
+      return { cc: '43', national };
+    }
+    if (digits.startsWith('49') && digits.length >= 11) {
+      let national = digits.slice(2);
+      if (national.startsWith('0')) national = national.slice(1);
+      return { cc: '49', national };
+    }
+    if (digits.startsWith('0')) {
+      return { cc: '43', national: digits.slice(1) };
+    }
+    return { cc: '43', national: digits };
+  }
+
+  function pvlGroupPhoneSubscriber(sub) {
+    const s = String(sub || '');
+    if (!s) return '';
+    if (s.length === 7) return s.slice(0, 3) + ' ' + s.slice(3, 5) + ' ' + s.slice(5);
+    if (s.length === 8) return s.slice(0, 3) + ' ' + s.slice(3, 5) + ' ' + s.slice(5);
+    if (s.length === 6) return s.slice(0, 3) + ' ' + s.slice(3);
+    if (s.length <= 5) return s;
+    const parts = [];
+    let i = 0;
+    while (i < s.length) {
+      const left = s.length - i;
+      const n = left > 4 ? 3 : left;
+      parts.push(s.slice(i, i + n));
+      i += n;
+    }
+    return parts.join(' ');
+  }
+
+  function formatAtNational(national) {
+    const n = String(national || '');
+    if (!n) return '';
+    if (/^(65[0-3579]|66[013-9]|67[0-8]|68[018]|690|699)/.test(n)) {
+      return n.slice(0, 3) + ' ' + pvlGroupPhoneSubscriber(n.slice(3));
+    }
+    if (n.charAt(0) === '1') {
+      return '1 ' + pvlGroupPhoneSubscriber(n.slice(1));
+    }
+    if (/^(316|463|512|662|732)/.test(n) && n.length >= 7) {
+      return n.slice(0, 3) + ' ' + pvlGroupPhoneSubscriber(n.slice(3));
+    }
+    if (n.length >= 9) return n.slice(0, 4) + ' ' + pvlGroupPhoneSubscriber(n.slice(4));
+    if (n.length >= 7) return n.slice(0, 3) + ' ' + pvlGroupPhoneSubscriber(n.slice(3));
+    return n;
+  }
+
+  function formatDeNational(national) {
+    const n = String(national || '');
+    if (!n) return '';
+    if (/^1[5-7]/.test(n)) return n.slice(0, 3) + ' ' + pvlGroupPhoneSubscriber(n.slice(3));
+    if (/^(30|40|69|89|11)/.test(n)) return n.slice(0, 2) + ' ' + pvlGroupPhoneSubscriber(n.slice(2));
+    if (n.length >= 10) return n.slice(0, 4) + ' ' + pvlGroupPhoneSubscriber(n.slice(4));
+    if (n.length >= 6) return n.slice(0, 3) + ' ' + pvlGroupPhoneSubscriber(n.slice(3));
+    return n;
+  }
+
+  function formatChNational(national) {
+    const n = String(national || '');
+    if (n.length >= 9) {
+      return n.slice(0, 2) + ' ' + n.slice(2, 5) + ' ' + n.slice(5, 7) + (n.length > 7 ? ' ' + n.slice(7) : '');
+    }
+    return pvlGroupPhoneSubscriber(n);
+  }
+
+  /** Internationales E.164 mit Leerzeichen — für Google Lens / libphonenumber. */
+  function formatPhoneE164Display(raw) {
+    const parts = parsePhoneParts(raw);
+    if (!parts || !parts.cc || !parts.national) return '';
+    let grouped = parts.national;
+    if (parts.cc === '43') grouped = formatAtNational(parts.national);
+    else if (parts.cc === '49') grouped = formatDeNational(parts.national);
+    else if (parts.cc === '41') grouped = formatChNational(parts.national);
+    else grouped = pvlGroupPhoneSubscriber(parts.national);
+    return '+' + parts.cc + ' ' + grouped;
+  }
+
+  function pvlLensPhoneInnerHtml(formatted) {
+    return '<span class="pvl-lens-phone-prefix">Tel:</span> <span class="pvl-lens-phone-num">' + esc(formatted) + '</span>';
+  }
+
+  /** Anzeige des Anfragezeitpunkts in Europe/Vienna. Der gespeicherte Instant bleibt unverändert. */
+  function formatPopupStampVienna(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(s) && s.indexOf('T') < 0) return s;
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(s);
+    let normalized = s.replace(' ', 'T');
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized) && !/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(normalized)) {
+      normalized += 'Z';
+    }
+    const d = new Date(dateOnly ? (s + 'T12:00:00Z') : normalized);
+    if (Number.isNaN(d.getTime())) return s;
+    try {
+      const opts = {
+        timeZone: 'Europe/Vienna',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour12: false,
+      };
+      if (!dateOnly) {
+        opts.hour = '2-digit';
+        opts.minute = '2-digit';
+      }
+      const parts = new Intl.DateTimeFormat('de-AT', opts).formatToParts(d);
+      const get = (t) => {
+        const part = parts.find((p) => p.type === t);
+        return part ? part.value : '';
+      };
+      let hour = get('hour');
+      if (hour === '24') hour = '00';
+      const date = get('day') + '.' + get('month') + '.' + get('year');
+      if (!get('day') || !get('month') || !get('year')) return s;
+      if (dateOnly || !hour) return date;
+      return date + ', ' + hour + ':' + get('minute');
+    } catch (_) {
+      return s;
+    }
   }
 
   function mailtoHref(email) {
@@ -4676,15 +4864,23 @@
     const addrPartsPop = [strasseRaw || lead[COL.street], lead[COL.zip], lead[COL.city]].filter(Boolean).map((x) => String(x).trim()).filter(Boolean);
     const addrLinePop = addrPartsPop.join(', ');
     const addrHPop = googleMapsSearchHref(addrLinePop);
+    const phoneFormattedPop = formatPhoneE164Display(lead[COL.phone]);
+    const phoneHrefPop = phoneFormattedPop ? telHref(lead[COL.phone]) : '';
+    const phonePopupHtml = phoneFormattedPop
+      ? (phoneHrefPop
+        ? `<div class="popup-row popup-row-phone"><a class="pvl-lens-phone" href="${esc(phoneHrefPop)}">${pvlLensPhoneInnerHtml(phoneFormattedPop)}</a></div>`
+        : `<div class="popup-row popup-row-phone"><span class="pvl-lens-phone">${pvlLensPhoneInnerHtml(phoneFormattedPop)}</span></div>`)
+      : '';
+    const stampPop = formatPopupStampVienna(lead[COL.date]);
     const popupContent = `
       <div class="popup-name" style="border-left:3px solid ${color};padding-left:6px">
         ${esc(lead[COL.name] || '(kein Name)')}
         <span style="color:#94a3b8;font-weight:400;font-size:0.75rem"> #${esc(anfrageNr(lead))}</span>
       </div>
-      ${lead[COL.phone]   ? `<div class="popup-row"><a class="tel-link" href="${esc(telHref(lead[COL.phone]))}">${esc(lead[COL.phone])}</a></div>` : ''}
+      ${phonePopupHtml}
       ${emailRawPop ? (emailHPop ? `<div class="popup-row"><a href="${esc(emailHPop)}">${esc(emailRawPop)}</a></div>` : `<div class="popup-row">${esc(emailRawPop)}</div>`) : ''}
       ${addrLinePop ? (addrHPop ? `<div class="popup-row"><a href="${esc(addrHPop)}" target="_blank" rel="noopener noreferrer">${esc(addrLinePop)}</a></div>` : `<div class="popup-row">${esc(addrLinePop)}</div>`) : ''}
-      <div class="popup-row" style="color:#64748b">${esc(src)} · ${esc(lead[COL.date]||'')}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
+      <div class="popup-row" style="color:#64748b">${esc(src)}${stampPop ? ' · ' + esc(stampPop) : ''}${lead.__pvlLegacy ? ' · <b>Archiv-Blatt</b>' : ''}</div>
       ${lead[COL.info]    ? `<div class="popup-row" style="margin-top:4px;font-style:italic">${esc(lead[COL.info])}</div>` : ''}
       ${lead[COL.betreut] ? `<div class="popup-row" style="color:#059669;margin-top:4px">Betreut: ${esc(lead[COL.betreut])}</div>` : ''}
       <button class="popup-open-btn" onclick="selectLead('${encodeURIComponent(leadKey(lead))}')">
