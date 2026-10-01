@@ -292,8 +292,9 @@
   .layout-stats span { white-space: nowrap; }
   #layout-stat-kwp { color: #93c5fd; }
   .layout-toolbar {
-    display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: end;
+    display: flex; flex-wrap: nowrap; gap: 0.35rem 0.5rem; align-items: end;
     padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); background: #fafafa;
+    overflow-x: auto;
   }
   .layout-toolbar label { margin: 0; font-size: 0.65rem; color: var(--muted); line-height: 1.2; }
   .layout-toolbar .field { min-width: 72px; }
@@ -329,11 +330,14 @@
   .layout-toolbar .field.compact { min-width: 64px; max-width: 76px; }
   .layout-toolbar .field.compact input { width: 100%; }
   .layout-module-tools {
-    display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: end;
-    padding: 0.15rem 0 0; border-top: 1px dashed #e5e7eb; margin-top: 0.15rem;
-    flex: 1 1 100%;
+    display: flex; flex-wrap: nowrap; gap: 0.35rem; align-items: end;
+    padding: 0; border-top: 0; margin-top: 0;
+    flex: 0 1 auto;
   }
   .layout-toolbar[data-editor-step="building"] .layout-module-tools { display: none; }
+  .layout-toolbar[data-editor-step="modules"] #layout-btn-del-poly,
+  .layout-toolbar[data-editor-step="modules"] #layout-btn-dup,
+  .layout-toolbar[data-editor-step="modules"] #layout-btn-redo { display: none !important; }
   .layout-size-hint {
     font-size: 0.68rem; color: var(--muted); max-width: 220px; line-height: 1.25;
     white-space: normal;
@@ -499,9 +503,9 @@
       <div class="grid2">
         <div><label>Vorname</label><input id="c-vorname" /></div>
         <div><label>Nachname</label><input id="c-nachname" /></div>
-        <div style="grid-column: 1 / -1"><label>Straße + Hausnummer</label><input id="c-street" /></div>
-        <div><label>PLZ</label><input id="c-zip" /></div>
-        <div><label>Ort</label><input id="c-city" /></div>
+        <div style="grid-column: 1 / -1"><label>Straße + Hausnummer</label><input id="c-street" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" /></div>
+        <div><label>PLZ</label><input id="c-zip" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" /></div>
+        <div><label>Ort</label><input id="c-city" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" /></div>
         <div><label>E-Mail</label><input id="c-email" type="email" /></div>
         <div><label>Telefon</label><input id="c-phone" /></div>
       </div>
@@ -777,7 +781,7 @@
       <h3>Belegungsplan</h3>
       <div class="layout-steps" role="tablist" aria-label="Planungsschritte">
         <button type="button" class="layout-step active" id="layout-step-building" data-step="building" role="tab" aria-selected="true">Gebäude planen</button>
-        <button type="button" class="layout-step" id="layout-step-modules" data-step="modules" role="tab" aria-selected="false">Module planen</button>
+        <button type="button" class="layout-step" id="layout-step-modules" data-step="modules" role="tab" aria-selected="false">Modulplanung</button>
       </div>
       <div class="layout-stats" aria-live="polite">
         <span id="layout-stat-count">0 #</span>
@@ -786,15 +790,15 @@
       <button type="button" class="btn secondary" id="layout-btn-close" style="background:#fff;color:var(--dark)">Schließen</button>
     </div>
     <div class="layout-toolbar" id="layout-toolbar" data-editor-step="building">
-      <div class="field" style="flex:1;min-width:200px">
+      <div class="field" style="flex:1;min-width:200px" data-step="building">
         <label>Adresse</label>
         <div class="layout-addr-wrap">
-          <input id="layout-address" placeholder="z.B. Schuhmeierstraße 35, Schwechat" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="layout-address-suggest" />
+          <input id="layout-address" placeholder="z.B. Schuhmeierstraße 35, Schwechat" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="layout-address-suggest" />
           <div class="layout-addr-suggest" id="layout-address-suggest" role="listbox" hidden></div>
         </div>
       </div>
-      <button type="button" class="btn secondary" id="layout-btn-search">Suchen</button>
-      <div class="field" style="min-width:140px">
+      <button type="button" class="btn secondary" id="layout-btn-search" data-step="building">Suchen</button>
+      <div class="field" style="min-width:140px" data-step="building">
         <label>Kartengrundlage</label>
         <select id="layout-basemap"></select>
       </div>
@@ -809,41 +813,23 @@
           <input type="hidden" id="layout-draw-mode" value="roof" />
         </div>
       </div>
-      <div class="field compact" data-step="always">
+      <div class="field compact" data-step="building">
         <label id="layout-tilt-label">Neigung ° <span class="hint" style="font-weight:400">(First)</span></label>
-        <input id="layout-tilt" type="number" value="30" min="0" max="90" title="Dachneigung Richtung First – verkürzt die Modul-Darstellung hangaufwärts (cos). Für dichteres Raster danach Auto-Belegung erneut ausführen." />
+        <input id="layout-tilt" type="number" value="30" min="0" max="90" title="Dachneigung Richtung First – verkürzt die Modul-Darstellung hangaufwärts (cos)." />
       </div>
-      <div class="field compact" data-step="modules" hidden>
+      <div class="field compact" hidden>
         <label id="layout-tilt-cross-label">Querneg. ° <span class="hint" style="font-weight:400">(Traufe)</span></label>
         <input id="layout-tilt-cross" type="number" value="0" min="0" max="90" title="Querneigung parallel zur Traufe – verkürzt die projizierte Modulbreite" />
       </div>
-      <div class="field compact" data-step="always">
+      <div class="field compact" data-step="building">
         <label>Azimut ° <span class="hint" style="font-weight:400">(1. Kante)</span></label>
         <input id="layout-azimuth" type="number" value="180" min="0" max="360" title="Wird aus der ersten Polygonkante (Dachaußenkante) ermittelt" readonly />
       </div>
 
       <div class="layout-tool-group layout-module-tools" data-step="modules" hidden>
-        <button type="button" class="btn secondary" id="layout-btn-auto" title="Module automatisch belegen">Auto</button>
-        <div class="layout-auto-orient" role="group" aria-label="Ausrichtung der automatischen Belegung">
-          <button type="button" class="layout-mode-btn active" id="layout-auto-portrait" data-auto-orient="portrait" aria-pressed="true" title="Hochformat: lange Seite zum First">Hochformat</button>
-          <button type="button" class="layout-mode-btn" id="layout-auto-landscape" data-auto-orient="landscape" aria-pressed="false" title="Querformat: lange Seite parallel zur Traufe">Querformat</button>
-          <button type="button" class="layout-mode-btn" id="layout-auto-flat" data-auto-orient="flat" aria-pressed="false" title="Flachdachbelegung: Querformat, Neigung 10°, Reihen entlang der Traufe">Flachdachbelegung</button>
-          <button type="button" class="layout-mode-btn" id="layout-auto-eastwest" data-auto-orient="eastwest" aria-pressed="false" title="Ost-West: Querformat, 10°, Paare an der langen Kante (2 cm, dann 20 cm), kurze Kante 2 cm">Ost-West</button>
-        </div>
-        <button type="button" class="btn secondary icon-btn" id="layout-btn-select-rect" title="Rechteck-Auswahl" aria-label="Rechteck-Auswahl">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"/>
-          </svg>
-        </button>
-        <button type="button" class="btn secondary icon-btn" id="layout-btn-select-lasso" title="Lasso-Auswahl" aria-label="Lasso-Auswahl">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M7 8c2-3 8-4 11-1 3 3 1 8-2 10-4 2-9 0-10-4-1-3 2-6 5-5 2 1 3 3 2 5"/>
-            <circle cx="14" cy="14" r="1.2" fill="currentColor" stroke="none"/>
-          </svg>
-        </button>
         <div class="field" style="min-width:150px">
           <label>Modultyp</label>
-          <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:nowrap">
             <select id="layout-module-type">
               <option value="das">DAS 455</option>
               <option value="aiko">Aiko 490</option>
@@ -851,27 +837,39 @@
             <span id="layout-module-size" class="layout-size-hint" title="Katalogmaß DAS-DH108ND-455: 1800 × 1134 × 30 mm">1,134 × 1,800 m · 455 Wp</span>
           </div>
         </div>
+        <div class="field compact">
+          <label>Modulabstand</label>
+          <input id="layout-gap" type="number" value="0.02" min="0" step="0.01" title="Abstand zwischen den Modulen in Metern" />
+        </div>
+        <div class="field compact">
+          <label>Rand m</label>
+          <input id="layout-setback" type="number" value="0.3" min="0" step="0.05" title="Randabstand zur Dachkante in Metern" />
+        </div>
         <div class="field" style="min-width:auto">
           <label>&nbsp;</label>
           <span class="inline"><input type="checkbox" id="layout-landscape" /> <label for="layout-landscape" style="margin:0;color:var(--text);font-size:0.78rem" title="Nur markierte Module; sonst Vorgabe für neue Module">Quer (Auswahl)</label></span>
         </div>
-        <div class="field compact">
-          <label>Rand m</label>
-          <input id="layout-setback" type="number" value="0.3" min="0" step="0.05" />
-        </div>
-        <div class="field compact">
-          <label>Abstand m</label>
-          <input id="layout-gap" type="number" value="0.02" min="0" step="0.01" />
-        </div>
-        <button type="button" class="btn secondary" id="layout-btn-add-mod" title="Modul manuell setzen">+</button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-select-lasso" title="Lasso-Auswahl" aria-label="Lasso-Auswahl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 8c2-3 8-4 11-1 3 3 1 8-2 10-4 2-9 0-10-4-1-3 2-6 5-5 2 1 3 3 2 5"/>
+            <circle cx="14" cy="14" r="1.2" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-select-rect" title="Rechteck-Auswahl" aria-label="Rechteck-Auswahl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"/>
+          </svg>
+        </button>
       </div>
 
-      <div class="layout-tool-group" data-step="always">
+      <div class="layout-tool-group" data-step="building">
         <button type="button" class="btn secondary" id="layout-btn-del-poly" title="Auswahl löschen (Entf)">Entf</button>
         <button type="button" class="btn secondary" id="layout-btn-dup" title="Duplizieren (D)">Dupl.</button>
+        <button type="button" class="btn secondary icon-btn" id="layout-btn-redo" title="Wiederholen (Ctrl+Y)" disabled aria-label="Wiederholen">↷</button>
+      </div>
+      <div class="layout-tool-group" data-step="always">
         <button type="button" class="btn secondary snap-on" id="layout-btn-snap" title="Snap (Alt)">Snap</button>
         <button type="button" class="btn secondary icon-btn" id="layout-btn-undo" title="Rückgängig (Ctrl+Z)" disabled aria-label="Rückgängig">↶</button>
-        <button type="button" class="btn secondary icon-btn" id="layout-btn-redo" title="Wiederholen (Ctrl+Y)" disabled aria-label="Wiederholen">↷</button>
       </div>
     </div>
     <div id="layout-map"></div>
@@ -889,7 +887,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="/layout-editor.js?v=20260930-energy-orient"></script>
+<script src="/layout-roof-label.js?v=20261001-belegungsplan"></script>
+<script src="/layout-editor.js?v=20261001-belegungsplan"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let CATALOG = null;
@@ -2872,7 +2871,16 @@ function clearLayoutLink() {
   updateLayoutPanelUi();
 }
 
-function applyLayoutToOffer(count, moduleType) {
+function applyLayoutRoofLabels(roofSignals) {
+  if (!roofSignals || !window.LayoutRoofLabel || typeof window.LayoutRoofLabel.roofLabelForLayout !== 'function') return;
+  const segs = readDachSegments().map((s) => ({
+    dach: window.LayoutRoofLabel.roofLabelForLayout(s.dach, roofSignals),
+    modules: s.modules,
+  }));
+  applyDachSegments(segs);
+}
+
+function applyLayoutToOffer(count, moduleType, roofSignals) {
   clearManualInverter();
   if (count > 0) {
     $('f-modules').value = String(count);
@@ -2882,6 +2890,7 @@ function applyLayoutToOffer(count, moduleType) {
     const opt = Array.from(sel.options || []).find((o) => o.value === moduleType);
     if (opt) sel.value = moduleType;
   }
+  applyLayoutRoofLabels(roofSignals);
   syncModuleDerivedUi();
   compute();
   const parts = [];
@@ -3913,12 +3922,17 @@ async function init() {
         refreshLayoutSnapshotThumb();
         const mt = moduleTypeFromLayout(layout);
         const n = layout && layout.moduleCount;
-        if (n > 0 || mt) applyLayoutToOffer(n || 0, mt);
-        else toast('Belegungsplan gespeichert.', 'ok');
+        const roof = (layout && layout.plan) || null;
+        if (n > 0 || mt) applyLayoutToOffer(n || 0, mt, roof);
+        else {
+          applyLayoutRoofLabels(roof);
+          compute();
+          toast('Belegungsplan gespeichert.', 'ok');
+        }
       },
       onApplyModuleCount: (n, info) => {
         const mt = (info && info.moduleType) || null;
-        applyLayoutToOffer(n, mt);
+        applyLayoutToOffer(n, mt, (info && info.roof) || null);
       },
     });
   } catch (e) {

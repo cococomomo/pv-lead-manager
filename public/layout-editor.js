@@ -486,6 +486,7 @@
     let pitchArrowLayer = null;
     let modulePitchArrowLayer = null;
     let activeSelectTool = null; // null | 'rect' | 'lasso'
+    let blockAddressAutofocus = false;
     let selectRectState = null; // { start, rectLayer }
     let selectLassoState = null; // { points: LatLng[], previewLayer, drawing: bool }
     let suppressModuleClick = false; // shift-mousedown already toggled
@@ -871,8 +872,8 @@
       } else {
         setSelectedModules(hits);
       }
-      // Tool bleibt aktiv für weitere Auswahl
-      applySelectToolLayerPassThrough();
+      // Auswahl fertig: Werkzeug aus, Module bleiben markiert und verschiebbar.
+      cancelSelectTool(false);
       updateSelectionChrome();
     }
 
@@ -955,6 +956,8 @@
             setSelectedModules(hits);
           }
           updateSelectionChrome();
+          cancelSelectTool(false);
+          return;
         }
         applySelectToolLayerPassThrough();
         return;
@@ -978,7 +981,7 @@
             ? '1 Modul ausgewählt'
             : `${selectedModuleIdxs.length} Module ausgewählt`;
         } else {
-          stepMod.textContent = 'Module planen';
+          stepMod.textContent = 'Modulplanung';
         }
       }
       updateModuleSizeLabel();
@@ -2383,7 +2386,9 @@
     function autoOrientMode() {
       const active = document.querySelector('.layout-auto-orient .layout-mode-btn.active');
       const mode = active && active.getAttribute('data-auto-orient');
-      if (mode === 'landscape' || mode === 'flat' || mode === 'eastwest') return mode;
+      if (mode === 'landscape' || mode === 'flat' || mode === 'eastwest' || mode === 'portrait') return mode;
+      const stored = planMeta.autoOrient;
+      if (stored === 'landscape' || stored === 'flat' || stored === 'eastwest' || stored === 'portrait') return stored;
       return 'portrait';
     }
 
@@ -3126,8 +3131,36 @@
       return layout;
     }
 
+    function armAddressAutofocusBlock() {
+      blockAddressAutofocus = true;
+      setTimeout(() => { blockAddressAutofocus = false; }, 700);
+    }
+
+    /** Neigung und Ost-West-Paare für die Dachzeile im Angebot. */
+    function collectRoofSignals() {
+      readMetaFromForm();
+      const roofs = [];
+      if (polyLayer) {
+        polyLayer.eachLayer((layer) => {
+          if (!layer || layer._pvlKind !== 'roof') return;
+          const meta = layer._pvlMeta || {};
+          roofs.push({ tilt: meta.tilt });
+        });
+      }
+      return {
+        tilt: planMeta.tilt,
+        meta: { tilt: planMeta.tilt, autoOrient: planMeta.autoOrient },
+        modules: modules.filter(Boolean).map((m) => ({
+          tilt: m.tilt,
+          eastWest: !!m.eastWest,
+        })),
+        roofs,
+      };
+    }
+
     function open(ctx) {
       ctx = ctx || {};
+      armAddressAutofocusBlock();
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
       ensureMap();
@@ -3144,8 +3177,11 @@
       const addr = [ctx.street, [ctx.zip, ctx.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
       const addrEl = document.getElementById('layout-address');
       if (addrEl && addr) addrEl.value = addr;
+      if (addrEl && document.activeElement === addrEl) addrEl.blur();
 
       setTimeout(async () => {
+        armAddressAutofocusBlock();
+        if (addrEl && document.activeElement === addrEl) addrEl.blur();
         map.invalidateSize();
         if (ctx.layout && ctx.layout.plan) {
           loadPlan(ctx.layout.plan);
@@ -3173,6 +3209,7 @@
         }
         refreshPitchArrows();
         updateCountUi();
+        if (addrEl && document.activeElement === addrEl) addrEl.blur();
       }, 80);
 
       open._ctx = ctx;
@@ -3196,7 +3233,14 @@
           if (suppressSuggest) return;
           scheduleSuggest(addrEl.value);
         });
+        addrEl.addEventListener('pointerdown', () => {
+          blockAddressAutofocus = false;
+        });
         addrEl.addEventListener('focus', () => {
+          if (blockAddressAutofocus) {
+            addrEl.blur();
+            return;
+          }
           if (suppressSuggest) return;
           if (String(addrEl.value || '').trim().length >= 3) scheduleSuggest(addrEl.value);
         });
@@ -3445,6 +3489,7 @@
           opts.onApplyModuleCount(modules.length, {
             moduleType: planMeta.moduleType || 'das',
             moduleWp: dims().wp,
+            roof: collectRoofSignals(),
           });
         }
       });

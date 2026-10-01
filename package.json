@@ -21,6 +21,7 @@
     "fix-missing-coords": "node scripts/fix-missing-coords.js",
     "renumber-leads-anfrage": "node scripts/renumber-leads-anfrage.js",
     "test:layout-tilt": "node scripts/test-layout-tilt.js",
+    "test:layout-roof-label": "node scripts/test-layout-roof-label.js",
     "test:yield-orientation": "node scripts/test-yield-orientation.js",
     "test:offer-lines": "node scripts/test-offer-lines.js",
     "test:map-leads": "node scripts/test-map-leads.js"
