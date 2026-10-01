@@ -504,7 +504,7 @@ function drawCoverPage(doc, offer, customer, salesPhoto, salesImage) {
       const scale = Math.max((r * 2) / opened.width, (r * 2) / opened.height);
       const dw = opened.width * scale;
       const dh = opened.height * scale;
-      const fitted = rasterForDraw(raw, dw, dh, { asJpeg: true });
+      const fitted = rasterForDraw(raw, dw, dh);
       const img = fitted ? doc.openImage(fitted) : opened;
       doc.image(img, cx - dw / 2, cy - dh / 2, { width: dw, height: dh });
       doc.restore();

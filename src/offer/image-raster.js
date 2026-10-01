@@ -1,13 +1,20 @@
 'use strict';
 
 /**
- * Bilder fürs PDF nur so groß einbetten, wie sie gezeichnet werden.
- * Transparente PNG bleiben PNG. Was schon in die doppelte Zeichnungsgröße passt,
- * wird nicht noch einmal komprimiert.
+ * Bilder fürs PDF so groß einbetten, wie sie auf der Seite gezeichnet werden.
+ * Mindestens etwa 150 dpi, mit einem Boden, damit eine Produktkarte nicht
+ * auf ~100 px zusammenschrumpft. Transparente Freisteller bleiben PNG
+ * (kein Weiß- oder Schwarz-Hof). Was schon klein genug ist, bleibt bytegleich.
  */
 
 const { PNG } = require('pngjs');
 const jpeg = require('jpeg-js');
+
+/** Klar über 150 dpi, damit Linien und Fotos beim Druck nicht weich werden. */
+const MIN_DPI = 200;
+const PX_PER_PT = MIN_DPI / 72;
+/** Lange Kante einer Produktkarte. 150 dpi einer 78-pt-Karte wären nur ~160 px. */
+const FLOOR_LONG_PX = 640;
 
 function isPng(buf) {
   return buf && buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
@@ -36,8 +43,8 @@ function hasTransparency(data) {
   return false;
 }
 
-/** Bilinear, Farbe vormischt, damit transparente Ränder nicht weiß aufhellen. */
-function resizeRgba(src, sw, sh, tw, th) {
+/** Bilinear, Farbe vormischt, damit transparente Ränder nicht weiß oder schwarz aufhellen. */
+function resizeRgbaOnce(src, sw, sh, tw, th) {
   const out = Buffer.alloc(tw * th * 4);
   for (let y = 0; y < th; y += 1) {
     const sy = ((y + 0.5) * sh) / th - 0.5;
@@ -81,6 +88,21 @@ function resizeRgba(src, sw, sh, tw, th) {
   return out;
 }
 
+function resizeRgba(src, sw, sh, tw, th) {
+  let data = src;
+  let w = sw;
+  let h = sh;
+  while (w > tw * 2 && h > th * 2 && w > 2 && h > 2) {
+    const nw = Math.max(tw, Math.floor(w / 2));
+    const nh = Math.max(th, Math.floor(h / 2));
+    data = resizeRgbaOnce(data, w, h, nw, nh);
+    w = nw;
+    h = nh;
+  }
+  if (w === tw && h === th) return data;
+  return resizeRgbaOnce(data, w, h, tw, th);
+}
+
 function encodePng(data, width, height) {
   if (!hasTransparency(data)) {
     const rgb = Buffer.alloc(width * height * 3);
@@ -89,35 +111,82 @@ function encodePng(data, width, height) {
       rgb[j + 1] = data[i + 1];
       rgb[j + 2] = data[i + 2];
     }
-    const png = new PNG({ width, height, colorType: 2, inputColorType: 2 });
+    const png = new PNG({ width, height });
     png.data = rgb;
-    return PNG.sync.write(png, { colorType: 2, deflateLevel: 9 });
+    // inputColorType muss zum Puffer passen. Sonst liest pngjs RGB als RGBA
+    // und mischt auf Weiß — das Bild wird ein unleserlicher Brei.
+    return PNG.sync.write(png, {
+      colorType: 2,
+      inputColorType: 2,
+      inputHasAlpha: false,
+      deflateLevel: 9,
+    });
   }
-  const png = new PNG({ width, height, colorType: 6 });
+  const png = new PNG({ width, height });
   png.data = data;
-  return PNG.sync.write(png, { colorType: 6, deflateLevel: 9 });
+  return PNG.sync.write(png, {
+    colorType: 6,
+    inputColorType: 6,
+    inputHasAlpha: true,
+    deflateLevel: 9,
+  });
+}
+
+/**
+ * Zielpixel für die gezeichnete Größe. null = Original behalten (nicht hochskalieren).
+ * @param {number} drawW gezeichnete Breite in PDF-Punkten
+ * @param {number} drawH gezeichnete Höhe in PDF-Punkten
+ */
+function pixelsForDraw(drawW, drawH, srcW, srcH) {
+  const dw = Number(drawW);
+  const dh = Number(drawH);
+  if (!(dw > 0) || !(dh > 0) || !(srcW > 0) || !(srcH > 0)) return null;
+  let tw = Math.max(1, Math.round(dw * PX_PER_PT));
+  let th = Math.max(1, Math.round(dh * PX_PER_PT));
+  const longEdge = Math.max(tw, th);
+  if (longEdge < FLOOR_LONG_PX) {
+    const f = FLOOR_LONG_PX / longEdge;
+    tw = Math.max(1, Math.round(tw * f));
+    th = Math.max(1, Math.round(th * f));
+  }
+  if (tw >= srcW && th >= srcH) return null;
+  const cap = Math.min(1, srcW / tw, srcH / th);
+  if (cap < 1) {
+    tw = Math.max(1, Math.round(tw * cap));
+    th = Math.max(1, Math.round(th * cap));
+  }
+  if (tw >= srcW - 1 && th >= srcH - 1) return null;
+  return { tw, th };
 }
 
 /**
  * @param {Buffer} buf
  * @param {number} drawW gezeichnete Breite in PDF-Punkten
  * @param {number} drawH gezeichnete Höhe in PDF-Punkten
- * @returns {Buffer|null} neues Bild, oder null wenn das Original schon klein genug ist
+ * @returns {Buffer|null} neues Bild, oder null wenn das Original schon passt
  */
 function rasterForDraw(buf, drawW, drawH, opts = {}) {
   const img = readRgba(buf);
   if (!img) return null;
-  const tw = Math.max(1, Math.round(Number(drawW) * 2));
-  const th = Math.max(1, Math.round(Number(drawH) * 2));
-  if (img.width <= tw && img.height <= th) return null;
+  const target = pixelsForDraw(drawW, drawH, img.width, img.height);
+  if (!target) return null;
+  const { tw, th } = target;
   const data = resizeRgba(img.data, img.width, img.height, tw, th);
-  if (img.kind === 'png' && !opts.asJpeg) return encodePng(data, tw, th);
-  const encoded = jpeg.encode({ data, width: tw, height: th }, 85);
-  return Buffer.from(encoded.data);
+  const transparent = hasTransparency(data) || hasTransparency(img.data);
+  // Freisteller nie als JPEG: jpeg-js verwirft Alpha und lässt Schwarz stehen.
+  if (!transparent && (img.kind === 'jpeg' || opts.asJpeg)) {
+    const encoded = jpeg.encode({ data, width: tw, height: th }, 85);
+    return Buffer.from(encoded.data);
+  }
+  return encodePng(data, tw, th);
 }
 
 module.exports = {
   isPng,
   isJpeg,
+  hasTransparency,
+  pixelsForDraw,
   rasterForDraw,
+  MIN_DPI,
+  FLOOR_LONG_PX,
 };

@@ -3,6 +3,7 @@
 /**
  * Server-seitiger Belegungsplan-Render: Orthofoto-Kacheln + Dachumriss + Module → JPEG.
  * Unabhängig vom Browser-CORS (html2canvas).
+ * Die lange Kante ist auf den PDF-Rahmen (~500 pt) ausgelegt, deutlich über 150 dpi.
  */
 
 const https = require('https');
@@ -223,7 +224,7 @@ function tileUrlFor(providerId, z, x, y) {
 /**
  * @param {object} plan
  * @param {object} [opts]
- * @returns {Promise<Buffer>} PNG
+ * @returns {Promise<Buffer>} JPEG
  */
 async function renderLayoutOrthoPng(plan, opts = {}) {
   const planObj = plan && typeof plan === 'object' ? plan : {};
@@ -282,8 +283,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
   const padWorld = Math.max(4, Math.min(contentW, contentH) * padFrac);
   const worldW = contentW + padWorld * 2;
   const worldH = contentH + padWorld * 2;
-  const longEdge = opts.longEdgePx != null ? Number(opts.longEdgePx) : 1600;
-  const jpegQuality = opts.jpegQuality != null ? Number(opts.jpegQuality) : 85;
+  // ~500 pt Rahmenbreite im PDF. 2000 px ≈ 288 dpi, Linien überleben JPEG.
+  const longEdge = opts.longEdgePx != null ? Number(opts.longEdgePx) : 2000;
+  const jpegQuality = opts.jpegQuality != null ? Number(opts.jpegQuality) : 92;
   const scale = longEdge / Math.max(worldW, worldH);
 
   const originX = tl.x - padWorld;
@@ -332,16 +334,29 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
         for (let row = 0; row < destH; row++) {
           const dy = destY0 + row;
           if (dy < 0 || dy >= outH) continue;
-          const srcRow = Math.min(img.height - 1, Math.floor(row / scale));
+          const sy = (row + 0.5) / scale - 0.5;
+          const y0 = Math.max(0, Math.min(img.height - 1, Math.floor(sy)));
+          const y1 = Math.min(img.height - 1, y0 + 1);
+          const fy = Math.min(1, Math.max(0, sy - y0));
           for (let col = 0; col < destW; col++) {
             const dx = destX0 + col;
             if (dx < 0 || dx >= outW) continue;
-            const srcCol = Math.min(img.width - 1, Math.floor(col / scale));
-            const si = (srcRow * img.width + srcCol) * 4;
+            const sx = (col + 0.5) / scale - 0.5;
+            const x0 = Math.max(0, Math.min(img.width - 1, Math.floor(sx)));
+            const x1 = Math.min(img.width - 1, x0 + 1);
+            const fx = Math.min(1, Math.max(0, sx - x0));
+            const i00 = (y0 * img.width + x0) * 4;
+            const i10 = (y0 * img.width + x1) * 4;
+            const i01 = (y1 * img.width + x0) * 4;
+            const i11 = (y1 * img.width + x1) * 4;
+            const w00 = (1 - fx) * (1 - fy);
+            const w10 = fx * (1 - fy);
+            const w01 = (1 - fx) * fy;
+            const w11 = fx * fy;
             const di = (dy * outW + dx) * 4;
-            png.data[di] = img.data[si];
-            png.data[di + 1] = img.data[si + 1];
-            png.data[di + 2] = img.data[si + 2];
+            png.data[di] = Math.round(img.data[i00] * w00 + img.data[i10] * w10 + img.data[i01] * w01 + img.data[i11] * w11);
+            png.data[di + 1] = Math.round(img.data[i00 + 1] * w00 + img.data[i10 + 1] * w10 + img.data[i01 + 1] * w01 + img.data[i11 + 1] * w11);
+            png.data[di + 2] = Math.round(img.data[i00 + 2] * w00 + img.data[i10 + 2] * w10 + img.data[i01 + 2] * w01 + img.data[i11 + 2] * w11);
             png.data[di + 3] = 255;
           }
         }
@@ -356,9 +371,13 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     return { x: (p.x - originX) * scale, y: (p.y - originY) * scale };
   }
 
-  // Dachumriss dünn hellblau, ohne Fläche. Module schwarz, 2px helle Fuge.
-  const lwRoof = Math.max(0.7, 0.35 * scale);
-  const MODULE_FRAME_PX = 2;
+  // Dachumriss dünn hellblau, ohne Fläche. Module schwarz, helle Fuge.
+  // Strichstärke in Ausgabe-Pixeln, damit sie auf der Seite (~500 pt) sichtbar bleibt
+  // und JPEG sie nicht wegfrisst. Die Fuge bleibt so breit wie bisher bei 1600 px.
+  const pageLongPt = 500;
+  const pxPerPt = longEdge / pageLongPt;
+  const lwRoof = Math.max(1.4, 0.7 * pxPerPt);
+  const MODULE_FRAME_PX = Math.max(2, Math.round((2 * longEdge) / 1600));
   const roofs = Array.isArray(planObj.roofs) && planObj.roofs.length
     ? planObj.roofs
     : (planObj.roof ? [{ ring: planObj.roof, tilt: (planObj.meta && planObj.meta.tilt) || 30 }] : []);
