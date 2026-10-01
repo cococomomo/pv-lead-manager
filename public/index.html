@@ -356,6 +356,19 @@
       background: #fafafa;
     }
     .missing-lead-card .row-title { font-weight: 700; font-size: 0.82rem; margin-bottom: 0.35rem; color: #1e293b; }
+    .missing-lead-card .mc-open-name {
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      font: inherit;
+      font-weight: 700;
+      color: #0369a1;
+      cursor: pointer;
+      text-decoration: underline;
+      text-align: left;
+    }
+    .missing-lead-card .mc-open-name:hover { color: #0c4a6e; }
     .missing-lead-card .addr-grid { display: grid; grid-template-columns: 1fr; gap: 0.35rem; margin: 0.4rem 0; }
     @media (min-width: 480px) {
       .missing-lead-card .addr-grid { grid-template-columns: 1fr 1fr; }
@@ -3878,8 +3891,9 @@
     const telBtn = th
       ? `<a class="btn-mini btn-mini-tel" href="${esc(th)}">Anrufen</a>`
       : '';
+    const nameLabel = lead[COL.name] || '(kein Name)';
     return `<div class="missing-lead-card" data-pvl-id="${id}">
-      <div class="row-title">${esc(lead[COL.name] || '(kein Name)')} <span style="color:#64748b;font-weight:500">#${esc(anfrageNr(lead))}</span>${lead[COL.email] ? ' · ' + esc(lead[COL.email]) : ''}</div>
+      <div class="row-title"><button type="button" class="mc-open-name">${esc(nameLabel)}</button> <span style="color:#64748b;font-weight:500">#${esc(anfrageNr(lead))}</span>${lead[COL.email] ? ' · ' + esc(lead[COL.email]) : ''}</div>
       ${telLine}
       <div class="addr-grid">
         <input type="text" class="mc-str" placeholder="Straße" value="${esc(lead[COL.street] || '')}" />
@@ -3913,6 +3927,7 @@
       body.innerHTML = list.map(missingCoordsRowHtml).join('');
       body.querySelectorAll('.missing-lead-card').forEach((card) => {
         const id = parseInt(card.getAttribute('data-pvl-id'), 10);
+        card.querySelector('.mc-open-name')?.addEventListener('click', () => openMissingCoordsLead(id));
         card.querySelector('.mc-save')?.addEventListener('click', () => missingCoordsSave(id, card));
         card.querySelector('.mc-st-termin')?.addEventListener('click', () => missingCoordsStatus(id, 'Termin vereinbart'));
         card.querySelector('.mc-st-arch')?.addEventListener('click', () => missingCoordsStatus(id, 'Archivieren'));
@@ -3921,6 +3936,17 @@
       console.error('refreshMissingModalBody:', e);
       body.innerHTML = '<p style="color:#b91c1c;font-size:0.85rem">Fehler beim Laden der Liste. Bitte Konsole prüfen.</p>';
     }
+  }
+
+  function openMissingCoordsLead(id) {
+    const want = Number(id);
+    const lead = allLeads.find((l) => l.pvlDbId != null && Number(l.pvlDbId) === want);
+    if (!lead) {
+      showToast('Lead nicht in der Liste.', 'err');
+      return;
+    }
+    closeMissingCoordsModal();
+    selectLead(encodeURIComponent(leadKey(lead)), { skipMapFocus: true, pvlDbId: want });
   }
 
   async function openMissingCoordsModal() {
@@ -4809,11 +4835,14 @@
     const fromList = !!_opts.fromList;
     const fromMarker = !!_opts.fromMarker;
     const raw = decodeURIComponent(encodedKey);
-    const { base, isLegacy } = parseLeadKey(raw);
-    const lead = allLeads.find((l) => {
-      const b = l[COL.email] || l[COL.name] || '';
-      return b === base && !!l.__pvlLegacy === isLegacy;
-    });
+    let lead = null;
+    if (_opts.pvlDbId != null && String(_opts.pvlDbId).trim() !== '') {
+      const want = Number(_opts.pvlDbId);
+      if (Number.isFinite(want)) {
+        lead = allLeads.find((l) => l.pvlDbId != null && Number(l.pvlDbId) === want) || null;
+      }
+    }
+    if (!lead) lead = findLeadBySelectKey(raw);
     if (!lead) return;
     activeEmail = lead[COL.email] || lead[COL.name] || '';
     activeIsLegacy = !!lead.__pvlLegacy;
@@ -5063,20 +5092,152 @@
   }
 
   // ── Save fields ───────────────────────────────────────────────────────────
+  /**
+   * Lead ohne E-Mail: Kontaktfelder per pvlDbId. Ist danach eine E-Mail da,
+   * laufen die übrigen Felder und das Geocoding über sie. Sonst ebenfalls per Id.
+   * @returns {Promise<boolean>}
+   */
+  async function saveFieldsByDbId(rowLead, rowDbId, pack) {
+    const id = rowDbId;
+    const {
+      contactUpdates, addrChanged, hadMissingCoords, cols, nameVal, betreut, notizen, nachfass, termin,
+    } = pack;
+    const hint = document.getElementById('save-hint');
+    hint.style.display = 'none';
+    hint.classList.remove('err');
+    hint.textContent = 'Gespeichert!';
+    try {
+      const rContact = await apiFetch('/api/lead-rows/' + id + '/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: contactUpdates }),
+      });
+      if (!rContact.ok) {
+        const j = await rContact.json().catch(() => ({}));
+        showToast(j.error || 'Kontakt/Adresse speichern fehlgeschlagen', 'err');
+        return false;
+      }
+      const newEmail = String(contactUpdates['E-Mail'] || '').trim();
+      const results = [];
+      for (const [column, value] of cols) {
+        let r;
+        if (newEmail) {
+          r = await apiFetch(`/api/leads/${encodeURIComponent(newEmail)}/field`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ column, value, pvlDbId: id }),
+          });
+          if (r.status === 409) {
+            r = await apiFetch('/api/lead-rows/' + id + '/field', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ column, value }),
+            });
+          }
+        } else {
+          r = await apiFetch('/api/lead-rows/' + id + '/field', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ column, value }),
+          });
+        }
+        results.push(r);
+      }
+      const failed = results.find((r) => !r.ok);
+      if (failed) {
+        const j = await failed.json().catch(() => ({}));
+        showToast('Speichern fehlgeschlagen: ' + (j.error || failed.statusText || String(failed.status)), 'err');
+        return false;
+      }
+      const lead = allLeads.find((l) => l.pvlDbId != null && Number(l.pvlDbId) === Number(id)) || rowLead;
+      if (lead) {
+        lead[COL.email] = contactUpdates['E-Mail'];
+        lead[COL.phone] = contactUpdates['Telefon'];
+        lead[COL.street] = contactUpdates['Straße'];
+        lead[COL.zip] = contactUpdates['PLZ'];
+        lead[COL.city] = contactUpdates['Ort'];
+        lead[COL.name] = nameVal;
+        lead[COL.betreut] = betreut;
+        lead[COL.notes] = notizen;
+        lead[COL.nachfass] = nachfass;
+        lead[COL.termin] = termin;
+        lead[COL.termintyp] = getSelectedTerminTyp();
+        lead[COL.meetLink] = (document.getElementById('sd-meet-link') && document.getElementById('sd-meet-link').value.trim()) || '';
+        lead.Termintyp = lead[COL.termintyp];
+        lead['Meet-Link'] = lead[COL.meetLink];
+        lead.last_updated = new Date().toISOString();
+        activeEmail = lead[COL.email] || lead[COL.name] || activeEmail;
+        activeLeadKeyStr = leadKey(lead);
+      }
+      if (addrChanged) {
+        let rg;
+        if (newEmail) {
+          rg = await apiFetch('/api/leads/' + encodeURIComponent(newEmail) + '/regeocode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pvlDbId: id }),
+          });
+          if (rg.status === 409) {
+            rg = await apiFetch('/api/lead-rows/' + id + '/regeocode', { method: 'POST' });
+          }
+        } else {
+          rg = await apiFetch('/api/lead-rows/' + id + '/regeocode', { method: 'POST' });
+        }
+        const gj = await rg.json().catch(() => ({}));
+        if (!rg.ok) {
+          showToast(gj.error || 'Geocoding nach Adressänderung fehlgeschlagen', 'err');
+        } else if (gj.lead) {
+          const tgt = allLeads.find((l) => l.pvlDbId != null && Number(l.pvlDbId) === Number(id) && !l.__pvlLegacy);
+          if (tgt) {
+            tgt.latitude = gj.lead.latitude;
+            tgt.longitude = gj.lead.longitude;
+            tgt.last_updated = gj.lead.last_updated || tgt.last_updated;
+          }
+          if (hadMissingCoords && tgt && coordsFromDb(tgt)) {
+            showToast('Adresse gespeichert — Kartenpunkt gesetzt.', 'ok');
+          }
+        }
+      }
+      hint.style.display = 'inline';
+      hint.style.color = '';
+      setTimeout(() => { hint.style.display = 'none'; }, 2000);
+      const sortMode = document.getElementById('sort-leads')?.value || '';
+      if (sortMode === 'last_updated_asc' || sortMode === 'last_updated_desc') {
+        renderList();
+      } else if (lead) {
+        pvlPatchLeadListAfterDetailSave(lead);
+      } else {
+        renderList();
+      }
+      renderMarkers();
+      await refreshDashboardStatsBar();
+      const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+      if (openLead && document.getElementById('sidebar-detail')?.classList.contains('open')) {
+        openSidebarDetail(openLead);
+      }
+      return true;
+    } catch (e) {
+      showToast('Netzwerkfehler beim Speichern: ' + (e.message || String(e)), 'err');
+      return false;
+    }
+  }
+
   /** @returns {Promise<boolean>} true = ok oder nichts zu tun; false = Netzwerk/Validierungsfehler */
   async function saveFields() {
-    if (!activeEmail) return false;
+    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
+    const rowEmail = rowLead ? String(rowLead[COL.email] || '').trim() : '';
+    const rowDbId = rowLead && rowLead.pvlDbId != null && String(rowLead.pvlDbId).trim() !== ''
+      ? parseInt(String(rowLead.pvlDbId), 10)
+      : NaN;
+    const saveById = !!(rowLead && !rowEmail && Number.isFinite(rowDbId) && rowDbId > 0);
+    if (!activeEmail && !saveById) return false;
     if (activeIsLegacy) {
       showToast('Archiv-Blatt: hier nicht änderbar.', 'info');
       return true;
     }
-    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
     if (rowLead && isCrmArchived(rowLead)) {
       showToast('Archivierter Lead: bitte zuerst wiederherstellen.', 'info');
       return true;
     }
-    const apiEmail = (rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail;
-    if (!apiEmail) {
+    const apiEmail = saveById ? '' : ((rowLead && rowLead[COL.email]) ? rowLead[COL.email] : activeEmail);
+    if (!saveById && !apiEmail) {
       showToast('Keine E-Mail in der Zeile – Speichern nicht möglich.', 'err');
       return false;
     }
@@ -5111,6 +5272,12 @@
     ];
 
     if (pvlIsDetailSaveUnchanged(rowLead)) return true;
+
+    if (saveById) {
+      return saveFieldsByDbId(rowLead, rowDbId, {
+        contactUpdates, addrChanged, hadMissingCoords, cols, nameVal, betreut, notizen, nachfass, termin,
+      });
+    }
 
     const hint = document.getElementById('save-hint');
     hint.style.display = 'none';

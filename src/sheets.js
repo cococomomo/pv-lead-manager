@@ -426,6 +426,31 @@ function readLeadNotizenById(db, leadId) {
   return row && row.notizen != null ? String(row.notizen) : '';
 }
 
+function writeLeadColumn(db, rowId, col, value, vertrieblerLabel) {
+  if (col === 'email') {
+    const em = String(value ?? '').trim();
+    db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(em, em, rowId);
+    return {};
+  }
+  let prevStatus = '';
+  if (col === 'status') {
+    const stRow = db.prepare('SELECT status FROM leads WHERE id = ?').get(rowId);
+    prevStatus = stRow ? String(stRow.status || '').trim() : '';
+  }
+  let v = String(value ?? '');
+  if (col === 'termin_typ') v = normalizeTerminTypDbValue(v);
+  if (col === 'meet_link') v = String(value ?? '').trim();
+  db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(v, rowId);
+  if (col === 'status') {
+    maybeAppendNichtErreichtProtocol(db, rowId, prevStatus, v, vertrieblerLabel);
+  }
+  const out = {};
+  if (col === 'status') {
+    out.Notizen = readLeadNotizenById(db, rowId);
+  }
+  return out;
+}
+
 async function updateLeadField(email, columnHeader, value, vertrieblerLabel) {
   const col = resolvePatchColumn(columnHeader);
   if (!col) return {};
@@ -438,28 +463,75 @@ async function updateLeadField(email, columnHeader, value, vertrieblerLabel) {
     LIMIT 1
   `).get(e);
   if (!row) return {};
-  if (col === 'email') {
-    const em = String(value ?? '').trim();
-    db.prepare(`UPDATE leads SET email = ?, col_14 = ?, last_updated = datetime('now') WHERE id = ?`).run(em, em, row.id);
-    return {};
+  return writeLeadColumn(db, row.id, col, value, vertrieblerLabel);
+}
+
+/** Einzelnes CRM-Feld per SQLite-Id (Lead ohne E-Mail). Koordinaten bleiben unangetastet. */
+async function updateLeadFieldById(id, columnHeader, value, vertrieblerLabel) {
+  const col = resolvePatchColumn(columnHeader);
+  if (!col) return {};
+  const idNum = parseInt(String(id), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Lead-ID');
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT id FROM leads WHERE id = ? AND (archived_at IS NULL OR archived_at = '')
+  `).get(idNum);
+  if (!row) throw new Error('Lead nicht gefunden');
+  return writeLeadColumn(db, row.id, col, value, vertrieblerLabel);
+}
+
+const CONTACT_BY_ID_COLS = ['namen', 'telefon', 'email', 'strasse', 'plz', 'ort'];
+
+/**
+ * Name, Telefon, E-Mail, Straße, PLZ, Ort per Id schreiben.
+ * Keine anderen Spalten, keine Koordinaten, keine anderen Zeilen.
+ * @param {number|string} id
+ * @param {Record<string, string>} updates
+ */
+async function updateLeadContactById(id, updates) {
+  const idNum = parseInt(String(id), 10);
+  if (!Number.isFinite(idNum) || idNum < 1) throw new Error('Ungültige Lead-ID');
+  if (!updates || typeof updates !== 'object') throw new Error('updates fehlt');
+  const db = getDb();
+  const before = db.prepare(`
+    SELECT id, latitude, longitude FROM leads
+    WHERE id = ? AND (archived_at IS NULL OR archived_at = '')
+  `).get(idNum);
+  if (!before) throw new Error('Lead nicht gefunden');
+
+  const values = {
+    namen: null,
+    telefon: null,
+    email: null,
+    strasse: null,
+    plz: null,
+    ort: null,
+  };
+  for (const [header, rawVal] of Object.entries(updates)) {
+    const col = resolvePatchColumn(header);
+    if (!col || !Object.prototype.hasOwnProperty.call(values, col)) continue;
+    values[col] = String(rawVal ?? '').trim();
   }
-  let prevStatus = '';
-  if (col === 'status') {
-    const stRow = db.prepare('SELECT status FROM leads WHERE id = ?').get(row.id);
-    prevStatus = stRow ? String(stRow.status || '').trim() : '';
+  const sets = [];
+  const params = [];
+  for (const col of CONTACT_BY_ID_COLS) {
+    if (values[col] === null) continue;
+    sets.push(`${col} = ?`);
+    params.push(values[col]);
+    if (col === 'email') {
+      sets.push('col_14 = ?');
+      params.push(values[col]);
+    }
   }
-  let v = String(value ?? '');
-  if (col === 'termin_typ') v = normalizeTerminTypDbValue(v);
-  if (col === 'meet_link') v = String(value ?? '').trim();
-  db.prepare(`UPDATE leads SET ${col} = ?, last_updated = datetime('now') WHERE id = ?`).run(v, row.id);
-  if (col === 'status') {
-    maybeAppendNichtErreichtProtocol(db, row.id, prevStatus, v, vertrieblerLabel);
+  if (!sets.length) throw new Error('Keine Felder');
+  params.push(idNum);
+  db.prepare(`UPDATE leads SET ${sets.join(', ')}, last_updated = datetime('now') WHERE id = ?`).run(...params);
+
+  const after = db.prepare('SELECT latitude, longitude, email FROM leads WHERE id = ?').get(idNum);
+  if (after && (after.latitude !== before.latitude || after.longitude !== before.longitude)) {
+    db.prepare('UPDATE leads SET latitude = ?, longitude = ? WHERE id = ?').run(before.latitude, before.longitude, idNum);
   }
-  const out = {};
-  if (col === 'status') {
-    out.Notizen = readLeadNotizenById(db, row.id);
-  }
-  return out;
+  return { ok: true, id: idNum, email: values.email == null ? String(after && after.email || '') : values.email };
 }
 
 /**
@@ -927,6 +999,8 @@ module.exports = {
   leadExists,
   leadEmailExistsInDatabase,
   updateLeadField,
+  updateLeadFieldById,
+  updateLeadContactById,
   updateLeadFieldsBulk,
   archiveLead,
   restoreArchivedLead,

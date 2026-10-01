@@ -25,7 +25,8 @@
     "test:yield-orientation": "node scripts/test-yield-orientation.js",
     "test:offer-lines": "node scripts/test-offer-lines.js",
     "test:map-leads": "node scripts/test-map-leads.js",
-    "test:manual-customers": "node scripts/test-manual-customers.js"
+    "test:manual-customers": "node scripts/test-manual-customers.js",
+    "test:lead-contact-by-id": "node scripts/test-lead-contact-by-id.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

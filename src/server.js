@@ -15,6 +15,8 @@ const { generateCalendarLink } = require('./calendar-links');
 const {
   getAllLeads,
   updateLeadField,
+  updateLeadFieldById,
+  updateLeadContactById,
   updateLeadFieldsBulk,
   archiveLead,
   restoreArchivedLead,
@@ -965,6 +967,48 @@ app.post('/api/leads/geocode-missing', async (req, res) => {
   }
 });
 
+/** Name, Telefon, E-Mail, Straße, PLZ, Ort per Id (Lead noch ohne E-Mail als Schlüssel). */
+app.post('/api/lead-rows/:id/contact', async (req, res) => {
+  const body = req.body || {};
+  const updates = body.updates && typeof body.updates === 'object' ? body.updates : body;
+  try {
+    const out = await updateLeadContactById(req.params.id, updates);
+    res.json(out);
+  } catch (err) {
+    console.error('POST lead-rows contact:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+/** Weiteres CRM-Feld per Id, solange die E-Mail noch nicht der Schlüssel ist. */
+app.patch('/api/lead-rows/:id/field', async (req, res) => {
+  const { column, value } = req.body || {};
+  if (!column) return res.status(400).json({ error: 'column is required' });
+  try {
+    const extra = await updateLeadFieldById(
+      req.params.id,
+      column,
+      value ?? '',
+      vertrieblerLabelFromSession(req),
+    );
+    res.json({ ok: true, ...(extra && typeof extra === 'object' ? extra : {}) });
+  } catch (err) {
+    console.error('PATCH lead-rows field:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
+/** Aktuelle Adresse dieser Id neu geocodieren (nicht per E-Mail-Schlüssel). */
+app.post('/api/lead-rows/:id/regeocode', async (req, res) => {
+  try {
+    const out = await updateLeadAddressAndGeocodeById(req.params.id);
+    res.json(out);
+  } catch (err) {
+    console.error('POST lead-rows regeocode:', err.message);
+    res.status(400).json({ error: err.message || String(err) });
+  }
+});
+
 /** Adresse korrigieren + sofort Geocoding (Nominatim-Kaskade AT). */
 app.post('/api/lead-rows/:id/address-geocode', async (req, res) => {
   const { strasse, plz, ort } = req.body || {};
@@ -1013,9 +1057,15 @@ app.get('/api/stats', (req, res) => {
 });
 
 app.patch('/api/leads/:email/field', async (req, res) => {
-  const { column, value } = req.body;
+  const { column, value, pvlDbId } = req.body || {};
   if (!column) return res.status(400).json({ error: 'column is required' });
   try {
+    if (pvlDbId != null && String(pvlDbId).trim() !== '') {
+      const owner = await getLeadByEmail(decodeURIComponent(req.params.email));
+      if (!owner || Number(owner.pvlDbId) !== Number(pvlDbId)) {
+        return res.status(409).json({ error: 'E-Mail gehört zu einem anderen Lead' });
+      }
+    }
     const extra = await updateLeadField(
       decodeURIComponent(req.params.email),
       column,
@@ -1062,6 +1112,13 @@ app.post('/api/leads/:email/status', async (req, res) => {
 
 app.post('/api/leads/:email/regeocode', async (req, res) => {
   try {
+    const pvlDbId = req.body && req.body.pvlDbId;
+    if (pvlDbId != null && String(pvlDbId).trim() !== '') {
+      const owner = await getLeadByEmail(decodeURIComponent(req.params.email));
+      if (!owner || Number(owner.pvlDbId) !== Number(pvlDbId)) {
+        return res.status(409).json({ error: 'E-Mail gehört zu einem anderen Lead' });
+      }
+    }
     const out = await regeocodeLeadByEmail(decodeURIComponent(req.params.email));
     res.json(out);
   } catch (err) {
