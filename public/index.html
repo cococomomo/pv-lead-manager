@@ -1213,30 +1213,6 @@
       resize: vertical;
     }
     .sd-hint-muted { font-size: 0.72rem; color: var(--pvl-muted); margin: 0 0 0.35rem 0; line-height: 1.35; }
-    .sd-reonic-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.4rem 0.55rem;
-      margin-top: 0.25rem;
-    }
-    .btn-reonic {
-      background: #0f766e;
-      color: #fff;
-    }
-    .btn-reonic:hover:not(:disabled) { background: #0d9488; }
-    .btn-reonic-test {
-      background: transparent;
-      color: var(--pvl-accent);
-      border: 1px solid var(--pvl-border);
-      font-size: 0.76rem;
-      font-weight: 600;
-      padding: 0.28rem 0.55rem;
-    }
-    .btn-reonic-test:hover:not(:disabled) {
-      background: var(--pvl-surface);
-      border-color: var(--pvl-accent);
-    }
     .lead-reonic-icon {
       display: inline-flex;
       align-items: center;
@@ -1787,15 +1763,6 @@
           <label>Google Meet-Link (optional)</label>
           <input type="url" id="sd-meet-link" placeholder="https://meet.google.com/…" autocomplete="off" />
         </div>
-        <div class="field-group" id="sd-reonic-wrap" style="display:none">
-          <label>Reonic</label>
-          <p class="sd-hint-muted" id="sd-reonic-disabled-hint" style="display:none">Reonic ist auf dem Server nicht konfiguriert (REONIC_API_KEY in der .env).</p>
-          <div class="sd-reonic-row" id="sd-reonic-actions">
-            <button type="button" class="btn btn-reonic" id="btn-reonic-send">An Reonic senden</button>
-            <button type="button" class="btn btn-reonic-test" id="btn-reonic-test">Verbindung testen</button>
-          </div>
-          <p class="sd-hint-muted" id="sd-reonic-sent-hint" style="display:none;margin-top:0.35rem"></p>
-        </div>
         <div class="field-group sd-contact-details" id="sd-contact-details" style="margin-top:0.5rem">
           <span class="sd-hint-muted" style="display:block;font-size:0.68rem;margin-bottom:0.2rem">Kontakt &amp; Adresse (direkt bearbeitbar)</span>
           <div class="sd-contact-details-body" id="sd-contact-wrap">
@@ -2184,51 +2151,6 @@
     showToast(baseOkMsg || 'Status gespeichert', 'ok');
   }
 
-  /** Nach „Termin vereinbart“: optional Reonic-Übertragung (nur bei Bestätigung). */
-  async function maybeOfferReonicTransfer(j, ctx) {
-    if (!j || !j.reonicOfferSuggested || !j.pvlDbId) return;
-    const msg = 'Kunde an Reonic übermitteln?';
-    if (!window.confirm(msg)) return;
-    try {
-      const r = await apiFetch('/api/leads/reonic-offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dbId: j.pvlDbId }),
-      });
-      const jr = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        showToast(jr.error || 'Reonic-Übertragung fehlgeschlagen', 'err');
-        return;
-      }
-      showToast('Erfolgreich an Reonic übertragen', 'ok');
-      const key = ctx && ctx.leadKeyStr;
-      if (key) {
-        const lead = allLeads.find((l) => leadKey(l) === key);
-        if (lead) {
-          lead.reonic_status = 'success';
-          if (jr.reonicId) lead.reonic_id = String(jr.reonicId);
-          lead.reonic_exported = 1;
-          lead.reonic_transferred = 1;
-          lead.reonic_synced = 1;
-        }
-      } else if (ctx && ctx.pvlDbId != null) {
-        const lead = allLeads.find((l) => Number(l.pvlDbId) === Number(ctx.pvlDbId));
-        if (lead) {
-          lead.reonic_status = 'success';
-          if (jr.reonicId) lead.reonic_id = String(jr.reonicId);
-          lead.reonic_exported = 1;
-          lead.reonic_transferred = 1;
-          lead.reonic_synced = 1;
-        }
-      }
-      syncReonicDetailUi();
-      renderList();
-      renderMarkers();
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    }
-  }
-
   function isLeadReonicTransferred(lead) {
     if (!lead) return false;
     if (String(lead.reonic_id || '').trim()) return true;
@@ -2237,101 +2159,6 @@
       return true;
     }
     return false;
-  }
-
-  function syncReonicDetailUi(lead) {
-    const rowLead = lead || (activeLeadKeyStr ? allLeads.find((l) => leadKey(l) === activeLeadKeyStr) : null);
-    const wrap = document.getElementById('sd-reonic-wrap');
-    const btnSend = document.getElementById('btn-reonic-send');
-    const btnTest = document.getElementById('btn-reonic-test');
-    const hintSent = document.getElementById('sd-reonic-sent-hint');
-    const hintCfg = document.getElementById('sd-reonic-disabled-hint');
-    const actions = document.getElementById('sd-reonic-actions');
-    if (!wrap || !btnSend || !btnTest) return;
-    const st = normalizeStatusDisplay(detailCurrentStatus);
-    const session = window.__pvlSessionUser || {};
-    const configured = session.reonicConfigured === true;
-    const termin = st === 'Termin vereinbart';
-    const readOnly = !rowLead || rowLead.__pvlLegacy || isCrmArchived(rowLead);
-    if (!termin || readOnly) {
-      wrap.style.display = 'none';
-      return;
-    }
-    wrap.style.display = 'block';
-    if (hintCfg) hintCfg.style.display = configured ? 'none' : 'block';
-    if (actions) actions.style.display = 'flex';
-    btnTest.disabled = activeIsLegacy;
-    const transferred = rowLead && isLeadReonicTransferred(rowLead);
-    btnSend.style.display = transferred || !configured ? 'none' : 'inline-flex';
-    btnSend.disabled = !configured || activeIsLegacy || transferred;
-    if (!configured) {
-      if (hintSent) hintSent.style.display = 'none';
-      return;
-    }
-    if (hintSent) {
-      if (transferred) {
-        hintSent.style.display = 'block';
-        const rid = rowLead && String(rowLead.reonic_id || '').trim();
-        hintSent.textContent = rid
-          ? 'Bereits an Reonic übermittelt (ID: ' + rid.slice(0, 80) + ').'
-          : 'Bereits an Reonic übermittelt.';
-      } else {
-        hintSent.style.display = 'none';
-        hintSent.textContent = '';
-      }
-    }
-  }
-
-  async function sendReonicFromDetail() {
-    if (activeIsLegacy) {
-      showToast('Legacy-Lead: Reonic nicht verfügbar.', 'info');
-      return;
-    }
-    const rowLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-    if (!rowLead || isCrmArchived(rowLead)) return;
-    if (!rowLead.pvlDbId) {
-      showToast('Keine Datenbank-ID für diesen Lead.', 'err');
-      return;
-    }
-    if (isLeadReonicTransferred(rowLead)) return;
-    try {
-      const r = await apiFetch('/api/leads/reonic-offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dbId: rowLead.pvlDbId }),
-      });
-      const jr = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        showToast(jr.error || 'Reonic-Übertragung fehlgeschlagen', 'err');
-        return;
-      }
-      showToast('Erfolgreich an Reonic übertragen', 'ok');
-      rowLead.reonic_status = 'success';
-      if (jr.reonicId) rowLead.reonic_id = String(jr.reonicId);
-      rowLead.reonic_exported = 1;
-      rowLead.reonic_transferred = 1;
-      rowLead.reonic_synced = 1;
-      syncReonicDetailUi(rowLead);
-      renderList();
-      renderMarkers();
-      await refreshDashboardStatsBar();
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    }
-  }
-
-  async function testReonicConnectionFromUi() {
-    try {
-      const r = await apiFetch('/api/reonic/test', { method: 'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        showToast(j.error || 'Reonic-Test fehlgeschlagen', 'err');
-        return;
-      }
-      showToast(j.message || 'Verbindung OK', 'ok');
-    } catch (e) {
-      showToast(e.message || String(e), 'err');
-    }
   }
 
   // ── Map ───────────────────────────────────────────────────────────────────
@@ -3952,13 +3779,9 @@
       syncStatusBarHighlight();
       syncNachfassTerminVisibility();
       syncNachfassKurzFromMain();
-      syncReonicDetailUi(lead);
       renderList();
       renderMarkers();
       toastAfterLeadStatusSave(j, 'Status gespeichert');
-      if (status === 'Termin vereinbart') {
-        await maybeOfferReonicTransfer(j, { leadKeyStr: activeLeadKeyStr });
-      }
       await refreshDashboardStatsBar();
     } catch (e) {
       showToast(e.message || String(e), 'err');
@@ -4157,10 +3980,6 @@
       else toastAfterLeadStatusSave(j, 'Status gespeichert.');
       await loadLeads();
       await refreshMissingModalBody();
-      if (!j.archived && status === 'Termin vereinbart' && j.reonicOfferSuggested && j.pvlDbId) {
-        const lead = allLeads.find((l) => Number(l.pvlDbId) === Number(j.pvlDbId));
-        await maybeOfferReonicTransfer(j, { leadKeyStr: lead ? leadKey(lead) : null, pvlDbId: j.pvlDbId });
-      }
     } catch (e) {
       showToast(e.message || String(e), 'err');
     }
@@ -5197,7 +5016,6 @@
     syncStatusBarHighlight();
     syncNachfassTerminVisibility();
     syncNachfassKurzFromMain();
-    syncReonicDetailUi(lead);
     renderBetreutChips();
     renderSetterSalesChips(lead);
     document.getElementById('save-hint').style.display = 'none';
@@ -5407,10 +5225,6 @@
         if (j.user.profileComplete === false && !/\/profile(\.html)?\/?$/i.test(location.pathname)) {
           window.location.replace(`/profile?next=${encodeURIComponent(pvlSafeReturnPath())}`);
           return { status: 'redirect_profile' };
-        }
-        if (document.getElementById('sidebar-detail')?.classList.contains('open')) {
-          const openLead = allLeads.find((l) => leadKey(l) === activeLeadKeyStr);
-          if (openLead) syncReonicDetailUi(openLead);
         }
         return { status: 'ok', user: j.user };
       }

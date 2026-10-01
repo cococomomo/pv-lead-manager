@@ -4,7 +4,6 @@ require('./load-env');
 const { getDb, getDbPath } = require('./database');
 const { formatAnfrageNumber } = require('./anfrage-format');
 const { geocodeAddressCascade } = require('./geocode-address-cascade');
-const { reonicV2OffersConfigured } = require('./integrations/reonic');
 const { getProfile } = require('./user-profile');
 const { readUsers, normalizeUserRole } = require('./users');
 
@@ -65,24 +64,6 @@ function parseCoord(v) {
   if (v == null || v === '') return null;
   const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
   return Number.isFinite(n) ? n : null;
-}
-
-/** Nach manuellem Bestätigen: Reonic-Dialog im Frontend, wenn konfiguriert und noch nicht übertragen. */
-function reonicOfferSuggestionPayload(db, leadId, newStatus) {
-  const s = String(newStatus || '').trim();
-  if (s !== 'Termin vereinbart') return {};
-  if (!reonicV2OffersConfigured()) return {};
-  const r = db.prepare(`
-    SELECT COALESCE(reonic_exported, 0) AS rx, COALESCE(reonic_transferred, 0) AS rt,
-      COALESCE(reonic_synced, 0) AS rs,
-      lower(trim(COALESCE(reonic_status, ''))) AS rst,
-      trim(COALESCE(reonic_id, '')) AS rid
-    FROM leads WHERE id = ?
-  `).get(leadId);
-  if (!r) return {};
-  if (r.rst === 'success' || r.rid) return {};
-  if (Number(r.rx) === 1 || Number(r.rt) === 1 || Number(r.rs) === 1) return {};
-  return { reonicOfferSuggested: true, pvlDbId: leadId };
 }
 
 function dbRowToApiLead(row) {
@@ -476,7 +457,6 @@ async function updateLeadField(email, columnHeader, value, vertrieblerLabel) {
   }
   const out = {};
   if (col === 'status') {
-    Object.assign(out, reonicOfferSuggestionPayload(db, row.id, v));
     out.Notizen = readLeadNotizenById(db, row.id);
   }
   return out;
@@ -530,11 +510,7 @@ async function updateLeadFieldsBulk(currentEmail, updates, vertrieblerLabel) {
   const afterStatus = String(afterStatusRow && afterStatusRow.status != null ? afterStatusRow.status : '').trim();
   maybeAppendNichtErreichtProtocol(db, id, prevStatusForNichtErreicht, afterStatus, vertrieblerLabel);
 
-  const out = {};
-  if (String(bulkStatusVal || '').trim() === 'Termin vereinbart') {
-    Object.assign(out, reonicOfferSuggestionPayload(db, id, bulkStatusVal));
-  }
-  return out;
+  return {};
 }
 
 const STATUS_VALUES = new Set([
@@ -564,9 +540,8 @@ async function setLeadStatus(email, status, vertrieblerLabel) {
   const prevStatus = String(row.status || '').trim();
   db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, row.id);
   maybeAppendNichtErreichtProtocol(db, row.id, prevStatus, s, vertrieblerLabel);
-  const extra = s === 'Termin vereinbart' ? reonicOfferSuggestionPayload(db, row.id, s) : {};
   const Notizen = readLeadNotizenById(db, row.id);
-  return { ok: true, Notizen, ...extra };
+  return { ok: true, Notizen };
 }
 
 async function archiveLead(email) {
@@ -912,9 +887,8 @@ async function setLeadStatusByDbId(id, status, vertrieblerLabel) {
   const prevStatus = String(row.status || '').trim();
   db.prepare(`UPDATE leads SET status = ?, last_updated = datetime('now') WHERE id = ?`).run(s, idNum);
   maybeAppendNichtErreichtProtocol(db, idNum, prevStatus, s, vertrieblerLabel);
-  const extra = s === 'Termin vereinbart' ? reonicOfferSuggestionPayload(db, idNum, s) : {};
   const Notizen = readLeadNotizenById(db, idNum);
-  return { ok: true, Notizen, ...extra };
+  return { ok: true, Notizen };
 }
 
 function csvEscapeCell(v) {

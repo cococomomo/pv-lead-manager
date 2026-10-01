@@ -65,8 +65,6 @@ const {
 const { mountOfferRoutes } = require('./offer/routes');
 const { mountLayoutOfferPersistRoutes } = require('./offer/layout-routes');
 const { getDashboardStats } = require('./stats');
-const { transferLeadToReonicById } = require('./reonic-sync');
-const { reonicV2OffersConfigured, testReonicRestV2Connection } = require('./integrations/reonic');
 const { installBasePath, publicRewriteMiddleware } = require('./base-path');
 
 const app = express();
@@ -535,14 +533,12 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', async (req, res) => {
   if (!req.session || !req.session.user) return res.json({ user: null });
   const su = req.session.user;
-  const reonicConfigured = reonicV2OffersConfigured();
   try {
     const user = await getUserPublic(su.username);
     const base = user || { username: su.username, role: su.role, calendarPreference: 'google' };
     res.json({
       user: {
         ...base,
-        reonicConfigured,
         emailLeadImportEnabled: isAutomatedEmailLeadImportEnabled(),
       },
     });
@@ -554,7 +550,6 @@ app.get('/api/auth/me', async (req, res) => {
         role: su.role,
         calendarPreference: 'google',
         profileComplete: true,
-        reonicConfigured,
         emailLeadImportEnabled: isAutomatedEmailLeadImportEnabled(),
       },
     });
@@ -1062,36 +1057,6 @@ app.post('/api/leads/:email/status', async (req, res) => {
   } catch (err) {
     console.error('POST status error:', err.message);
     res.status(400).json({ error: err.message });
-  }
-});
-
-/** Reonic REST v2: Angebots-/Lead-Anlage nach Nutzer-Bestätigung im UI. */
-app.post('/api/leads/reonic-offer', requireApiSession, async (req, res) => {
-  const b = req.body || {};
-  const rawId = b.dbId != null ? b.dbId : b.pvlDbId;
-  try {
-    const result = await transferLeadToReonicById(rawId);
-    if (!result.ok) {
-      return res.status(400).json({ error: result.error || 'Reonic-Übertragung fehlgeschlagen' });
-    }
-    res.json({ ok: true, reonicId: result.reonicId || '' });
-  } catch (err) {
-    console.error('POST reonic-offer:', err.message);
-    res.status(500).json({ error: err.message || String(err) });
-  }
-});
-
-/** Reonic: Verbindungstest (Key/Endpoint), ohne Lead zu erzeugen. */
-app.post('/api/reonic/test', requireApiSession, async (req, res) => {
-  try {
-    const out = await testReonicRestV2Connection();
-    if (!out.ok) {
-      return res.status(400).json({ error: out.error || 'Reonic-Test fehlgeschlagen' });
-    }
-    res.json({ ok: true, message: out.message || 'Verbindung OK' });
-  } catch (err) {
-    console.error('POST /api/reonic/test:', err.message);
-    res.status(500).json({ error: err.message || String(err) });
   }
 });
 

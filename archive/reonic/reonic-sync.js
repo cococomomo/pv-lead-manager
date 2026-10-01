@@ -1,8 +1,12 @@
 'use strict';
 
-require('./load-env');
-const { getDb } = require('./database');
-const { reonicV2OffersConfigured, postReonicRestV2Offer } = require('./integrations/reonic');
+/**
+ * ARCHIV — wird vom laufenden Server nicht geladen.
+ * Früher: `src/reonic-sync.js`.
+ */
+require('../../src/load-env');
+const { getDb } = require('../../src/database');
+const { reonicV2OffersConfigured, postReonicRestV2Offer } = require('./reonic');
 
 /**
  * Übermittelt einen Lead an Reonic (REST v2 offers) und setzt `reonic_exported` / `reonic_transferred` / `reonic_synced`.

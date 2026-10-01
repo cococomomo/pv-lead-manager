@@ -2,7 +2,7 @@
 
 /**
  * Wandelt die interne „Nachname + Vorname“-Konvention in die Anzeige „Vorname Nachname“.
- * Komma: „Nachname, Vorname“; ohne Komma: erstes Wort = Nachname, Rest = Vorname (wie `splitNachnameVorname` in reonic).
+ * Komma: „Nachname, Vorname“; ohne Komma: erstes Wort = Nachname, Rest = Vorname (wie `splitNachnameVorname` in `src/offer/names.js`).
  * @param {string} raw
  * @returns {string}
  */

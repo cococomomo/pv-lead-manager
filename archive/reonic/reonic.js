@@ -1,6 +1,9 @@
 'use strict';
 
 /**
+ * ARCHIV — wird vom laufenden Server und vom Dashboard nicht geladen.
+ * Früher: `src/integrations/reonic.js`.
+ *
  * Reonic REST API v2 — Basis: `https://api.reonic.de/rest/v2`
  * Authentifizierung: Header `x-authorization` (Wert in der Regel `Basic <Base64>`), siehe `.env.example`.
  *
@@ -13,17 +16,17 @@
  *
  * Legacy (falls per ENV): H360 `POST …/integrations/{clientId}/h360/request/create` auf `app.reonic.de`.
  */
-require('../load-env');
+require('../../src/load-env');
 const fs = require('fs');
 const path = require('path');
-const { getProjectRoot } = require('../database');
+const { getProjectRoot } = require('../../src/database');
 
 /** @param {string} s */
 function trim(s) {
   return String(s ?? '').trim();
 }
 
-const { splitNachnameVorname: splitLeadName } = require('../offer/names');
+const { splitNachnameVorname: splitLeadName } = require('../../src/offer/names');
 
 function splitNachnameVorname(namen) {
   const { vorname, nachname } = splitLeadName(namen);
