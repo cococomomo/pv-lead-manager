@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Server-seitiger Belegungsplan-Render: Orthofoto-Kacheln + Dachumriss + Module → PNG.
+ * Server-seitiger Belegungsplan-Render: Orthofoto-Kacheln + Dachumriss + Module → JPEG.
  * Unabhängig vom Browser-CORS (html2canvas).
  */
 
@@ -282,8 +282,9 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
   const padWorld = Math.max(4, Math.min(contentW, contentH) * padFrac);
   const worldW = contentW + padWorld * 2;
   const worldH = contentH + padWorld * 2;
-  const targetMin = opts.targetMinPx != null ? Number(opts.targetMinPx) : 1200;
-  const scale = Math.max(1, targetMin / Math.max(worldW, worldH));
+  const longEdge = opts.longEdgePx != null ? Number(opts.longEdgePx) : 1600;
+  const jpegQuality = opts.jpegQuality != null ? Number(opts.jpegQuality) : 85;
+  const scale = longEdge / Math.max(worldW, worldH);
 
   const originX = tl.x - padWorld;
   const originY = tl.y - padWorld;
@@ -383,7 +384,11 @@ async function renderLayoutOrthoPng(plan, opts = {}) {
     strokePolygon(png.data, outW, outH, corners, 243, 243, 243, 255, MODULE_FRAME_PX);
   });
 
-  return PNG.sync.write(png);
+  const encoded = jpeg.encode(
+    { data: png.data, width: outW, height: outH },
+    Math.max(1, Math.min(100, Math.round(jpegQuality))),
+  );
+  return Buffer.from(encoded.data);
 }
 
 module.exports = {

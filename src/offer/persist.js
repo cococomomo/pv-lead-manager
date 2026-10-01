@@ -212,7 +212,7 @@ function deleteLayout(id) {
 }
 
 /**
- * Speichert Snapshot-PNG (Buffer oder base64 data-URL).
+ * Speichert den Belegungsplan (JPEG vom Orthofoto oder PNG vom Client).
  * @returns {{ snapshotPath, snapshotUrl }}
  */
 function saveLayoutSnapshot(id, data) {
@@ -228,9 +228,18 @@ function saveLayoutSnapshot(id, data) {
     buf = Buffer.from(m ? m[1] : s, 'base64');
   }
   if (!buf || buf.length < 32) throw new Error('Ungültiges Snapshot-Bild');
-  const rel = path.join('data', 'layouts', `layout-${id}.png`);
+  const ext = (buf[0] === 0xff && buf[1] === 0xd8) ? '.jpg' : '.png';
+  const rel = path.join('data', 'layouts', `layout-${id}${ext}`);
   const abs = path.join(getProjectRoot(), rel);
   fs.writeFileSync(abs, buf);
+  if (cur.snapshotPath && cur.snapshotPath !== rel) {
+    const oldAbs = path.isAbsolute(cur.snapshotPath)
+      ? cur.snapshotPath
+      : path.join(getProjectRoot(), cur.snapshotPath);
+    if (oldAbs !== abs && fs.existsSync(oldAbs)) {
+      try { fs.unlinkSync(oldAbs); } catch (_) { /* alter Snapshot bleibt liegen */ }
+    }
+  }
   const db = getDb();
   db.prepare(`
     UPDATE layout_plans SET snapshot_path = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -239,7 +248,7 @@ function saveLayoutSnapshot(id, data) {
   return { snapshotPath: rel, snapshotUrl: `/api/layouts/${id}/snapshot-file` };
 }
 
-/** Speichert fertigen PNG-Buffer als Snapshot (Server-Render). */
+/** Speichert den Server-Render (JPEG) oder ein Client-PNG als Snapshot. */
 function saveLayoutSnapshotBuffer(id, buf) {
   return saveLayoutSnapshot(id, buf);
 }

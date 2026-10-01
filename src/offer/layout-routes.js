@@ -146,6 +146,12 @@ function mountLayoutOfferPersistRoutes(app) {
   app.get('/api/layouts/:id/snapshot-file', (req, res) => {
     const abs = persist.getLayoutSnapshotAbsPath(req.params.id);
     if (!abs || !fs.existsSync(abs)) return res.status(404).json({ error: 'kein Snapshot' });
+    const fd = fs.openSync(abs, 'r');
+    const head = Buffer.alloc(3);
+    fs.readSync(fd, head, 0, 3, 0);
+    fs.closeSync(fd);
+    if (head[0] === 0xff && head[1] === 0xd8) res.type('image/jpeg');
+    else if (head[0] === 0x89 && head[1] === 0x50) res.type('image/png');
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.sendFile(path.resolve(abs));
   });

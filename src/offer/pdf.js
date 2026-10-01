@@ -24,6 +24,7 @@ const {
   classifyKind,
 } = require('./product-images');
 const { writeHouseDiagramTemp, resolveHouseDiagramSelection } = require('./house-diagram');
+const { rasterForDraw } = require('./image-raster');
 
 const ASSETS = path.join(__dirname, 'assets');
 const ROOT = path.join(__dirname, '../..');
@@ -190,10 +191,13 @@ function drawFittedImage(doc, imgPath, x, y, boxW, boxH, bg = null) {
     if (bg) {
       doc.save().roundedRect(x, y, boxW, boxH, 4).fill(bg).restore();
     }
-    const img = doc.openImage(imgPath);
-    const scale = Math.min(boxW / Math.max(1, img.width), boxH / Math.max(1, img.height));
-    const dw = img.width * scale;
-    const dh = img.height * scale;
+    const raw = fs.readFileSync(imgPath);
+    const opened = doc.openImage(raw);
+    const scale = Math.min(boxW / Math.max(1, opened.width), boxH / Math.max(1, opened.height));
+    const dw = opened.width * scale;
+    const dh = opened.height * scale;
+    const fitted = rasterForDraw(raw, dw, dh);
+    const img = fitted ? doc.openImage(fitted) : opened;
     doc.image(img, x + (boxW - dw) / 2, y + (boxH - dh) / 2, { width: dw, height: dh });
     return true;
   } catch (_) {
@@ -279,17 +283,21 @@ function generateOfferPdf(offer, customer, texts = {}, opts = {}) {
       const cfg = offer.config || {};
       const vertrieb = (offer.meta && offer.meta.vertrieb) || {};
       const salesPhoto = resolveSalesPhotoPath(vertrieb);
+      let salesImage = null;
+      if (salesPhoto && fs.existsSync(salesPhoto)) {
+        try { salesImage = doc.openImage(fs.readFileSync(salesPhoto)); } catch (_) { salesImage = null; }
+      }
 
       let y = 0;
 
       const startContentPage = () => {
         doc.addPage();
-        y = drawContentHeader(doc, dateLabel, vertrieb, salesPhoto);
+        y = drawContentHeader(doc, dateLabel, vertrieb, salesPhoto, salesImage);
         return y;
       };
 
       // ── 1 Cover ──
-      drawCoverPage(doc, offer, customer, salesPhoto);
+      drawCoverPage(doc, offer, customer, salesPhoto, salesImage);
 
       // ── 2 Über uns ──
       doc.addPage();
@@ -396,15 +404,20 @@ function drawSalesBadge(doc, vertrieb, photoPath, x, y, opts = {}) {
     ...v,
     photoPath: photoPath || v.photoPath,
   });
-  if (resolved && fs.existsSync(resolved)) {
+  let img = opts.image || null;
+  if (!img && resolved && fs.existsSync(resolved)) {
+    try {
+      // Buffer load — no PDFKit path-cache of a previous portrait at the same filename
+      img = doc.openImage(fs.readFileSync(resolved));
+    } catch (_) { img = null; }
+  }
+  if (img) {
     try {
       const side = 32;
       const cx = x + 10 + side / 2;
       const cy = y + badgeH / 2;
       doc.save();
       doc.circle(cx, cy, side / 2).clip();
-      // Buffer load — no PDFKit path-cache of a previous portrait at the same filename
-      const img = doc.openImage(fs.readFileSync(resolved));
       // Cover-fit (kein Stauchen) in den Kreis
       const scale = Math.max(side / Math.max(1, img.width), side / Math.max(1, img.height));
       const dw = img.width * scale;
@@ -423,19 +436,19 @@ function drawSalesBadge(doc, vertrieb, photoPath, x, y, opts = {}) {
   return badgeH;
 }
 
-function drawContentHeader(doc, dateLabel, vertrieb, salesPhoto) {
+function drawContentHeader(doc, dateLabel, vertrieb, salesPhoto, salesImage) {
   try {
     if (fs.existsSync(LOGO)) doc.image(LOGO, MARGIN, 28, { height: 26 });
   } catch (_) { /* ignore */ }
   const badgeW = 200;
   const badgeX = PAGE.width - MARGIN - badgeW;
-  drawSalesBadge(doc, vertrieb, salesPhoto, badgeX, 22, { width: badgeW, height: 48 });
+  drawSalesBadge(doc, vertrieb, salesPhoto, badgeX, 22, { width: badgeW, height: 48, image: salesImage });
   doc.font(F.regular).fontSize(8).fillColor(COLORS.softMuted)
     .text(dateLabel || '', MARGIN, 56, { width: CONTENT_W - badgeW - 12, align: 'left' });
   return 88;
 }
 
-function drawCoverPage(doc, offer, customer, salesPhoto) {
+function drawCoverPage(doc, offer, customer, salesPhoto, salesImage) {
   // Logo + sales badge
   try {
     if (fs.existsSync(LOGO)) doc.image(LOGO, MARGIN, 36, { height: 34 });
@@ -444,7 +457,7 @@ function drawCoverPage(doc, offer, customer, salesPhoto) {
   const v = (offer.meta && offer.meta.vertrieb) || {};
   const badgeW = 210;
   const badgeX = PAGE.width - MARGIN - badgeW;
-  drawSalesBadge(doc, v, salesPhoto, badgeX, 32, { width: badgeW, height: 52 });
+  drawSalesBadge(doc, v, salesPhoto, badgeX, 32, { width: badgeW, height: 52, image: salesImage });
 
   // Title
   let y = 130;
@@ -486,10 +499,13 @@ function drawCoverPage(doc, offer, customer, salesPhoto) {
       doc.save();
       doc.circle(cx, cy, r + 6).fill(COLORS.white);
       doc.circle(cx, cy, r).clip();
-      const img = doc.openImage(circle);
-      const scale = Math.max((r * 2) / img.width, (r * 2) / img.height);
-      const dw = img.width * scale;
-      const dh = img.height * scale;
+      const raw = fs.readFileSync(circle);
+      const opened = doc.openImage(raw);
+      const scale = Math.max((r * 2) / opened.width, (r * 2) / opened.height);
+      const dw = opened.width * scale;
+      const dh = opened.height * scale;
+      const fitted = rasterForDraw(raw, dw, dh, { asJpeg: true });
+      const img = fitted ? doc.openImage(fitted) : opened;
       doc.image(img, cx - dw / 2, cy - dh / 2, { width: dw, height: dh });
       doc.restore();
       doc.save().circle(cx, cy, r + 4).lineWidth(6).strokeColor(COLORS.white).stroke().restore();
@@ -602,13 +618,16 @@ function drawGlancePage(doc, y, offer, eco) {
     houseTmp = writeHouseDiagramTemp(offer);
     const housePath = houseTmp || productAbs('houseSystemDiagram') || productAbs('houseOverview');
     if (housePath && fs.existsSync(housePath)) {
-      const img = doc.openImage(housePath);
+      const raw = fs.readFileSync(housePath);
+      const opened = doc.openImage(raw);
       let dw = maxW;
-      let dh = dw * (img.height / Math.max(1, img.width));
+      let dh = dw * (opened.height / Math.max(1, opened.width));
       if (dh > maxH) {
         dh = maxH;
-        dw = dh * (img.width / Math.max(1, img.height));
+        dw = dh * (opened.width / Math.max(1, opened.height));
       }
+      const fitted = rasterForDraw(raw, dw, dh);
+      const img = fitted ? doc.openImage(fitted) : opened;
       doc.image(img, MARGIN + pad + (maxW - dw) / 2, yy + (maxH - dh) / 2, { width: dw, height: dh });
     }
   } catch (_) { /* ignore */ }
