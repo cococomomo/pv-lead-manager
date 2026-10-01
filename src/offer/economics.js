@@ -162,7 +162,7 @@ function computeEconomics(offer, overrides = {}) {
       payback: paybackYears != null ? `${paybackYears} Jahre` : '—',
       investment: formatEUR(investment),
       kwp: `${formatNum(Math.round(kwp * 100) / 100)} kWp`,
-      speicher: hasStorage ? `${formatNum(speicherKwh)} kWh` : '—',
+      speicher: hasStorage ? `${formatNum(speicherKwh).replace('.', ',')} kWh` : '—',
       peak: `${formatNum(Math.round(kwp * 100) / 100)} kW Peak`,
     },
   };

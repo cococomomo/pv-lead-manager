@@ -295,6 +295,7 @@ function mountOfferRoutes(app, deps) {
       dachLabels: catalog.DACH_LABELS,
       inverters: {
         sigenergy: catalog.listInverters('sigenergy'),
+        sigenergy_alt: catalog.listInverters('sigenergy_alt'),
         fronius: catalog.listInverters('fronius'),
         huawei: catalog.listInverters('huawei'),
         fronius_symo: catalog.listInverters('fronius_symo'),
@@ -317,6 +318,7 @@ function mountOfferRoutes(app, deps) {
       })),
       optionPricesByBrand: {
         sigenergy: { notstrom: catalog.brandOptionPrice('sigenergy', 'notstrom'), wallbox: catalog.brandOptionPrice('sigenergy', 'wallbox') },
+        sigenergy_alt: { notstrom: catalog.brandOptionPrice('sigenergy_alt', 'notstrom'), wallbox: catalog.brandOptionPrice('sigenergy_alt', 'wallbox') },
         fronius: { notstrom: catalog.brandOptionPrice('fronius', 'notstrom'), wallbox: catalog.brandOptionPrice('fronius', 'wallbox') },
         huawei: { notstrom: catalog.brandOptionPrice('huawei', 'notstrom'), wallbox: catalog.brandOptionPrice('huawei', 'wallbox') },
         fronius_symo: { notstrom: catalog.brandOptionPrice('fronius_symo', 'notstrom'), wallbox: catalog.brandOptionPrice('fronius_symo', 'wallbox') },

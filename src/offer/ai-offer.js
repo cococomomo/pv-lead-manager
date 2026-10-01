@@ -105,11 +105,14 @@ Regeln:
 - Telefonnummern in +43… normalisieren.
 - "AIKO" → moduleType "aiko", sonst "das".
 - kwp/speicher als reine Zahlen. Ohne Speicher: speicher=0.
-  Sigenergy: NUR Module 6,0 kWh und 10,0 kWh, beliebig kombinierbar. Wechselrichter ist der Sigen Hybrid TP2.
-  Beispiele → speicher = Gesamtkapazität (eine Zahl):
-  "6+10" / "10+6" → 16; "10+10" / "2×10" / "2x10" → 20; "6+6" / "2×6" → 12;
-  "10 kWh" → 10; "6 kWh" → 6. Keine 9-kWh-Module, keine Preise 3300 oder 3960.
-  Fronius Reserva: NUR Module à 3,2 kWh. Tower-Stufen: 6,4 (2 Mod.) / 9,5 (3) / 12,6 (4) / 15,8 (5).
+  Sigenergy Neu (Standard, brand "sigenergy"): Sigen Hybrid TP2, günstigere Paketpreise.
+  Sigenergy Alt (brand "sigenergy_alt"): Sigen Hybrid Three Phase TP, teurere bisherige Paketpreise, nur wenn "alt", "TP1" oder "alte Preisliste" gesagt wird.
+  Speicher nur 6.0 und 10.0. Nutzbar: 6.0 = 6,02 kWh, 10.0 = 9,04 kWh. Die alte 9-kWh-Stufe heißt 10.0. Kein 12-kWh-Paket.
+  speicher als Nennstufe: "6" / "6.0" / "6,02" → 6; "10" / "10.0" / "9" / "9,04" → 10.
+  Beispiele → speicher = Summe der Nennstufen:
+  "6+10" → 16; "10+10" → 20; "6+6" → 12; "10 kWh" → 10; "6 kWh" → 6.
+  Erweiterung: 6.0 = 2400 €, 10.0 = 3600 €, bei Neu und Alt gleich. Gateway 1200 €, Wallbox 1500 €.
+  Fronius Reserva: zwei Module sind 6,5 kWh (nicht 6,4). Weitere Stufen 9,5 / 12,6 / 15,8.
   Bis zu 3 Speichertower kombinierbar. "Reserva 12,6" / "4 Module Fronius" → speicher 12.6;
   "6 Module Fronius" / "19 kWh Fronius" → speicher ≈ 19 (15,8 + 3,2).
   NICHT speichererweiterung setzen, wenn die genannte Größe die Haupt-Speicherkonfiguration ist.
@@ -164,7 +167,7 @@ Regeln:
   Nur wenn klar getrennt von der Basis, z. B. "Basis 9 kWh, optional plus 6 kWh nachrüsten",
   "optional +3,2 kWh Fronius", "Fronius +3,2 nachrüsten" → optionen.speichererweiterung=true
   bzw. optionDetails key=speichererweiterung (bei Sigenergy +6 oder +9 im Label/kwh angeben).
-  Sigenergy-Erweiterung: +6,0 kWh = 2400 € oder +10,0 kWh = 3600 €. Nicht +6 für 3300 und nicht +9 für 3960.
+  Sigenergy-Erweiterung: +6.0 (6,02 kWh) = 2400 € oder +10.0 (9,04 kWh) = 3600 €. Nicht +6 für 3300 und nicht +9 für 3960. Kein 9-kWh- und kein 12-kWh-Paket.
   Fronius: immer +3,2 (1320). Gateway Sigenergy 1200, Wallbox Sigenergy 1500.
   WICHTIG: "6+9 kWh Speicher" / "15 kWh" / "Reserva 12,6" / "18 kWh" ist KEINE speichererweiterung – das ist speicher (Gesamt).
 - Weitere freie Hinweise ohne Preisposition → offerNotes[].

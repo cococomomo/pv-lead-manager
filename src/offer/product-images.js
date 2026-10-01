@@ -49,6 +49,7 @@ const FILES = {
   energyFlow: 'energy-flow.png',
   energyFlowReference: 'energy-flow-reference.png',
   sigenSmartmeter: 'sigen-smartmeter.jpg',
+  tigoOptimierer: 'tigo-optimierer.png',
 };
 
 function abs(key) {
@@ -73,8 +74,15 @@ function guessImageForItem(name, brand) {
   if (/installation|netzanschluss|erdung|einreichung|befund|inbetrieb|verdrahtung|kabelkanal|solarflex|mc buchse|mc stecker|kleinmaterial/.test(n)) {
     return null;
   }
+  if (/optimier/.test(n)) {
+    return firstExisting('tigoOptimierer');
+  }
+  if (/reserva|batter|speicher|sigenstor bat|akku/.test(n)) {
+    if (b === 'fronius' || /fronius|reserva/.test(n)) return abs('froniusReserva');
+    return firstExisting('sigenBattery', 'sigenStack', 'froniusReserva');
+  }
   if ((/modul|aiko|das-|neostar|dh\d|fullblack/.test(n) || /^das-/.test(n))
-    && !/unterkonstruktion|montage/.test(n)) {
+    && !/unterkonstruktion|montage|optimier/.test(n)) {
     return firstExisting('modulDas', 'pvModule');
   }
   if (/wechselrichter|gen24|symo|inverter|hybrid|sigenstor ec|\btp\b|tp2|sun2000/.test(n)) {
@@ -84,12 +92,9 @@ function guessImageForItem(name, brand) {
     if (b === 'fronius' || /fronius|gen24/.test(n)) return firstExisting('froniusInverter', 'froniusGen24');
     if (b === 'huawei' || /huawei|sun2000/.test(n)) return firstExisting('huaweiInverter');
     // Sigenergy: freigestellter Sigen Hybrid TP2 (Wandgerät), nicht das EC-/Stack-Foto
+    if (b === 'sigenergy_alt' || (/\btp\b/.test(n) && !/tp2/.test(n))) return firstExisting('sigenHybrid', 'sigenEcTp');
     if (b === 'sigenergy' || /sigen|sigenergy|tp2/.test(n)) return firstExisting('sigenHybridTp2');
     return firstExisting('sigenHybridTp2', 'froniusInverter');
-  }
-  if (/reserva|batter|speicher|sigenstor bat|akku/.test(n)) {
-    if (b === 'fronius' || /fronius|reserva/.test(n)) return firstExisting('froniusReserva', 'sigenBattery');
-    return firstExisting('sigenBattery', 'sigenStack', 'froniusReserva');
   }
   if (/smart.?meter|zähler|zaehler|sigen.?sensor|energy.?meter|stromsensor/.test(n)) {
     if (/fronius/.test(n) || b === 'fronius') return firstExisting('froniusSmartmeter');
@@ -127,6 +132,8 @@ function buildComponentCards(offer) {
         name: item.name,
         qty: item.qty || '1 Stück',
         desc: item.desc || '',
+        catalogName: item.catalogName || item.name,
+        catalogDesc: item.catalogDesc != null ? item.catalogDesc : (item.desc || ''),
         brandLabel: brandLabelFor(sectionTitle, brand, item.name),
         image: guessImageForItem(item.name, brand),
         section: sectionTitle,
@@ -174,13 +181,14 @@ function classifyKind(name, section) {
     || /netzanschluss|erdung|einreichung|befund|inbetriebnahme|verdrahtung verteiler/.test(n)) {
     return 'Serviceleistung';
   }
+  if (/optimier/.test(n)) return 'Optimierer';
   if (/wechselrichter|inverter|gen24|hybrid|sigenstor ec|sun2000/.test(n)) return 'Wechselrichter';
   if (/smart.?meter|zähler|zaehler|stromsensor/.test(n)) return 'Smart Meter';
   if (/speicher|reserva|batter|\bbat\b|sigenstor bat/.test(n) || (/energiespeicher/.test(s) && !/smart.?meter/.test(n))) {
     return 'Stromspeicher';
   }
   if (/unterkonstruktion|gestell/.test(n)) return 'Gestellkonstruktion';
-  if (/modul|das-|aiko|neostar|dh\d|fullblack|photovoltaikmodul/.test(n)) return 'Modul';
+  if (/modul|das-|aiko|neostar|dh\d|fullblack|photovoltaikmodul/.test(n) && !/optimier/.test(n)) return 'Modul';
   if (/gak|generatoranschluss|kabelkanal|solarflex|mc |kleinmaterial/.test(n)) return 'Zubehör';
   if (/gateway|umschalt|notstrom|wallbox|klima/.test(n) || /zusätzliche|klima/.test(s)) return 'Zusatz';
   return 'Andere';

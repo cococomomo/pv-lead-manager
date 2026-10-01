@@ -82,10 +82,20 @@ const DATASHEET_CATALOG = [
     ],
   },
   {
+    id: 'sigen-hybrid-tp1',
+    slug: 'sigen-hybrid-wechselrichter.pdf',
+    label: 'Sigen Hybrid Three Phase 5,0–30,0 kW TP',
+    brands: ['sigenergy_alt'],
+    kind: 'inverter',
+    sourceNames: [
+      'Sigen Hybrid Wechselrichter.pdf',
+    ],
+  },
+  {
     id: 'sigen-batterie',
     slug: 'sigen-batterie.pdf',
-    label: 'Sigenergy SigenStor BAT 6,0 / 9,0 kWh',
-    brands: ['sigenergy'],
+    label: 'Sigenergy SigenStor BAT 6.0 / 10.0 (6,02 / 9,04 kWh)',
+    brands: ['sigenergy', 'sigenergy_alt'],
     kind: 'storage',
     sourceNames: [
       'Energielösung für Zuhause - Sigen Batterie.pdf',
@@ -130,7 +140,7 @@ const DATASHEET_CATALOG = [
     id: 'sigen-gateway-home',
     slug: 'sigen-gateway-home.pdf',
     label: 'Sigenergy Gateway Home TP 30K',
-    brands: ['sigenergy'],
+    brands: ['sigenergy', 'sigenergy_alt'],
     kind: 'gateway',
     sourceNames: [
       'Sigen Energy Gateway Home.pdf',
@@ -218,6 +228,7 @@ function collectKlimaPackageIds(offer) {
   for (const line of blocks) {
     if (!line || line.enabled === false) continue;
     push(line.packageId || line.id || (line.package && line.package.id));
+    if (Array.isArray(line.packageIds)) line.packageIds.forEach(push);
   }
   return [...new Set(ids)];
 }
@@ -250,7 +261,7 @@ function includedOptionKeys(offer) {
 function selectDatasheetsForOffer(offer, opts = {}) {
   const cfg = (offer && offer.config) || {};
   const brandRaw = String(cfg.brand || '').toLowerCase();
-  const brand = ['fronius', 'sigenergy', 'huawei', 'fronius_symo'].includes(brandRaw)
+  const brand = ['fronius', 'sigenergy', 'sigenergy_alt', 'huawei', 'fronius_symo'].includes(brandRaw)
     ? brandRaw
     : null;
   const moduleType = cfg.moduleType === 'aiko' ? 'aiko' : 'das';
@@ -314,7 +325,7 @@ function selectDatasheetsForOffer(offer, opts = {}) {
       id: entry.id,
       label: entry.label,
       slug: entry.slug,
-      url: datasheetPublicUrl(entry, baseUrl, { openPage: true }),
+      url: datasheetPublicUrl(entry, baseUrl),
       pdfUrl: datasheetPublicUrl(entry, baseUrl),
       available: datasheetExists(entry),
       kind: entry.kind,

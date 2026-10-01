@@ -822,7 +822,7 @@ app.get('/datenblaetter/:file', (req, res) => {
     return res.status(404).type('text/plain').send('Datenblatt nicht gefunden');
   }
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${path.basename(abs)}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(abs)}"`);
   res.setHeader('Cache-Control', 'public, max-age=86400');
   return res.sendFile(abs);
 });

@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const catalog = require('../src/offer/catalog');
 const { selectDatasheetsForOffer } = require('../src/offer/datasheets');
-const { buildComponentCards } = require('../src/offer/product-images');
+const { buildComponentCards, guessImageForItem } = require('../src/offer/product-images');
 const { parseOfferCommand, normalizeOffer } = require('../src/offer/ai-offer');
 const { pdfPageFlags, activeLeistungen } = require('../src/offer/pdf');
 const { computeEconomics } = require('../src/offer/economics');
@@ -176,12 +176,177 @@ function testPdfPages() {
   assert(eco.annualYield === 9000, 'Jahresertrag bleibt');
 }
 
+function testStorageClimateSplit() {
+  console.log('Speicher, Klima, Optimierer, Zeilentext');
+  const neu6 = catalog.computeOffer({ brand: 'sigenergy', moduleCount: 11, speicher: 6, dach: 'Ziegel' });
+  const alt6 = catalog.computeOffer({ brand: 'sigenergy_alt', moduleCount: 11, speicher: 6, dach: 'Ziegel' });
+  const neu10 = catalog.computeOffer({ brand: 'sigenergy', moduleCount: 11, speicher: 10, dach: 'Ziegel' });
+  const alt10 = catalog.computeOffer({ brand: 'sigenergy_alt', moduleCount: 11, speicher: 10, dach: 'Ziegel' });
+  assert(neu6.preis.basePrice === 12500, 'Neu 5,01 / 6.0 = 12.500');
+  assert(alt6.preis.basePrice === 13200, 'Alt 5,01 / 6.0 = 13.200');
+  assert(neu10.preis.basePrice === 13500, 'Neu 5,01 / 10.0 = 13.500');
+  assert(alt10.preis.basePrice === 14700, 'Alt 5,01 / 10.0 = 14.700');
+  assert(neu10.config.speicher === 9.04, '10.0 weist 9,04 kWh aus');
+  assert(neu10.config.speicherLabel.includes('9,04'), 'Label enthält 9,04');
+  assert(neu10.statCards.speicher === '9,04', 'Kennzahl 9,04');
+  assert(neu6.config.speicher === 6.02, '6.0 weist 6,02 kWh aus');
+  assert(alt10.config.speicher === 9.04, 'Alt weist ebenfalls 9,04 kWh aus');
+
+  const stacked = catalog.computeOffer({
+    brand: 'sigenergy',
+    moduleCount: 11,
+    speicher: 6,
+    speicherZusatz: [{ kwh: 10, price: 3600, label: '+10.0' }],
+    dach: 'Ziegel',
+  });
+  const stackedAlt = catalog.computeOffer({
+    brand: 'sigenergy_alt',
+    moduleCount: 11,
+    speicher: 6,
+    speicherZusatz: [{ kwh: 10, price: 3600, label: '+10.0' }],
+    dach: 'Ziegel',
+  });
+  assert(Math.abs(stacked.config.speicher - 15.06) < 0.001, '6,02 + 9,04 = 15,06');
+  assert(stacked.config.speicherLabel.includes('15,06'), 'Label 15,06');
+  assert(stacked.preis.basePrice === 12500, 'Basispreis bleibt das 6.0-Paket');
+  assert(stacked.preis.brutto === 16100, 'Zusatzblock 3.600 kommt dazu');
+  assert(Math.abs(stackedAlt.config.speicher - 15.06) < 0.001, 'Alt-Stapel ebenfalls 15,06');
+  assert(stackedAlt.preis.basePrice === 13200, 'Alt-Basis bleibt 13.200');
+
+  const ext = catalog.STORAGE_EXTENSIONS.sigenergy;
+  const extAlt = catalog.STORAGE_EXTENSIONS.sigenergy_alt;
+  assert(ext[0].price === 2400 && ext[1].price === 3600, 'Neu-Zusatz 2.400 und 3.600');
+  assert(extAlt[0].price === 2400 && extAlt[1].price === 3600, 'Alt-Zusatz dieselben Preise');
+  assert(catalog.brandOptionPrice('sigenergy', 'notstrom') === 1200, 'Gateway Neu 1.200');
+  assert(catalog.brandOptionPrice('sigenergy_alt', 'notstrom') === 1200, 'Gateway Alt 1.200');
+  assert(catalog.brandOptionPrice('sigenergy', 'wallbox') === 1500, 'Wallbox Neu 1.500');
+  assert(catalog.brandOptionPrice('sigenergy_alt', 'wallbox') === 1500, 'Wallbox Alt 1.500');
+  assert(!catalog.listKwpTiers('sigenergy_alt').includes(9.1), 'Alt ohne 9,10');
+  assert(!catalog.listKwpTiers('sigenergy_alt').includes(11.83), 'Alt ohne 11,83');
+  assert(!catalog.listKwpTiers('sigenergy').includes(8.19), 'Neu ohne 8,19');
+  assert(!catalog.listStorageTiers('sigenergy', 5.01).some((t) => Math.abs(t - 12) < 0.05), 'Neu ohne 12-kWh-Spalte');
+  assert(!catalog.listStorageTiers('sigenergy_alt', 5.01).some((t) => Math.abs(t - 12) < 0.05), 'Alt ohne 12-kWh-Spalte');
+
+  const froniusSizes = [
+    [11, 14400],
+    [13, 15600],
+    [16, 16320],
+    [18, 17000],
+    [22, 18660],
+    [40, 23680],
+  ];
+  froniusSizes.forEach(([modules, price]) => {
+    const offer = catalog.computeOffer({ brand: 'fronius', moduleCount: modules, speicher: 6.5, dach: 'Ziegel' });
+    assert(offer.preis.basePrice === price, `Fronius ${modules} Module / 6,5 kWh = ${price}`);
+    assert(offer.config.speicherLabel.includes('6,5'), `Fronius ${modules} Module zeigt 6,5`);
+  });
+  assert(catalog.FRONIUS_TOWER_KWH[2] === 6.5, 'zwei Reserva-Module sind 6,5 kWh');
+
+  const opt = catalog.computeOffer({
+    brand: 'sigenergy',
+    moduleCount: 10,
+    speicher: 6,
+    dach: 'Ziegel',
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 4, price: null }],
+  });
+  const pv = opt.quoteLines.filter((l) => l.section === 'Photovoltaikanlage');
+  const modIdx = pv.findIndex((l) => l.role === 'module');
+  const optIdx = pv.findIndex((l) => l.role === 'optimierer');
+  const optLine = pv[optIdx];
+  assert(optIdx === modIdx + 1, 'Optimierer steht direkt nach dem Modul');
+  assert(optLine && optLine.qty === '4 Stück', 'Menge 4 Stück');
+  const optPrice = (opt.preis.inkludiert || []).find((i) => i.key === 'optimierer');
+  assert(optPrice && optPrice.price === 200, '4 × 50 €');
+  const manualOpt = catalog.computeOffer({
+    brand: 'sigenergy',
+    moduleCount: 10,
+    speicher: 6,
+    dach: 'Ziegel',
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 4, price: 300, priceManual: true }],
+  });
+  const manualPrice = (manualOpt.preis.inkludiert || []).find((i) => i.key === 'optimierer');
+  assert(manualPrice && manualPrice.price === 300, 'manueller Optimiererpreis bleibt');
+
+  const named = catalog.computeOffer({
+    brand: 'sigenergy',
+    moduleCount: 11,
+    speicher: 6,
+    dach: 'Ziegel',
+    lineText: {
+      'pv:module': { name: 'Sondermodul', desc: 'Eigene Beschreibung' },
+      'svc:installation': { name: 'Montage vor Ort', desc: 'Geänderte Leistung' },
+    },
+  });
+  const modLine = named.quoteLines.find((l) => l.id === 'pv:module');
+  const svcLine = named.quoteLines.find((l) => l.id === 'svc:installation');
+  assert(modLine && modLine.name === 'Sondermodul' && modLine.desc === 'Eigene Beschreibung', 'Zeilentext am Modul');
+  assert(svcLine && svcLine.name === 'Montage vor Ort', 'Zeilentext an der Leistung');
+  const sectionItem = named.sections.flatMap((s) => s.items || []).find((i) => i.id === 'pv:module');
+  assert(sectionItem && sectionItem.name === 'Sondermodul', 'Abschnitt nutzt den geänderten Titel');
+  const services = buildComponentCards(named).filter((c) => c.leistungKey);
+  const leistung = activeLeistungen(services).find((i) => i.key === 'installation');
+  assert(leistung && leistung.title === 'Montage vor Ort', 'Leistungsseite nutzt den geänderten Titel');
+  assert(leistung && leistung.body === 'Geänderte Leistung', 'Leistungsseite nutzt die geänderte Beschreibung');
+
+  const restored = catalog.computeOffer({
+    brand: 'sigenergy',
+    moduleCount: 11,
+    speicher: 6,
+    dach: 'Ziegel',
+    lineText: { 'pv:module': { name: '   ', desc: '' } },
+  });
+  const restoredMod = restored.quoteLines.find((l) => l.id === 'pv:module');
+  assert(restoredMod && restoredMod.name === 'DAS-DH108ND-455', 'leeres Feld holt den Katalogtext zurück');
+
+  const sheetsNeu = selectDatasheetsForOffer(neu6, { includeMissing: true, baseUrl: 'https://pvl.lifeco.at' });
+  const sheetsAlt = selectDatasheetsForOffer(alt6, { includeMissing: true, baseUrl: 'https://pvl.lifeco.at' });
+  assert(sheetsNeu.every((s) => !String(s.url).includes('/open/')), 'Neu-Datenblatt ist ein direkter Download');
+  assert(sheetsAlt.every((s) => !String(s.url).includes('/open/')), 'Alt-Datenblatt ist ein direkter Download');
+  assert(sheetsNeu.some((s) => s.slug === 'sigen-hybrid-tp2.pdf'), 'Neu nutzt das TP2-Blatt');
+  assert(!sheetsNeu.some((s) => s.slug === 'sigen-hybrid-wechselrichter.pdf'), 'Neu ohne TP1-Blatt');
+  assert(sheetsAlt.some((s) => s.slug === 'sigen-hybrid-wechselrichter.pdf'), 'Alt nutzt das TP1-Blatt');
+
+  const tigo = guessImageForItem('Optimierer (1 pro Modul)', 'sigenergy');
+  assert(tigo && tigo.endsWith('tigo-optimierer.png'), 'Optimierer zeigt das Tigo-Foto');
+  assert(tigo && !/modul-das|pv-module/.test(tigo), 'Optimierer ist kein PV-Modul');
+  const fr = catalog.computeOffer({ brand: 'fronius', moduleCount: 11, speicher: 6.5, dach: 'Ziegel' });
+  const reserva = buildComponentCards(fr).find((c) => c.role === 'storage');
+  assert(reserva && reserva.image && reserva.image.endsWith('fronius-reserva.png'), 'Reserva-Foto am Speicher');
+  assert(reserva && !/sigen/.test(reserva.image), 'kein Sigenergy-Batteriefoto');
+
+  const two = catalog.priceKlimaCombination([{ kw: 2.5 }, { kw: 2.5 }], [{ kw: 2.5 }, { kw: 2.5 }]);
+  assert(two.complete && two.packagePrice === 4800, 'zwei Single-Split 2,5 = 4.800');
+  const gap = catalog.priceKlimaCombination([{ kw: 4.1 }], [{ kw: 2.5 }]);
+  assert(!gap.complete && gap.packagePrice == null, 'unvollständige Kombination ohne Preis');
+  const emptyKlima = catalog.computeOffer({
+    includePv: false,
+    klima: { enabled: true, outdoor: [{ kw: 4.1 }], indoor: [{ kw: 2.5 }] },
+  });
+  assert(emptyKlima.klima.priceSuggested == null, 'Feld bleibt leer');
+  assert(emptyKlima.preis.klimaSumme === 0, 'kein erfundener Klimapreis');
+  const manualKlima = catalog.computeOffer({
+    includePv: false,
+    klima: {
+      enabled: true,
+      outdoor: [{ kw: 2.5 }],
+      indoor: [{ kw: 2.5 }],
+      extraPipingMeters: 5,
+      condensatePump: true,
+      total: 3000,
+      priceManual: true,
+    },
+  });
+  assert(manualKlima.preis.brutto === 3000, 'manueller Klimapreis ist der Angebotspreis');
+  assert(manualKlima.klima.priceSource === 'manual', 'Preisquelle manuell');
+}
+
 async function main() {
   await testTruncatedDraft();
   await testClarificationStillDrafts();
   testInverterRemoval();
   testOptimizerLabel();
   testPdfPages();
+  testStorageClimateSplit();
   console.log(`\n${passed} ok, ${failed} failed`);
   if (failed) process.exit(1);
 }

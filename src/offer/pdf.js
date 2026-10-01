@@ -866,9 +866,22 @@ const LEISTUNGEN_ITEMS = [
 
 function activeLeistungen(serviceCards) {
   const cards = Array.isArray(serviceCards) ? serviceCards : [];
-  const keys = new Set(cards.map((c) => c && c.leistungKey).filter(Boolean));
-  if (!keys.size) return [];
-  return LEISTUNGEN_ITEMS.filter((item) => keys.has(item.key));
+  const byKey = new Map();
+  for (const card of cards) {
+    if (card && card.leistungKey && !byKey.has(card.leistungKey)) byKey.set(card.leistungKey, card);
+  }
+  if (!byKey.size) return [];
+  return LEISTUNGEN_ITEMS.filter((item) => byKey.has(item.key)).map((item) => {
+    const card = byKey.get(item.key);
+    const customTitle = card && card.catalogName && card.name && card.name !== card.catalogName;
+    const customBody = card && String(card.desc || '').trim()
+      && String(card.desc || '') !== String(card.catalogDesc || '');
+    return {
+      ...item,
+      title: customTitle ? card.name : item.title,
+      body: customBody ? card.desc : item.body,
+    };
+  });
 }
 
 function drawLeistungenBlock(doc, y, serviceCards) {

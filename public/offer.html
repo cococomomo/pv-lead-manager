@@ -68,6 +68,9 @@
   .optrow .opt-price-wrap { display: flex; align-items: center; gap: 0.2rem; }
   .optrow .opt-price { padding: 0.32rem 0.35rem; font-size: 0.8rem; text-align: right; }
   .optrow .opt-price-wrap .eur { color: var(--muted); font-size: 0.78rem; }
+  .optrow .opt-name-wrap { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+  .optrow .opt-name-wrap .opt-name { flex: 1; min-width: 0; }
+  .optrow .opt-qty { width: 4.2rem; padding: 0.32rem 0.35rem; font-size: 0.8rem; text-align: right; flex-shrink: 0; }
   .optrow .opt-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; padding-top: 0.35rem; }
   .optrow .opt-mode[data-mode="off"] { color: var(--muted); }
   .optrow .opt-hint {
@@ -107,7 +110,11 @@
   .quote-lines { margin-top: 0.7rem; max-height: 320px; overflow: auto; }
   .quote-line { display: flex; justify-content: space-between; gap: 0.45rem; align-items: center; padding: 0.28rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
   .quote-line.off .quote-name { opacity: 0.55; text-decoration: line-through; }
+  .quote-line .quote-actions { display: flex; gap: 0.25rem; align-items: center; flex-shrink: 0; }
   .quote-line button { font-size: 0.72rem; padding: 0.15rem 0.4rem; }
+  .quote-line button.quote-edit { min-width: 1.8rem; font-size: 0.85rem; line-height: 1; }
+  .line-edit-modal .variant-modal-card { max-width: 520px; }
+  .klima-unit { display: grid; grid-template-columns: 1fr 28px; gap: 0.35rem; align-items: center; }
   .quote-note { margin-top: 0.45rem; font-size: 0.78rem; color: var(--text); }
   .variant-modal {
     position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.45);
@@ -463,7 +470,7 @@
   <div>
     <div class="panel">
       <h2><span class="num">1</span> KI-Sprachbefehl</h2>
-      <textarea id="command" rows="5" placeholder="z. B.: PV 12 Module Sigenergy 6+9 kWh Speicher, Ziegel – plus optional Multi-Klima 4,1 kW mit 2× 2,5 kW Innen. Oder: 2×9 kWh Speicher / 18 kWh."></textarea>
+      <textarea id="command" rows="5" placeholder="z. B.: PV 12 Module Sigenergy 6.0+10.0 Speicher, Ziegel – plus optional Multi-Klima 4,1 kW mit 2× 2,5 kW Innen. Oder: BAT 6.0 und 10.0."></textarea>
       <div class="btn-row">
         <button class="btn" id="btn-parse">Mit KI analysieren</button>
         <button class="btn mic" id="btn-mic" title="Diktieren (Spracheingabe)">🎤 Diktieren</button>
@@ -554,7 +561,7 @@
         <div>
           <label>Speicher (kWh)</label>
           <select id="f-speicher"></select>
-          <div class="hint" id="speicher-comp-hint" style="margin-top:0.25rem">Sigenergy: 6-/9-kWh-Module · Fronius Reserva: 3,2-kWh-Module (max. 3 Tower).</div>
+          <div class="hint" id="speicher-comp-hint" style="margin-top:0.25rem">Sigenergy: BAT 6.0 (6,02 kWh) und 10.0 (9,04 kWh) · Fronius Reserva: 6,5 kWh aus zwei Modulen.</div>
         </div>
         <div>
           <label>Module (Anzahl)</label>
@@ -583,7 +590,7 @@
         <button class="btn secondary" id="btn-add-dach" type="button">+ Dachfläche</button>
       </div>
 
-      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy: +6,0 kWh / 2400 € und +10,0 kWh / 3600 € · Fronius: +3,2 kWh)</span></label>
+      <label style="margin-top:0.7rem">Speicher erweitern <span style="font-weight:400;color:var(--muted)">(Sigenergy Neu und Alt: 6.0 / 2.400 € und 10.0 / 3.600 € · Fronius: +3,2 kWh)</span></label>
       <div class="repeater" id="speicher-list"></div>
       <div class="btn-row" style="margin-top:0.4rem; align-items:center">
         <select id="se-size" style="max-width:300px; flex:1"></select>
@@ -621,8 +628,19 @@
         </span>
       </div>
       <div id="klima-config-block" style="display:none">
-        <label>Paket wählen</label>
-        <div class="klima-pkg-list" id="klima-pkg-list"></div>
+        <label>Klima-Gesamtpreis (€) <span style="font-weight:400;color:var(--muted)">(vorausgefüllt, immer überschreibbar, auch bei reinem Klima)</span></label>
+        <input id="f-klima-total" type="number" min="0" step="1" placeholder="leer, wenn kein Paket passt" />
+        <div class="hint" id="klima-price-hint">Bekannte Pakete füllen den Preis. Sonst bleibt das Feld leer.</div>
+        <label style="margin-top:0.7rem">Außengeräte</label>
+        <div class="repeater" id="klima-outdoor-list"></div>
+        <div class="btn-row" style="margin-top:0.35rem">
+          <button class="btn secondary" id="btn-add-klima-outdoor" type="button">+ Außengerät</button>
+        </div>
+        <label style="margin-top:0.7rem">Innengeräte</label>
+        <div class="repeater" id="klima-indoor-list"></div>
+        <div class="btn-row" style="margin-top:0.35rem">
+          <button class="btn secondary" id="btn-add-klima-indoor" type="button">+ Innengerät</button>
+        </div>
         <div class="grid2" style="margin-top:0.55rem">
           <div>
             <label>Zusatz-Kältemittelleitung (m)</label>
@@ -635,7 +653,7 @@
           </div>
         </div>
       </div>
-      <div class="hint">Single 2,5 / 3,5 kW oder Multi 4,1 / 6,3 kW. Kombi mit PV möglich (Fix oder optional).</div>
+      <div class="hint">Außen 2,5 / 3,5 / 4,1 / 6,3 kW, Innen 2,5 / 3,5 kW. Treffen die Geräte ein bekanntes Paket, wird dessen Preis genommen. Mehrere Anlagen addieren sich. Leitung und Pumpe bleiben Aufschläge.</div>
     </div>
 
     <div class="panel" id="panel-price-override">
@@ -723,6 +741,21 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div id="line-edit-modal" class="variant-modal line-edit-modal" aria-hidden="true" hidden>
+  <div class="variant-modal-card" role="dialog" aria-labelledby="line-edit-title">
+    <h3 id="line-edit-title">Zeile bearbeiten</h3>
+    <p class="hint" style="margin:0 0 0.7rem">Gilt nur für dieses Angebot. Ein leeres Feld holt den Katalogtext zurück.</p>
+    <label for="line-edit-name">Titel</label>
+    <input id="line-edit-name" type="text" />
+    <label for="line-edit-desc">Beschreibung</label>
+    <textarea id="line-edit-desc" rows="3"></textarea>
+    <div class="variant-modal-actions" style="margin-top:0.8rem">
+      <button type="button" class="btn" id="line-edit-save">Übernehmen</button>
+      <button type="button" class="btn secondary" id="line-edit-cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
 
 <!-- Variante hinzufügen -->
 <div id="variant-modal" class="variant-modal" aria-hidden="true" hidden>
@@ -907,7 +940,6 @@ async function loadCatalog() {
   applyDachSegments(null);
   refreshStorageExtSelect();
   refreshInverterSelect(null);
-  renderKlimaPackages();
   if (!$('f-modules').value) $('f-modules').value = '22';
   syncModuleDerivedUi();
   syncPvKlimaVisibility();
@@ -1042,12 +1074,22 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   sel.addEventListener('change', () => { sel.setAttribute('data-mode', sel.value); compute(); });
 
   let nameEl;
+  let qtyEl = null;
   if (manual) {
     nameEl = document.createElement('input');
     nameEl.className = 'opt-name'; nameEl.placeholder = 'Bezeichnung'; nameEl.value = label;
   } else {
     nameEl = document.createElement('span');
     nameEl.className = 'opt-name'; nameEl.textContent = label; nameEl.title = label;
+  }
+  if (key === 'optimierer') {
+    qtyEl = document.createElement('input');
+    qtyEl.className = 'opt-qty';
+    qtyEl.type = 'number';
+    qtyEl.min = '0';
+    qtyEl.step = '1';
+    qtyEl.title = 'Stück';
+    qtyEl.placeholder = 'Stk';
   }
 
   const pw = document.createElement('div'); pw.className = 'opt-price-wrap';
@@ -1069,7 +1111,17 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   hintEl.value = hint || '';
   hintEl.addEventListener('input', compute);
 
-  row.appendChild(sel); row.appendChild(nameEl); row.appendChild(pw); row.appendChild(del);
+  row.appendChild(sel);
+  if (qtyEl) {
+    const wrap = document.createElement('div');
+    wrap.className = 'opt-name-wrap';
+    wrap.appendChild(nameEl);
+    wrap.appendChild(qtyEl);
+    row.appendChild(wrap);
+  } else {
+    row.appendChild(nameEl);
+  }
+  row.appendChild(pw); row.appendChild(del);
   row.appendChild(hintEl);
   return row;
 }
@@ -1094,8 +1146,15 @@ function readOptionRows() {
     const label = (nameEl.value !== undefined ? nameEl.value : nameEl.textContent).trim();
     const price = Number(row.querySelector('.opt-price').value) || 0;
     const hint = (row.querySelector('.opt-hint') && row.querySelector('.opt-hint').value.trim()) || '';
-    if (!label && !price) return;
+    if (!label && !price && key !== 'optimierer') return;
     const item = { key, label, price, mode, hint: hint || null };
+    if (key === 'optimierer') {
+      const qtyEl = row.querySelector('.opt-qty');
+      const qty = qtyEl ? Math.max(0, Math.round(Number(qtyEl.value) || 0)) : null;
+      item.qty = qty;
+      item.priceManual = row.dataset.priceManual === '1';
+      if (!item.priceManual) item.price = null;
+    }
     if (key === 'speicher_upgrade') {
       item.upgradeFrom = Number(row.dataset.upgradeFrom) || null;
       item.upgradeTo = Number(row.dataset.upgradeTo) || null;
@@ -1111,6 +1170,8 @@ function applyOptionsToRows(optionen) {
     if (row.classList.contains('manual')) { row.remove(); return; }
     const sel = row.querySelector('.opt-mode');
     sel.value = 'off'; sel.setAttribute('data-mode', 'off');
+    row.dataset.qtyManual = '0';
+    row.dataset.priceManual = '0';
     const cat = (CATALOG.options || []).find((o) => o.key === row.dataset.key);
     if (cat) row.querySelector('.opt-price').value = cat.price;
     const hintEl = row.querySelector('.opt-hint');
@@ -1155,8 +1216,18 @@ function applyOptionsToRows(optionen) {
         if (o.key === 'optimierer') {
           const mc = Number($('f-modules').value) || 0;
           const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
-          const price = (Number(o.price) > 0) ? Number(o.price) : (mc > 0 ? unit * mc : unit);
-          row.querySelector('.opt-price').value = price;
+          const qty = (o.qty != null && o.qty !== '' && Number.isFinite(Number(o.qty)))
+            ? Math.max(0, Math.round(Number(o.qty)))
+            : mc;
+          const auto = unit * qty;
+          const given = Number(o.price);
+          const manual = o.priceManual === true || o.priceManual === 1 || o.priceManual === '1'
+            || (o.price != null && o.price !== '' && Number.isFinite(given) && given !== auto);
+          row.dataset.qtyManual = (o.qty != null && o.qty !== '' && qty !== mc) ? '1' : '0';
+          row.dataset.priceManual = manual ? '1' : '0';
+          const qtyEl = row.querySelector('.opt-qty');
+          if (qtyEl) qtyEl.value = String(qty);
+          row.querySelector('.opt-price').value = manual ? given : auto;
         } else if (o.price != null) {
           row.querySelector('.opt-price').value = o.price;
         }
@@ -1199,7 +1270,7 @@ function updateBrandDependentOptionDefaults() {
       const exts = ((CATALOG && CATALOG.storageExtensions) || {})[brand] || [];
       const se = exts[0] || (brand === 'fronius'
         ? { label: '+3,2 kWh Speicherelement – Fronius Reserva', price: 1320 }
-        : { label: '+6,0 kWh Speicherblock – SigenStor BAT', price: 2400 });
+        : { label: '+6.0 (6,02 kWh) Speicherblock – SigenStor BAT', price: 2400 });
       const nameEl = rowSe.querySelector('.opt-name');
       if (nameEl && nameEl.textContent !== undefined) {
         nameEl.textContent = se.label;
@@ -1289,7 +1360,7 @@ function refreshStorageUpgradeSelect() {
   if ($('su-hint')) {
     $('su-hint').textContent = brand === 'fronius'
       ? 'Upgrade = Preisdifferenz der Fronius-Paketstufen (je +3,2 kWh = 1.320 €). Weitere Reserva-Elemente über Speicherblöcke (max. 3 Tower à 5 Module).'
-      : 'Upgrade = Preisdifferenz der Sigenergy-Paketpreise (kleine Anlagen z. B. 6->9 = 1.500 €, größere Pakete 6->9 = 600 €). Zusätzliche BAT-Blöcke weiterhin stapelbar darunter.';
+      : 'Upgrade = Preisdifferenz der Sigenergy-Paketpreise (6.0 mit 6,02 kWh, 10.0 mit 9,04 kWh). Zusätzliche BAT-Blöcke bleiben stapelbar.';
   }
 }
 
@@ -1361,10 +1432,21 @@ function addStorageUpgradeOption() {
   toast('Speicher-Upgrade als optionale Komponente hinzugefügt.', 'ok');
 }
 
+function isSigenergyClient(brand) {
+  return brand === 'sigenergy' || brand === 'sigenergy_alt';
+}
+
 function brandHasStorageClient(brand) {
   const b = (CATALOG && CATALOG.brands || []).find((x) => x.id === brand);
   if (b && typeof b.hasStorage === 'boolean') return b.hasStorage;
-  return brand === 'sigenergy' || brand === 'fronius';
+  return brand === 'sigenergy' || brand === 'sigenergy_alt' || brand === 'fronius';
+}
+
+function sigenergyUsableClient(kwh) {
+  const k = Number(kwh);
+  if (Math.abs(k - 6) < 0.2 || Math.abs(k - 6.02) < 0.03) return 6.02;
+  if (Math.abs(k - 10) < 0.2 || Math.abs(k - 9) < 0.25 || Math.abs(k - 9.04) < 0.03) return 9.04;
+  return k;
 }
 
 function currentBrandId() {
@@ -1438,14 +1520,21 @@ function refreshSpeicherSelect() {
   const cur = Number($('f-speicher').value);
   const labelFor = (t) => {
     if (t === 0 || !Number.isFinite(t)) return 'Kein Speicher';
-    const s = String(t).replace('.', ',');
-    if (brand === 'sigenergy' && Math.abs(t - 12) < 0.05) return `${s} kWh (2×6)`;
-    if (brand === 'fronius') {
-      const map = [[6.4, 2], [9.5, 3], [12.6, 4], [15.8, 5]];
-      const hit = map.find(([k]) => Math.abs(k - t) < 0.05);
-      if (hit) return `${s} kWh (${hit[1]}×3,2)`;
+    if (isSigenergyClient(brand)) {
+      if (Math.abs(t - 6) < 0.2 || Math.abs(t - 6.02) < 0.03) return '6.0 · 6,02 kWh';
+      if (Math.abs(t - 10) < 0.2 || Math.abs(t - 9) < 0.25 || Math.abs(t - 9.04) < 0.03) return '10.0 · 9,04 kWh';
     }
-    return `${s} kWh`;
+    if (brand === 'fronius') {
+      const map = [
+        [6.5, '6,5 kWh (2 Module)'],
+        [9.5, '9,5 kWh (3×3,2)'],
+        [12.6, '12,6 kWh (4×3,2)'],
+        [15.8, '15,8 kWh (5×3,2)'],
+      ];
+      const hit = map.find(([k]) => Math.abs(k - t) < 0.05);
+      if (hit) return hit[1];
+    }
+    return `${String(t).replace('.', ',')} kWh`;
   };
   $('f-speicher').innerHTML = tiers.map((t) => `<option value="${t}">${labelFor(t)}</option>`).join('');
   if (tiers.includes(cur)) $('f-speicher').value = String(cur);
@@ -1468,7 +1557,7 @@ function updateSpeicherCompositionHint() {
   const fmt = (n) => String(n).replace('.', ',');
 
   if (brand === 'fronius') {
-    const towerMap = [[6.4, 2], [9.5, 3], [12.6, 4], [15.8, 5]];
+    const towerMap = [[6.5, 2], [6.4, 2], [9.5, 3], [12.6, 4], [15.8, 5]];
     const hit = towerMap.find(([k]) => Math.abs(k - base) < 0.05);
     let mods = hit ? hit[1] : Math.round(base / 3.2);
     blocks.forEach((b) => {
@@ -1477,9 +1566,10 @@ function updateSpeicherCompositionHint() {
       else mods += Math.round(k / 3.2);
     });
     const towers = Math.max(1, Math.ceil(mods / 5));
+    const shown = mods === 2 ? '6,5' : fmt(Math.round((mods === 2 ? 6.5 : mods * 3.2) * 10) / 10);
     el.textContent = mods > 0
-      ? `Fronius Reserva: ${mods}×3,2 kWh (= ${fmt(total)} kWh)${towers > 1 ? ` in ${towers} Tower` : ''} · max. 5 Module/Tower, max. 3 Tower. Zusatz je +3,2 = 1.320 €.`
-      : 'Fronius Reserva: Module à 3,2 kWh (Tower 6,4 / 9,5 / 12,6 / 15,8). Bis zu 3 Tower kombinierbar.';
+      ? `Fronius Reserva: ${mods === 2 ? '2 Module (6,5 kWh)' : `${mods}×3,2 kWh (= ${shown} kWh)`}${towers > 1 ? ` in ${towers} Tower` : ''} · max. 5 Module/Tower, max. 3 Tower. Zusatz je +3,2 = 1.320 €.`
+      : 'Fronius Reserva: zwei Module sind 6,5 kWh, danach je +3,2 kWh. Bis zu 3 Tower kombinierbar.';
     return;
   }
 
@@ -1488,14 +1578,19 @@ function updateSpeicherCompositionHint() {
     return;
   }
 
-  if (brand !== 'sigenergy') {
+  if (!isSigenergyClient(brand)) {
     el.textContent = extra > 0
       ? `Gesamt ${fmt(total)} kWh (Basis ${fmt(base)} + ${fmt(extra)} Zusatz).`
       : '';
     return;
   }
   const counts = {};
-  const add = (k, n) => { const key = String(k); counts[key] = (counts[key] || 0) + n; };
+  const add = (k, n) => {
+    const tier = Math.abs(k - 9) < 0.25 || Math.abs(k - 9.04) < 0.03 || Math.abs(k - 10) < 0.2 ? 10
+      : (Math.abs(k - 6) < 0.2 || Math.abs(k - 6.02) < 0.03 ? 6 : k);
+    const key = String(tier);
+    counts[key] = (counts[key] || 0) + n;
+  };
   if (Math.abs(base - 12) < 0.05) add(6, 2);
   else if (base > 0) add(base, 1);
   blocks.forEach((b) => {
@@ -1503,17 +1598,15 @@ function updateSpeicherCompositionHint() {
     if (Math.abs(k - 12) < 0.05) add(6, 2);
     else if (k > 0) add(k, 1);
   });
-  const parts = Object.keys(counts).map(Number).sort((a, b) => b - a).map((k) => {
+  const parts = Object.keys(counts).map(Number).sort((a, b) => b - a);
+  const usable = Math.round(parts.reduce((s, k) => s + sigenergyUsableClient(k) * counts[String(k)], 0) * 100) / 100;
+  const labels = parts.map((k) => {
     const q = counts[String(k)];
-    const ks = fmt(k);
-    return q > 1 ? `${q}×${ks}` : ks;
+    const name = Math.abs(k - 6) < 0.05 ? '6.0' : (Math.abs(k - 10) < 0.05 ? '10.0' : fmt(k));
+    return q > 1 ? `${q}×${name}` : name;
   });
-  if (!parts.length) { el.textContent = 'Sigenergy: Module nur 6,0 oder 10,0 kWh – kombinierbar über Zusatzblöcke.'; return; }
-  if (parts.length === 1 && !String(parts[0]).includes('×') && extra <= 0) {
-    el.textContent = `Sigenergy BAT ${parts[0]} kWh (physisches Modul). Weitere 6,0-/10,0-Blöcke unten stapelbar.`;
-  } else {
-    el.textContent = `Gesamt ${fmt(total)} kWh aus BAT-Modulen: ${parts.join(' + ')} kWh.`;
-  }
+  if (!labels.length) { el.textContent = 'Sigenergy: BAT 6.0 (6,02 kWh) oder 10.0 (9,04 kWh), kombinierbar über Zusatzblöcke.'; return; }
+  el.textContent = `Sigenergy BAT ${labels.join('+')} (${fmt(usable)} kWh nutzbar).`;
 }
 
 /** Wählt im Select die Option mit dem numerisch nächstgelegenen Wert. */
@@ -1610,6 +1703,20 @@ function syncModuleDerivedUi() {
     }
   }
   refreshSpeicherSelect();
+  syncOptimiererQty();
+}
+
+function syncOptimiererQty() {
+  const row = document.querySelector('#opts .optrow[data-key="optimierer"]');
+  if (!row || row.dataset.qtyManual === '1') return;
+  const qtyEl = row.querySelector('.opt-qty');
+  if (!qtyEl) return;
+  const mods = Math.max(0, Math.round(Number($('f-modules').value) || 0));
+  qtyEl.value = String(mods);
+  if (row.dataset.priceManual === '1') return;
+  const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
+  const priceEl = row.querySelector('.opt-price');
+  if (priceEl) priceEl.value = String(unit * mods);
 }
 
 function syncPvKlimaVisibility() {
@@ -1640,67 +1747,155 @@ function syncVollmachtUi() {
   }
 }
 
-function selectedKlimaPackageId() {
-  const active = document.querySelector('#klima-pkg-list .klima-pkg.active');
-  return active ? active.dataset.id : null;
+const KLIMA_OUTDOOR_KW = [2.5, 3.5, 4.1, 6.3];
+const KLIMA_INDOOR_KW = [2.5, 3.5];
+let klimaTotalFromServer = false;
+
+function klimaKwOptions(list, selected) {
+  const vals = list.slice();
+  const s = Number(selected);
+  if (Number.isFinite(s) && s > 0 && !vals.some((v) => Math.abs(v - s) < 0.05)) vals.push(s);
+  return vals.map((v) => {
+    const on = Number.isFinite(s) && Math.abs(v - s) < 0.05;
+    return `<option value="${v}"${on ? ' selected' : ''}>${String(v).replace('.', ',')} kW</option>`;
+  }).join('');
 }
 
-function renderKlimaPackages(selectedId) {
-  const box = $('klima-pkg-list');
-  if (!box || !CATALOG) return;
-  const pkgs = CATALOG.klimaPackages || CATALOG.klimaCatalog || [];
-  const sel = selectedId || selectedKlimaPackageId() || (pkgs[0] && pkgs[0].id);
-  box.innerHTML = pkgs.map((p) => {
-    const indoor = (p.indoor || []).map((i) => `${i.qty}× ${String(i.kw).replace('.', ',')} kW`).join(' + ');
-    const active = p.id === sel ? ' active' : '';
-    return `<div class="klima-pkg${active}" data-id="${p.id}">
-      <input type="radio" name="klima-pkg" ${p.id === sel ? 'checked' : ''} />
-      <div>
-        <div class="pkg-title">${p.label}</div>
-        <div class="pkg-meta">Außen ${String(p.outdoorKw).replace('.', ',')} kW · Innen ${indoor}</div>
-      </div>
-      <div class="pkg-price">${Number(p.priceBrutto).toLocaleString('de-DE')} €</div>
-    </div>`;
-  }).join('');
-  box.querySelectorAll('.klima-pkg').forEach((el) => {
-    el.addEventListener('click', () => {
-      box.querySelectorAll('.klima-pkg').forEach((x) => x.classList.remove('active'));
-      el.classList.add('active');
-      const radio = el.querySelector('input');
-      if (radio) radio.checked = true;
-      compute();
-    });
+function createKlimaUnitRow(kind, kw) {
+  const row = document.createElement('div');
+  row.className = 'klima-unit';
+  const sel = document.createElement('select');
+  sel.className = 'klima-kw';
+  const opts = kind === 'indoor' ? KLIMA_INDOOR_KW : KLIMA_OUTDOOR_KW;
+  sel.innerHTML = klimaKwOptions(opts, kw || opts[0]);
+  sel.addEventListener('change', () => compute());
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'btn secondary';
+  del.textContent = '✕';
+  del.title = 'Gerät entfernen';
+  del.addEventListener('click', () => { row.remove(); compute(); });
+  row.appendChild(sel);
+  row.appendChild(del);
+  return row;
+}
+
+function readKlimaUnits(listId) {
+  const out = [];
+  document.querySelectorAll('#' + listId + ' .klima-unit').forEach((row) => {
+    const kw = Number(row.querySelector('.klima-kw').value);
+    if (kw > 0) out.push({ kw });
   });
+  return out;
+}
+
+function setKlimaUnits(listId, units, kind) {
+  const box = $(listId);
+  if (!box) return;
+  box.innerHTML = '';
+  (units || []).forEach((u) => {
+    const kw = typeof u === 'number' ? u : (u && (u.kw != null ? u.kw : u.power));
+    box.appendChild(createKlimaUnitRow(kind, kw));
+  });
+}
+
+function expandLegacyKlimaPackage(pkg, qty) {
+  const n = Math.max(1, Math.round(Number(qty) || 1));
+  const outdoor = [];
+  const indoor = [];
+  for (let i = 0; i < n; i += 1) {
+    outdoor.push({ kw: pkg.outdoorKw });
+    (pkg.indoor || []).forEach((inn) => {
+      const q = Math.max(1, Math.round(Number(inn.qty) || 1));
+      for (let j = 0; j < q; j += 1) indoor.push({ kw: inn.kw });
+    });
+  }
+  return { outdoor, indoor };
 }
 
 function readKlimaConfig() {
   if (!$('f-klima-enabled').checked) return [];
-  const packageId = selectedKlimaPackageId();
-  if (!packageId) return [];
+  const field = $('f-klima-total');
+  const raw = field ? String(field.value || '').trim() : '';
+  const manual = !!(field && field.dataset.manual === '1' && raw !== '');
+  const total = manual ? Number(raw) : null;
   return [{
     enabled: true,
-    packageId,
     mode: $('f-klima-mode').value === 'optional' ? 'optional' : 'fix',
-    qty: 1,
+    outdoor: readKlimaUnits('klima-outdoor-list'),
+    indoor: readKlimaUnits('klima-indoor-list'),
     extraPipingMeters: Math.max(0, Number($('f-klima-piping').value) || 0),
     condensatePump: !!$('f-klima-pump').checked,
+    total: manual && Number.isFinite(total) ? total : null,
+    priceManual: manual,
   }];
 }
 
 function applyKlimaConfig(klima) {
-  const list = Array.isArray(klima) ? klima : (klima && klima.packageId ? [klima] : []);
-  const first = list.find((k) => k && (k.packageId || k.id)) || null;
+  const list = Array.isArray(klima) ? klima : (klima ? [klima] : []);
+  const first = list.find((k) => k && (
+    k.enabled || k.packageId || k.id
+    || (Array.isArray(k.outdoor) && k.outdoor.length)
+    || (Array.isArray(k.indoor) && k.indoor.length)
+  )) || null;
+  const field = $('f-klima-total');
   if (!first) {
     $('f-klima-enabled').checked = false;
+    setKlimaUnits('klima-outdoor-list', [], 'outdoor');
+    setKlimaUnits('klima-indoor-list', [], 'indoor');
+    if (field) { field.value = ''; field.dataset.manual = '0'; }
     syncPvKlimaVisibility();
     return;
   }
-  $('f-klima-enabled').checked = true;
+  $('f-klima-enabled').checked = first.enabled !== false;
   $('f-klima-mode').value = first.mode === 'optional' ? 'optional' : 'fix';
   $('f-klima-piping').value = String(Math.max(0, Number(first.extraPipingMeters) || 0));
   $('f-klima-pump').checked = !!first.condensatePump;
-  renderKlimaPackages(first.packageId || first.id);
+  let outdoor = first.outdoor || first.outdoors || [];
+  let indoor = first.indoor || first.indoors || first.indoorUnits || [];
+  if (!outdoor.length && !indoor.length && (first.packageId || first.id) && CATALOG) {
+    const pkgs = CATALOG.klimaPackages || CATALOG.klimaCatalog || [];
+    const pkg = pkgs.find((p) => p.id === (first.packageId || first.id));
+    if (pkg) {
+      const exp = expandLegacyKlimaPackage(pkg, first.qty);
+      outdoor = exp.outdoor;
+      indoor = exp.indoor;
+    }
+  }
+  setKlimaUnits('klima-outdoor-list', outdoor, 'outdoor');
+  setKlimaUnits('klima-indoor-list', indoor, 'indoor');
+  if (field) {
+    const manual = first.priceManual === true || first.priceManual === 1 || first.priceManual === '1';
+    const raw = first.total != null ? first.total : first.totalPrice;
+    if (manual && raw != null && raw !== '' && Number.isFinite(Number(raw))) {
+      field.value = String(Math.round(Number(raw)));
+      field.dataset.manual = '1';
+    } else {
+      field.value = '';
+      field.dataset.manual = '0';
+    }
+  }
   syncPvKlimaVisibility();
+}
+
+function syncKlimaPriceField(offer) {
+  const field = $('f-klima-total');
+  const hint = $('klima-price-hint');
+  if (!field || !$('f-klima-enabled').checked) return;
+  if (field.dataset.manual === '1') {
+    if (hint) hint.textContent = 'Manueller Klima-Gesamtpreis. Feld leeren, damit bekannte Pakete den Preis wieder füllen.';
+    return;
+  }
+  const suggested = offer && offer.klima ? offer.klima.priceSuggested : null;
+  klimaTotalFromServer = true;
+  if (suggested == null || suggested === '') {
+    field.value = '';
+    if (hint) hint.textContent = 'Keine bekannte Paketkombination. Der Preis bleibt leer, bis er eingetragen wird.';
+  } else {
+    field.value = String(Math.round(Number(suggested)));
+    if (hint) hint.textContent = 'Bekanntes Paket inklusive Leitung und Pumpe. Der Betrag ist überschreibbar.';
+  }
+  klimaTotalFromServer = false;
 }
 
 function escHtml(s) {
@@ -2054,6 +2249,7 @@ function readForm() {
     offerNotes: ($('f-offer-notes').value || '').split('\n').map((s) => s.trim()).filter(Boolean),
     layoutPlanId: currentLayoutId != null ? Number(currentLayoutId) : null,
     disabledLines: disabledLines.slice(),
+    lineText: JSON.parse(JSON.stringify(lineText || {})),
     bruttoConfirm: bruttoConfirm
       ? { ids: (bruttoConfirm.ids || []).slice(), amount: Number(bruttoConfirm.amount) }
       : null,
@@ -2064,7 +2260,10 @@ function writeForm(cfg) {
   if (!cfg) return;
   const includePv = cfg.includePv !== false && !(cfg.includePv === false);
   // Wenn nur Klima: includePv false
-  const hasKlima = Array.isArray(cfg.klima) ? cfg.klima.some((k) => k && (k.packageId || k.enabled)) : !!(cfg.klima && cfg.klima.packageId);
+  const klimaEntry = (k) => k && (k.packageId || k.enabled || k.id
+    || (Array.isArray(k.outdoor) && k.outdoor.length)
+    || (Array.isArray(k.indoor) && k.indoor.length));
+  const hasKlima = Array.isArray(cfg.klima) ? cfg.klima.some(klimaEntry) : klimaEntry(cfg.klima);
   $('f-include-pv').checked = cfg.includePv == null ? (cfg.moduleCount > 0 || cfg.kwp || !hasKlima) : !!includePv;
   $('f-brand').value = cfg.brand || 'sigenergy';
   refreshStorageExtSelect();
@@ -2102,6 +2301,9 @@ function writeForm(cfg) {
   applyKlimaConfig(cfg.klima);
   $('f-offer-notes').value = Array.isArray(cfg.offerNotes) ? cfg.offerNotes.join('\n') : (cfg.offerNotes || '');
   disabledLines = Array.isArray(cfg.disabledLines) ? cfg.disabledLines.map(String) : [];
+  lineText = (cfg.lineText && typeof cfg.lineText === 'object' && !Array.isArray(cfg.lineText))
+    ? JSON.parse(JSON.stringify(cfg.lineText))
+    : {};
   bruttoConfirm = cfg.bruttoConfirm && typeof cfg.bruttoConfirm === 'object'
     ? { ids: (cfg.bruttoConfirm.ids || []).map(String), amount: Number(cfg.bruttoConfirm.amount) }
     : null;
@@ -2143,8 +2345,8 @@ function emptyVariantConfig() {
     includePv: true,
     brand: 'sigenergy',
     kwp: 10.01,
-    speicher: 9,
-    speicherGesamt: 9,
+    speicher: 10,
+    speicherGesamt: 10,
     speicherZusatz: [],
     dachSegmente: [{ dach: 'Ziegel', modules: 22 }],
     moduleType: 'das',
@@ -2157,6 +2359,7 @@ function emptyVariantConfig() {
     offerNotes: [],
     layoutPlanId: null,
     disabledLines: [],
+    lineText: {},
     bruttoConfirm: null,
   };
 }
@@ -2753,6 +2956,9 @@ let previewObjectUrl = null;
 let previewInFlight = false;
 let previewQueued = false;
 let disabledLines = [];
+let lineText = {};
+let lineEditId = null;
+let lastQuoteLines = [];
 let bruttoConfirm = null;
 let lastPackageBrutto = null;
 
@@ -2768,14 +2974,21 @@ function renderQuoteLines(offer) {
   const note = $('s-lines-note');
   if (!box) return;
   const lines = (offer && offer.quoteLines) || [];
+  lastQuoteLines = lines;
   box.innerHTML = lines.map((line) => {
     const off = line.active === false;
     const label = off ? 'Wiederherstellen' : 'Entfernen';
     return `<div class="quote-line${off ? ' off' : ''}" data-id="${escHtml(line.id)}">
       <span class="quote-name">${escHtml(line.name)} <span style="color:var(--muted)">· ${escHtml(line.qty || '')}</span></span>
-      <button type="button" class="btn secondary" data-line-id="${escHtml(line.id)}" data-on="${off ? '0' : '1'}">${label}</button>
+      <span class="quote-actions">
+        <button type="button" class="btn secondary quote-edit" data-edit-id="${escHtml(line.id)}" title="Titel und Beschreibung nur für dieses Angebot">✎</button>
+        <button type="button" class="btn secondary" data-line-id="${escHtml(line.id)}" data-on="${off ? '0' : '1'}">${label}</button>
+      </span>
     </div>`;
   }).join('');
+  box.querySelectorAll('button[data-edit-id]').forEach((btn) => {
+    btn.addEventListener('click', () => openLineEditor(btn.getAttribute('data-edit-id')));
+  });
   box.querySelectorAll('button[data-line-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-line-id');
@@ -2802,6 +3015,38 @@ function renderQuoteLines(offer) {
   }
 }
 
+function openLineEditor(id) {
+  const line = lastQuoteLines.find((l) => l.id === id);
+  if (!line) return;
+  lineEditId = id;
+  $('line-edit-name').value = line.name || '';
+  $('line-edit-desc').value = line.desc || '';
+  const m = $('line-edit-modal');
+  if (!m) return;
+  m.hidden = false;
+  m.removeAttribute('hidden');
+  m.setAttribute('aria-hidden', 'false');
+}
+
+function closeLineEditor() {
+  const m = $('line-edit-modal');
+  if (!m) return;
+  m.hidden = true;
+  m.setAttribute('hidden', '');
+  m.setAttribute('aria-hidden', 'true');
+  lineEditId = null;
+}
+
+function saveLineEditor() {
+  if (!lineEditId) return;
+  const name = $('line-edit-name').value.trim();
+  const desc = $('line-edit-desc').value.trim();
+  if (!name && !desc) delete lineText[lineEditId];
+  else lineText[lineEditId] = { name, desc };
+  closeLineEditor();
+  compute();
+}
+
 function invalidateBruttoConfirm() {
   if (!bruttoConfirm) return;
   const amount = $('f-brutto').value.trim() === '' ? null : Number($('f-brutto').value);
@@ -2824,7 +3069,8 @@ function compute() {
       const j = await res.json();
       const o = j.offer;
       const kind = (o.meta && o.meta.offerKind) || 'pv';
-      const klimaLbl = ((o.klima && o.klima.fix) || []).filter((k) => k.packageId).map((k) => k.label).join(', ');
+      const klimaLbl = ((o.klima && o.klima.fix) || []).map((k) => k.label).filter(Boolean).join(', ');
+      syncKlimaPriceField(o);
       if (kind === 'klima') {
         $('s-config').textContent = klimaLbl || 'Klimapaket';
         $('s-package').textContent = `Klima ${o.preis.klimaSumme ? o.preis.klimaSumme.toLocaleString('de-DE') + ' €' : ''}`;
@@ -3034,12 +3280,19 @@ async function parseCommand() {
     cfg.optionen = (cfg.optionen || []).map((o) => {
       if (o.key !== 'optimierer' && !/optimier/i.test(o.label || '')) return o;
       const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
-      const price = (Number(o.price) > 0) ? Number(o.price) : (mc > 0 ? unit * mc : 0);
+      const qty = (o.qty != null && o.qty !== '' && Number.isFinite(Number(o.qty)))
+        ? Math.max(0, Math.round(Number(o.qty)))
+        : mc;
+      const auto = mc > 0 ? unit * qty : 0;
+      const given = Number(o.price);
+      const manual = o.price != null && o.price !== '' && Number.isFinite(given) && given > 0 && given !== auto;
       return Object.assign({}, o, {
         key: 'optimierer',
         label: 'Optimierer (1 pro Modul)',
         mode: o.mode === 'optional' ? 'optional' : 'fix',
-        price,
+        qty,
+        price: manual ? given : auto,
+        priceManual: manual,
         hint: o.hint || 'Ein Optimierer pro Modul für optimale Leistung.',
       });
     });
@@ -3517,10 +3770,43 @@ async function init() {
   });
   $('f-include-pv').addEventListener('change', () => { syncPvKlimaVisibility(); compute(); });
   $('f-klima-enabled').addEventListener('change', () => {
-    if ($('f-klima-enabled').checked && !selectedKlimaPackageId()) renderKlimaPackages();
+    if ($('f-klima-enabled').checked) {
+      if (!document.querySelector('#klima-outdoor-list .klima-unit')) {
+        $('klima-outdoor-list').appendChild(createKlimaUnitRow('outdoor', 2.5));
+      }
+      if (!document.querySelector('#klima-indoor-list .klima-unit')) {
+        $('klima-indoor-list').appendChild(createKlimaUnitRow('indoor', 2.5));
+      }
+    }
     syncPvKlimaVisibility();
     compute();
   });
+  if ($('btn-add-klima-outdoor')) {
+    $('btn-add-klima-outdoor').addEventListener('click', () => {
+      $('klima-outdoor-list').appendChild(createKlimaUnitRow('outdoor', 2.5));
+      compute();
+    });
+  }
+  if ($('btn-add-klima-indoor')) {
+    $('btn-add-klima-indoor').addEventListener('click', () => {
+      $('klima-indoor-list').appendChild(createKlimaUnitRow('indoor', 2.5));
+      compute();
+    });
+  }
+  if ($('f-klima-total')) {
+    $('f-klima-total').addEventListener('input', () => {
+      if (klimaTotalFromServer) return;
+      $('f-klima-total').dataset.manual = String($('f-klima-total').value || '').trim() === '' ? '0' : '1';
+      compute();
+    });
+  }
+  if ($('line-edit-save')) $('line-edit-save').addEventListener('click', saveLineEditor);
+  if ($('line-edit-cancel')) $('line-edit-cancel').addEventListener('click', closeLineEditor);
+  if ($('line-edit-modal')) {
+    $('line-edit-modal').addEventListener('click', (e) => {
+      if (e.target === $('line-edit-modal')) closeLineEditor();
+    });
+  }
   ['f-klima-mode', 'f-klima-piping', 'f-klima-pump'].forEach((id) => {
     $(id).addEventListener('change', compute);
     $(id).addEventListener('input', compute);
@@ -3552,7 +3838,20 @@ async function init() {
   });
   // Preis-/Hinweisänderungen in Optionen-Zeilen live übernehmen
   $('opts').addEventListener('input', (e) => {
-    if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint')) compute();
+    const row = e.target.closest ? e.target.closest('.optrow') : null;
+    if (e.target.classList.contains('opt-qty') && row) {
+      row.dataset.qtyManual = '1';
+      if (row.dataset.priceManual !== '1') {
+        const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
+        const q = Math.max(0, Math.round(Number(e.target.value) || 0));
+        const priceEl = row.querySelector('.opt-price');
+        if (priceEl) priceEl.value = String(unit * q);
+      }
+    }
+    if (e.target.classList.contains('opt-price') && row && row.dataset.key === 'optimierer') {
+      row.dataset.priceManual = '1';
+    }
+    if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint') || e.target.classList.contains('opt-qty')) compute();
   });
   $('btn-add-option').addEventListener('click', () => {
     $('opts').appendChild(createOptionRow({ label: '', price: 0, mode: 'fix', manual: true }));

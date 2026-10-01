@@ -2,6 +2,7 @@
 
 const { chatCompletionJson, parseJsonFromLlm } = require('./ai-offer');
 const { resolveCustomerNames } = require('./names');
+const { selectDatasheetsForOffer } = require('./datasheets');
 
 const PHONE = '+43 676 707 55 25';
 const DEFAULT_EMAIL = 'vertrieb@noortec.at';
@@ -237,6 +238,17 @@ function roleActive(offer, role) {
   return lines.some((l) => l && l.role === role && l.active !== false);
 }
 
+function serviceBullet(offer, id, fallback) {
+  const lines = offer && offer.quoteLines;
+  const line = Array.isArray(lines) ? lines.find((l) => l && l.id === id && l.active !== false) : null;
+  if (!line) return `- ${fallback}`;
+  const customName = line.catalogName && line.name && line.name !== line.catalogName;
+  const customDesc = String(line.desc || '').trim() && String(line.desc || '') !== String(line.catalogDesc || '');
+  const title = customName ? line.name : fallback.replace(/\.$/, '');
+  const extra = customDesc ? ` ${String(line.desc).trim()}` : '';
+  return `- ${title}${extra.endsWith('.') || !extra ? extra : `${extra}.`}`.replace(/\.\.$/, '.');
+}
+
 function lineIdActive(offer, id) {
   const lines = offer && offer.quoteLines;
   if (!Array.isArray(lines) || !lines.length) return true;
@@ -256,6 +268,21 @@ function formatUnterkonstruktionBullet(offer) {
     return `- ALU-Unterkonstruktion: ${parts.join(', ')}.`;
   }
   return '- ALU-Unterkonstruktion.';
+}
+
+function optimiererQty(offer) {
+  const lines = offer && offer.quoteLines;
+  if (Array.isArray(lines)) {
+    const line = lines.find((l) => l && l.role === 'optimierer' && l.active !== false);
+    if (line && line.qty) {
+      const m = String(line.qty).match(/(\d+)/);
+      if (m) return Number(m[1]);
+    }
+  }
+  const inkl = (offer && offer.preis && Array.isArray(offer.preis.inkludiert)) ? offer.preis.inkludiert : [];
+  const hit = inkl.find((it) => it && (it.key === 'optimierer' || /optimier/i.test(it.label || '')));
+  if (hit && hit.qty != null && Number.isFinite(Number(hit.qty))) return Number(hit.qty);
+  return Number(offer && offer.config && offer.config.moduleCount) || 0;
 }
 
 function hasFixOptimierer(offer) {
@@ -313,14 +340,20 @@ function buildIncludeBullets(offer) {
       bullets.push('- Lithium-Eisenphosphat-Speicher (LFP).');
     }
     if (hasFixOptimierer(offer)) {
-      const n = Number(cfg.moduleCount) || 0;
+      const n = optimiererQty(offer);
+      const line = Array.isArray(offer.quoteLines)
+        ? offer.quoteLines.find((l) => l && l.role === 'optimierer' && l.active !== false)
+        : null;
+      const custom = line && line.catalogName && line.name && line.name !== line.catalogName
+        ? line.name
+        : 'Optimierer';
       bullets.push(n > 0
-        ? `- Optimierer (${n} Stück, 1 pro Modul).`
-        : '- Optimierer (1 pro Modul).');
+        ? `- ${custom} (${n} Stück).`
+        : `- ${custom}.`);
     }
     if (roleActive(offer, 'unterkonstruktion')) bullets.push(formatUnterkonstruktionBullet(offer));
-    if (lineIdActive(offer, 'svc:installation')) bullets.push('- Installation & Inbetriebnahme der Anlage.');
-    if (lineIdActive(offer, 'svc:einreichung')) bullets.push('- Genehmigungen, Behördenwege und Förderabwicklung.');
+    if (lineIdActive(offer, 'svc:installation')) bullets.push(serviceBullet(offer, 'svc:installation', 'Installation & Inbetriebnahme der Anlage.'));
+    if (lineIdActive(offer, 'svc:einreichung')) bullets.push(serviceBullet(offer, 'svc:einreichung', 'Genehmigungen, Behördenwege und Förderabwicklung.'));
     if (roleActive(offer, 'module')) bullets.push('- Überwachungssystem der Photovoltaikanlage.');
     if (lineIdActive(offer, 'svc:inbetriebnahme')) bullets.push('- Einschulung und App-Installation.');
   }
@@ -335,6 +368,32 @@ function buildIncludeBullets(offer) {
   }
 
   return bullets;
+}
+
+function datasheetMailLines(offer) {
+  let sheets = [];
+  try {
+    sheets = selectDatasheetsForOffer(offer, {
+      baseUrl: process.env.APP_BASE_URL || 'https://pvl.lifeco.at',
+    });
+  } catch (_) {
+    return [];
+  }
+  if (!sheets.length) return [];
+  return ['Datenblätter:', ...sheets.map((s) => `- ${s.label}: ${s.url}`)];
+}
+
+function appendDatasheetLines(body, offer) {
+  const lines = datasheetMailLines(offer);
+  if (!lines.length) return body;
+  const text = String(body || '');
+  if (text.includes('/datenblaetter/') && !text.includes('/datenblaetter/open/')) return text;
+  const block = lines.join('\n');
+  const idx = text.search(/Mit freundlichen Gr[uü]ßen/i);
+  if (idx >= 0) {
+    return `${text.slice(0, idx).replace(/\s+$/g, '')}\n\n${block}\n\n${text.slice(idx)}`;
+  }
+  return `${text.replace(/\s+$/g, '')}\n\n${block}`;
 }
 
 function buildDocumentList(kind) {
@@ -429,6 +488,8 @@ function buildEmailText({ customer, offer, extraText, salutationOverride }) {
   if (extraText && String(extraText).trim()) {
     body.push(String(extraText).trim(), '');
   }
+  const sheetLines = datasheetMailLines(offer);
+  if (sheetLines.length) body.push(...sheetLines, '');
 
   return {
     subject: buildSubject(offer),
@@ -507,7 +568,7 @@ ANGEBOTSART (offerKind):
 
 UNTERKONSTRUKTION / OPTIMIERER:
 - Bei mehreren Dachflächen: eine Zeile wie "- ALU-Unterkonstruktion: 6 Module Falzblech, 14 Module Flachdach."
-- Wenn Optimierer inkludiert (hasOptimierer=true): Zeile "- Optimierer (N Stück, 1 pro Modul)."
+- Wenn Optimierer inkludiert (hasOptimierer=true): Zeile "- Optimierer (N Stück)." N ist optimiererAnzahl, nicht automatisch die Modulzahl.
 - Genehmigungs-Bullet immer: "- Genehmigungen, Behördenwege und Förderabwicklung."
 
 SPRACHBEFEHL / ROHTEXT:
@@ -613,6 +674,7 @@ async function buildEmailTextAI(params) {
       : [],
     unterkonstruktionBullet: ukBullet,
     hasOptimierer: optimierer,
+    optimiererAnzahl: optimiererQty(offer),
     klima: klimaLabels,
     gesamtpreis_brutto: offer.preis.bruttoFmt,
     gesamtpreis_mail: formatEuroMail(offer.preis.bruttoFmt, offer.preis.brutto),
@@ -636,6 +698,7 @@ async function buildEmailTextAI(params) {
       body = sanitizeEmailBody(body, kind)
         .replace(/\[DATUM\]/gi, validUntil)
         .replace(/<gueltig_bis>/gi, validUntil);
+      body = appendDatasheetLines(body, offer);
       body = applyEmailSignature(body, {
         name: v.name || 'Cosimo Lippe, BSc.',
         phone: v.phone || PHONE,
