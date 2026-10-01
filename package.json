@@ -24,7 +24,8 @@
     "test:layout-roof-label": "node scripts/test-layout-roof-label.js",
     "test:yield-orientation": "node scripts/test-yield-orientation.js",
     "test:offer-lines": "node scripts/test-offer-lines.js",
-    "test:map-leads": "node scripts/test-map-leads.js"
+    "test:map-leads": "node scripts/test-map-leads.js",
+    "test:manual-customers": "node scripts/test-manual-customers.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

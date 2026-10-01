@@ -187,23 +187,24 @@ function mountLayoutOfferPersistRoutes(app) {
     }
   });
 
-  app.post('/api/offer/versions', (req, res) => {
+  app.post('/api/offer/versions', async (req, res) => {
     try {
       const body = req.body || {};
       const createdBy = (req.session && req.session.user && req.session.user.username) || '';
       let customerVersion = body.customerVersion != null ? Number(body.customerVersion) : NaN;
       if (!Number.isFinite(customerVersion) || customerVersion < 1) {
-        customerVersion = persist.peekNextCustomerVersion(body.leadId, body.customerEmail);
+        customerVersion = persist.peekNextCustomerVersion(body.leadId, body.customerEmail || (body.customer && body.customer.email));
       }
       let filenameBase = String(body.filenameBase || '').trim();
       if (!filenameBase && body.customer) {
         const { buildOfferFilenameBase } = require('./email');
         filenameBase = buildOfferFilenameBase(body.customer, body.angebotsnummer, customerVersion);
       }
-      const version = persist.saveOfferVersion({
+      const version = await persist.saveOfferVersion({
         ...body,
         customerVersion,
         filenameBase,
+        customerEmail: body.customerEmail || (body.customer && body.customer.email) || '',
       }, createdBy);
       res.json({ ok: true, version });
     } catch (err) {

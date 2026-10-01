@@ -215,7 +215,8 @@ CREATE TABLE IF NOT EXISTS offer_versions (
   pdf_path TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  sent_at TEXT
+  sent_at TEXT,
+  customer_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_offer_versions_lead ON offer_versions(lead_id);
 CREATE INDEX IF NOT EXISTS idx_offer_versions_email ON offer_versions(lower(trim(customer_email)));
@@ -231,6 +232,9 @@ function migrateOfferLayoutTables(db) {
   }
   if (!names.has('filename_base')) {
     db.exec(`ALTER TABLE offer_versions ADD COLUMN filename_base TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!names.has('customer_json')) {
+    db.exec(`ALTER TABLE offer_versions ADD COLUMN customer_json TEXT NOT NULL DEFAULT '{}'`);
   }
 }
 

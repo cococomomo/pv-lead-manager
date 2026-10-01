@@ -1504,6 +1504,18 @@ app.get('*', (req, res) => {
     } else {
       console.log(`NOORTEC Vertriebs-Dashboard ${local}${parts.length ? ` (${parts.join(', ')})` : ''} — set APP_BASE_URL=https://pvl.lifeco.at for production links`);
     }
+    try {
+      const persist = require('./offer/persist');
+      persist.backfillOrphanOfferCustomers()
+        .then((r) => {
+          if (r && r.linkedOffers) {
+            console.log(`[NOORTEC] Manuelle Kunden nachgezogen: ${r.linkedOffers} Angebote, ${r.created} neue Leads`);
+          }
+        })
+        .catch((e) => console.warn('[NOORTEC] Kunden-Nachzug:', e && e.message ? e.message : e));
+    } catch (e) {
+      console.warn('[NOORTEC] Kunden-Nachzug:', e && e.message ? e.message : e);
+    }
   });
 })();
 

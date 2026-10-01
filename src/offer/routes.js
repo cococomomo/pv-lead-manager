@@ -161,6 +161,11 @@ function normalizeVariantsForPersist(variants, fallbackLayoutPlanId) {
   });
 }
 
+/** PDF-Vorschau speichert nichts. Download (finalize) und „Version speichern“ schon. */
+function shouldPersistOfferVersion(body) {
+  return !!(body && (body.finalize || body.saveVersion));
+}
+
 function customerFromBody(body) {
   const c = body.customer && typeof body.customer === 'object' ? body.customer : {};
   const s = (v) => (v == null ? '' : String(v).trim());
@@ -591,8 +596,8 @@ function mountOfferRoutes(app, deps) {
       if (body.finalize) maybeBumpCounter(angebotsnummer);
 
       let savedVersion = null;
-      // Persistenz: Angebotsversion speichern (finalize = sent, sonst optional draft)
-      if (body.finalize || body.saveVersion) {
+      // Persistenz: Angebotsversion speichern (finalize = sent, sonst optional draft). Vorschau nicht.
+      if (shouldPersistOfferVersion(body)) {
         try {
           const createdBy = (req.session && req.session.user && req.session.user.username) || '';
           const variantsNorm = normalizeVariantsForPersist(body.variants, layoutPlanId);
@@ -601,8 +606,9 @@ function mountOfferRoutes(app, deps) {
           if (configNorm.layoutPlanId == null && layoutPlanId != null) {
             configNorm.layoutPlanId = layoutPlanId;
           }
-          savedVersion = persist.saveOfferVersion({
+          savedVersion = await persist.saveOfferVersion({
             leadId: Number.isFinite(leadIdNum) ? leadIdNum : null,
+            customer,
             customerEmail: customer.email,
             angebotsnummer,
             customerVersion,
@@ -740,4 +746,4 @@ function mountOfferRoutes(app, deps) {
   });
 }
 
-module.exports = { mountOfferRoutes };
+module.exports = { mountOfferRoutes, shouldPersistOfferVersion, customerFromBody };
