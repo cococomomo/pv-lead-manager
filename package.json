@@ -28,7 +28,8 @@
     "test:manual-customers": "node scripts/test-manual-customers.js",
     "test:offer-sent-status": "node scripts/test-offer-sent-status.js",
     "test:map-fallback": "node scripts/test-map-fallback.js",
-    "test:lead-contact-by-id": "node scripts/test-lead-contact-by-id.js"
+    "test:lead-contact-by-id": "node scripts/test-lead-contact-by-id.js",
+    "test:cloover-offer": "node scripts/test-cloover-offer.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -1,6 +1,7 @@
 'use strict';
 
 const { chatCompletionJson, parseJsonFromLlm } = require('./ai-offer');
+const { clooverFinanceSentence, ensureFinanceSentence, FINANCE_SENTENCE_LEAD } = require('./cloover');
 const { resolveCustomerNames } = require('./names');
 
 const PHONE = '+43 676 707 55 25';
@@ -450,7 +451,7 @@ function applyEmailSignature(body, vertrieb) {
 /**
  * Standard-E-Mail – an der Vertriebsvorlage orientiert.
  */
-function buildEmailText({ customer, offer, extraText, salutationOverride }) {
+function buildEmailText({ customer, offer, extraText, salutationOverride, finanzierungUrl }) {
   const v = offer.meta.vertrieb || {};
   const kind = (offer.meta && offer.meta.offerKind) || 'pv';
   const sal = resolveSalutation(customer, salutationOverride);
@@ -498,9 +499,12 @@ function buildEmailText({ customer, offer, extraText, salutationOverride }) {
     body.push(String(extraText).trim(), '');
   }
 
+  const sentence = clooverFinanceSentence(finanzierungUrl);
+  if (sentence) body.push(sentence, '');
+
   return {
     subject: buildSubject(offer),
-    body: stripDatasheetFromMailBody(applyEmailSignature(body.join('\n'), v)),
+    body: ensureFinanceSentence(stripDatasheetFromMailBody(applyEmailSignature(body.join('\n'), v)), finanzierungUrl),
     salutationGender: sal.gender,
     needsClarification: sal.needsClarification,
     clarifications: sal.clarifications,
@@ -599,7 +603,12 @@ STIL:
 - Modulzeile MUSS moduleModel/moduleType widerspiegeln (AIKO namentlich, wenn gewählt)
 - Bei offerKind=pv: kurzer Hinweis auf Klimaanlagen-Angebot für jetzt oder später
 - Bei offerKind=einzel: diesen Klima-Hinweis weglassen
-- Betreff kompakt mit Speichergröße, z. B. "Ihr PV-Angebot: 9,1 kWp + 6 kWh Speicher" bzw. Klima/Kombi`;
+- Betreff kompakt mit Speichergröße, z. B. "Ihr PV-Angebot: 9,1 kWp + 6 kWh Speicher" bzw. Klima/Kombi
+
+FINANZIERUNG (nur wenn finanzierung_url gesetzt ist):
+- Vor „Mit freundlichen Grüßen“ muss dieser Satz wörtlich stehen. Die URL wird nicht verändert, nicht gekürzt und nicht erfunden:
+  "${FINANCE_SENTENCE_LEAD}" + finanzierung_url
+- Fehlt finanzierung_url oder ist sie null: keinen Finanzierungs-Link und keine Cloover-Adresse erfinden.`;
 
 function stripMailMarkdown(text) {
   return String(text || '')
@@ -644,7 +653,7 @@ function sanitizeEmailBody(body, offerKind) {
 }
 
 async function buildEmailTextAI(params) {
-  const { customer, offer, extraText, salutationOverride } = params;
+  const { customer, offer, extraText, salutationOverride, finanzierungUrl } = params;
   const cfg = offer.config || {};
   const v = offer.meta.vertrieb || {};
   const klimaLabels = ((offer.klima && offer.klima.fix) || []).map((k) => k.label).filter(Boolean);
@@ -703,6 +712,8 @@ async function buildEmailTextAI(params) {
     vertrieb_telefon: v.phone || PHONE,
     vertrieb_email: v.email || DEFAULT_EMAIL,
     zusatztext_vom_vertrieb: extraText || '',
+    finanzierung_url: finanzierungUrl ? String(finanzierungUrl) : null,
+    finanzierung_satz: finanzierungUrl ? clooverFinanceSentence(finanzierungUrl) : null,
     beispiel_betreff: buildSubject(offer),
     beispiel_ueberblick: buildOverviewLine(offer),
     beispiel_bullets: buildIncludeBullets(offer),
@@ -722,6 +733,9 @@ async function buildEmailTextAI(params) {
         name: v.name || 'Cosimo Lippe, BSc.',
         phone: v.phone || PHONE,
       }));
+      body = finanzierungUrl
+        ? ensureFinanceSentence(body, finanzierungUrl)
+        : body.split('\n').filter((row) => !/cloover\.com/i.test(row)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
       subject = stripMailMarkdown(subject);
 
       const aiGender = String(j.salutationGender || '').toLowerCase();
@@ -768,6 +782,8 @@ module.exports = {
   buildEmailText,
   buildEmailTextAI,
   buildMailtoUrl,
+  ensureFinanceSentence,
+  clooverFinanceSentence,
   formalGreeting,
   resolveSalutation,
   inferGenderFromFirstName,

@@ -733,6 +733,7 @@
         <div class="lbl" id="s-mwst-lbl">MwSt. (20,0 %)</div><div class="val" id="s-mwst">—</div>
         <div class="lbl brutto">Gesamt (Brutto)</div><div class="val brutto" id="s-brutto">—</div>
       </div>
+      <div class="hint" id="s-cloover-rate" hidden></div>
       <div class="quote-note" id="s-lines-note"></div>
       <h3 style="margin:0.85rem 0 0.25rem;font-size:0.92rem">Stückliste</h3>
       <div class="quote-lines" id="quote-lines"></div>
@@ -743,6 +744,7 @@
     <div class="panel" id="offer-history-panel">
       <h2>Gespeicherte Versionen</h2>
       <div id="offer-history-list" class="hint">Noch keine Versionen – nach Speichern oder Fertigstellen erscheinen sie hier.</div>
+      <div id="cloover-status-line" class="hint" hidden></div>
     </div>
 
     <div class="panel">
@@ -3181,6 +3183,7 @@ async function refreshOfferHistory() {
   } catch (e) {
     el.textContent = 'Versionen konnten nicht geladen werden.';
   }
+  refreshClooverStatus();
 }
 
 async function applyOfferVersion(version) {
@@ -3692,6 +3695,7 @@ function compute() {
         }
       }
       if (j.angebotsnummer && !$('f-nummer').value.trim()) $('f-nummer').value = j.angebotsnummer;
+      refreshClooverQuote();
       if (o.preis && o.preis.pdfBlocked) {
         const frame = $('pdf-frame');
         if (frame) frame.removeAttribute('src');
@@ -3933,6 +3937,7 @@ async function genEmailText(opts) {
   try {
     const payload = basePayload();
     payload.useAI = true;
+    if (opts && opts.finanzierungUrl) payload.finanzierungUrl = opts.finanzierungUrl;
     const res = await api('/api/offer/email-text', { method: 'POST', body: JSON.stringify(payload) });
     const j = await res.json();
     $('m-subject').value = j.subject || '';
@@ -4083,7 +4088,79 @@ async function openOutlookDraft() {
   else toast('E-Mail geöffnet. Es wird kein PDF erzeugt.', 'ok');
 }
 
-/** Fertigstellen: Text aus den Feldern, PDF als Versand, mailto noch im Klick. */
+function headerText(headers, name) {
+  const raw = headers && headers.get && headers.get(name);
+  if (!raw) return '';
+  try { return decodeURIComponent(raw); } catch (_) { return raw; }
+}
+
+/** Dieselbe Stelle wie auf dem Server: echter Checkout-Satz vor der Grußformel. */
+function insertFinanceSentence(body, sentence, url) {
+  const line = String(sentence || '').trim();
+  const link = String(url || '').trim();
+  const text = String(body || '');
+  if (!line || !link) return text;
+  const kept = text.split('\n').filter((row) => {
+    if (row.indexOf(line) !== -1) return false;
+    if (/cloover\.com/i.test(row)) return false;
+    if (row.indexOf('Die Finanzierung Ihres Angebots können Sie hier direkt abschließen:') !== -1) return false;
+    return true;
+  }).join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/g, '');
+  const idx = kept.search(/Mit freundlichen Gr[uü]ßen/i);
+  if (idx >= 0) {
+    return kept.slice(0, idx).replace(/\s+$/g, '') + '\n\n' + line + '\n\n' + kept.slice(idx).replace(/^\s+/, '');
+  }
+  return (kept ? kept + '\n\n' : '') + line;
+}
+
+let clooverQuoteGen = 0;
+async function refreshClooverQuote() {
+  const el = $('s-cloover-rate');
+  if (!el) return;
+  if (!CATALOG || !CATALOG.clooverOnTest) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  const gen = ++clooverQuoteGen;
+  try {
+    const res = await api('/api/offer/cloover-quote', { method: 'POST', body: JSON.stringify(basePayload()) });
+    const j = await res.json();
+    if (gen !== clooverQuoteGen) return;
+    const monthly = j && j.monthlyPayment != null ? Number(j.monthlyPayment) : NaN;
+    if (!Number.isFinite(monthly)) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    const formatted = monthly.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+    el.hidden = false;
+    el.textContent = j.rateType === 'from'
+      ? ('Finanzierung ab ' + formatted + ' pro Monat')
+      : ('Finanzierung ' + formatted + ' pro Monat');
+  } catch (_) {
+    if (gen === clooverQuoteGen) {
+      el.hidden = true;
+      el.textContent = '';
+    }
+  }
+}
+
+async function refreshClooverStatus() {
+  const el = $('cloover-status-line');
+  if (!el || !CATALOG || !CATALOG.clooverOnTest) return;
+  const num = ($('f-nummer') && $('f-nummer').value.trim()) || '';
+  if (!num) { el.hidden = true; el.textContent = ''; return; }
+  try {
+    const res = await api('/api/offer/cloover-status?angebotsnummer=' + encodeURIComponent(num));
+    const j = await res.json();
+    const text = j && j.text ? String(j.text) : '';
+    el.hidden = !text;
+    el.textContent = text;
+  } catch (_) { /* Status bleibt unsichtbar, Fertigstellen läuft weiter */ }
+}
+
+/** Fertigstellen: PDF, auf der Testinstanz Cloover, dann mailto. Kein eigener Cloover-Knopf. */
 async function finishOfferOpenOutlook() {
   const email = $('c-email').value.trim();
   if (!email) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
@@ -4094,23 +4171,51 @@ async function finishOfferOpenOutlook() {
   try {
     let subject = $('m-subject').value.trim();
     let body = $('m-body').value.trim();
-    if (!body) {
+    const hadBody = !!body;
+    if (!body && !(CATALOG && CATALOG.clooverOnTest)) {
       await genEmailText({ silent: true });
       subject = $('m-subject').value.trim();
       body = $('m-body').value.trim();
     }
-    pointed = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
-    const mailClosed = pointed ? closeMailSlotSoon(mailWin) : null;
     const payload = basePayload();
     payload.subject = subject;
     payload.body = body;
     payload.finalize = true;
+    if (CATALOG && CATALOG.clooverOnTest) payload.createCloover = true;
     const pdfRes = await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
     markFinalizeDone(pdfRes.headers);
+    const checkout = pdfRes.headers.get('X-Cloover-Checkout-Url') || '';
+    const sentence = headerText(pdfRes.headers, 'X-Cloover-Sentence');
+    const notice = headerText(pdfRes.headers, 'X-Cloover-Notice');
+    const versionId = pdfRes.headers.get('X-Offer-Version-Id');
+    if (!hadBody && checkout) {
+      try {
+        await genEmailText({ silent: true, finanzierungUrl: checkout });
+        subject = $('m-subject').value.trim();
+        body = $('m-body').value.trim();
+      } catch (e) {
+        toast('E-Mail-Text: ' + e.message, 'error');
+      }
+    }
+    if (checkout) body = insertFinanceSentence(body, sentence, checkout);
+    if ($('m-subject') && subject) $('m-subject').value = subject;
+    if ($('m-body')) $('m-body').value = body;
+    if (versionId && body && (checkout || (!hadBody && CATALOG && CATALOG.clooverOnTest))) {
+      try {
+        await api('/api/offer/versions/' + encodeURIComponent(versionId) + '/email', {
+          method: 'POST',
+          body: JSON.stringify({ subject, body }),
+        });
+      } catch (_) { /* Mailto nutzt den Text auch ohne gespeicherte Kopie */ }
+    }
+    pointed = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
+    const mailClosed = pointed ? closeMailSlotSoon(mailWin) : null;
     if (mailClosed) pointed = await mailClosed;
     if (pointed) toast('Angebot fertig. PDF wurde geladen – bitte in der E-Mail anhängen.', 'ok');
     else toast('PDF geladen. E-Mail-Programm wurde blockiert – Pop-up erlauben.', 'error');
+    if (notice) toast(notice, checkout ? 'ok' : 'error');
     await maybeAskOfferSentStatus(pdfRes.headers);
+    refreshClooverStatus();
   } catch (e) {
     toast('Fehler: ' + e.message, 'error');
     if (!pointed && mailWin && !mailWin.closed) {

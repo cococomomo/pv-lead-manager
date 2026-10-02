@@ -236,6 +236,17 @@ function migrateOfferLayoutTables(db) {
   if (!names.has('customer_json')) {
     db.exec(`ALTER TABLE offer_versions ADD COLUMN customer_json TEXT NOT NULL DEFAULT '{}'`);
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cloover_projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      angebotsnummer TEXT NOT NULL,
+      brutto_cents INTEGER NOT NULL,
+      project_id TEXT NOT NULL,
+      checkout_url TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(angebotsnummer, brutto_cents)
+    )
+  `);
 }
 
 /** Indizes auf Spalten, die per ALTER nachgerüstet werden — erst nach migrateLeadsTable. */

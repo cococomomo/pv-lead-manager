@@ -8,7 +8,8 @@ const catalog = require('./catalog');
 const { getLlmPublic, saveLlmSettings, getLlmConfig } = require('../app-settings');
 const { parseOfferCommand, chatCompletionJson } = require('./ai-offer');
 const { generateOfferPdf, appendVollmacht, salesPhotoMetaForUsername } = require('./pdf');
-const { buildEmailText, buildEmailTextAI, buildMailtoUrl, safeFileBase, buildSummaryTitle, buildOfferFilenameBase } = require('./email');
+const { buildEmailText, buildEmailTextAI, buildMailtoUrl, safeFileBase, buildSummaryTitle, buildOfferFilenameBase, ensureFinanceSentence } = require('./email');
+const cloover = require('./cloover');
 const { resolveCustomerNames } = require('./names');
 const klimaLeads = require('../klima-leads');
 const persist = require('./persist');
@@ -342,6 +343,7 @@ function mountOfferRoutes(app, deps) {
       moduleDimensions: mapProviders.MODULE_DIMENSIONS,
       mapProviders: mapProviders.listMapProviders(),
       rasterFallbackOrder: mapProviders.rasterFallbackIds(),
+      clooverOnTest: cloover.isClooverTestInstance(),
     });
   });
 
@@ -603,6 +605,29 @@ function mountOfferRoutes(app, deps) {
       if (attachVollmacht) pdf = await appendVollmacht(pdf);
       if (body.finalize) maybeBumpCounter(angebotsnummer);
 
+      let clooverResult = null;
+      if (body.finalize && body.createCloover) {
+        try {
+          clooverResult = await cloover.runClooverCreate({
+            offer,
+            customer,
+            pdfBuffer: pdf,
+            filename: `${fileBase}.pdf`,
+            angebotsnummer,
+          }, {
+            loadStored: persist.getClooverProject,
+            loadLatest: persist.getLatestClooverProject,
+            saveStored: persist.saveClooverProject,
+          });
+        } catch (e) {
+          console.warn('[NOORTEC] Cloover:', e.message);
+          clooverResult = { active: true, ok: false, message: 'Cloover ist nicht erreichbar.' };
+        }
+        if (clooverResult && clooverResult.url) {
+          body.body = ensureFinanceSentence(body.body || '', clooverResult.url);
+        }
+      }
+
       let savedVersion = null;
       // Persistenz: Angebotsversion speichern (finalize = sent, sonst optional draft). Vorschau nicht.
       if (shouldPersistOfferVersion(body)) {
@@ -648,7 +673,20 @@ function mountOfferRoutes(app, deps) {
       const leadHeader = leadIdHeaderValue(savedVersion);
       if (leadHeader) res.setHeader('X-Lead-Id', leadHeader);
       // CORS-ähnliche Exposure für Frontend-Header-Lesen (same-origin reicht meist)
-      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Angebotsnummer, X-Customer-Version, X-Filename-Base, X-Offer-Version-Id, X-Lead-Id');
+      if (clooverResult && clooverResult.active) {
+        try {
+          const ascii = (value) => String(value || '').replace(/[\r\n]/g, '').trim();
+          const checkoutUrl = ascii(clooverResult.url);
+          if (checkoutUrl) res.setHeader('X-Cloover-Checkout-Url', checkoutUrl);
+          if (clooverResult.projectId) res.setHeader('X-Cloover-Project-Id', ascii(clooverResult.projectId));
+          if (clooverResult.sentence) res.setHeader('X-Cloover-Sentence', encodeURIComponent(clooverResult.sentence));
+          if (clooverResult.message) res.setHeader('X-Cloover-Notice', encodeURIComponent(clooverResult.message));
+          if (clooverResult.resend) res.setHeader('X-Cloover-Resend', '1');
+        } catch (e) {
+          console.warn('[NOORTEC] Cloover Header:', e.message);
+        }
+      }
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Angebotsnummer, X-Customer-Version, X-Filename-Base, X-Offer-Version-Id, X-Lead-Id, X-Cloover-Checkout-Url, X-Cloover-Project-Id, X-Cloover-Sentence, X-Cloover-Notice, X-Cloover-Resend');
       res.send(pdf);
     } catch (err) {
       console.error('[NOORTEC] /api/offer/pdf:', err.message);
@@ -679,6 +717,7 @@ function mountOfferRoutes(app, deps) {
         extraText: body.extraText || '',
         command: body.command || '',
         salutationOverride,
+        finanzierungUrl: String(body.finanzierungUrl || '').trim(),
       };
       const useAI = body.useAI !== false;
       const out = useAI ? await buildEmailTextAI(params) : { ...buildEmailText(params), source: 'template' };
@@ -739,12 +778,15 @@ function mountOfferRoutes(app, deps) {
           extraText: body.extraText || '',
           command: body.command || '',
           salutationOverride,
+          finanzierungUrl: String(body.finanzierungUrl || '').trim(),
         };
         const useAI = body.useAI !== false;
         const txt = useAI ? await buildEmailTextAI(params) : buildEmailText(params);
         subject = subject || txt.subject;
         mailBody = mailBody || txt.body;
       }
+      const finanzierungUrl = String(body.finanzierungUrl || '').trim();
+      if (finanzierungUrl) mailBody = ensureFinanceSentence(mailBody, finanzierungUrl);
 
       const nextV = persist.peekNextCustomerVersion(
         body.leadId != null ? Number(body.leadId) : null,
@@ -768,6 +810,58 @@ function mountOfferRoutes(app, deps) {
     } catch (err) {
       console.error('[NOORTEC] /api/offer/outlook-draft:', err.message);
       res.status(400).json({ error: err.message || String(err) });
+    }
+  });
+
+  app.post('/api/offer/versions/:id/email', (req, res) => {
+    const version = persist.getOfferVersion(req.params.id);
+    if (!version) return res.status(404).json({ error: 'nicht gefunden' });
+    const subject = String((req.body || {}).subject || '');
+    const mailBody = String((req.body || {}).body || '');
+    persist.updateOfferVersionEmail(version.id, subject, mailBody);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/offer/cloover-quote', async (req, res) => {
+    if (!cloover.isClooverTestInstance()) {
+      return res.json({ ok: true, monthlyPayment: null });
+    }
+    try {
+      const { offer } = buildOfferFromBody(req, getProfile, req.body || {});
+      const quote = await cloover.runClooverQuote(offer);
+      res.json({
+        ok: true,
+        monthlyPayment: quote.monthlyPayment == null ? null : quote.monthlyPayment,
+        rateType: quote.rateType || '',
+      });
+    } catch (err) {
+      console.warn('[NOORTEC] Cloover Preisrechner:', err.message);
+      res.json({ ok: true, monthlyPayment: null });
+    }
+  });
+
+  app.get('/api/offer/cloover-status', async (req, res) => {
+    if (!cloover.isClooverTestInstance()) {
+      return res.json({ ok: true, text: '' });
+    }
+    const number = String(req.query.angebotsnummer || '').trim();
+    const stored = number ? persist.getLatestClooverProject(number) : null;
+    if (!stored || !stored.projectId) return res.json({ ok: true, text: '' });
+    try {
+      const status = await cloover.runClooverStatus(stored.projectId);
+      if (!status.ok) {
+        return res.json({ ok: true, text: status.message || '', projectId: stored.projectId });
+      }
+      res.json({
+        ok: true,
+        text: status.text ? `Cloover: ${status.text}` : '',
+        stage: status.stage || '',
+        checkoutStep: status.checkoutStep || '',
+        projectId: stored.projectId,
+      });
+    } catch (err) {
+      console.warn('[NOORTEC] Cloover Status:', err.message);
+      res.json({ ok: true, text: 'Cloover ist nicht erreichbar.', projectId: stored.projectId });
     }
   });
 }

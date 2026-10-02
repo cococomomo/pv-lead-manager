@@ -1868,6 +1868,19 @@ function formatEUR(n) {
   }).format(Number(n) || 0);
 }
 
+/**
+ * Eine Cent-Rundung, dieselbe wie die MwSt-Anzeige (formatEUR).
+ * Keine zweite Rundung danach.
+ */
+function roundInvoiceCents(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return NaN;
+  const formatted = formatEUR(x);
+  const num = formatted.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+  const v = Number(num);
+  return Number.isFinite(v) ? v : NaN;
+}
+
 const QUOTE_SERVICE_DEFS = [
   { id: 'svc:installation', leistungKey: 'installation', name: 'Installation (AC- und DC-seitig, Montage Unterkonstruktion & Module)' },
   { id: 'svc:netzanschluss', leistungKey: 'netzanschluss', name: 'Netzanschluss (Standard Wien / NÖ + Wiener Netze)' },
@@ -2873,6 +2886,8 @@ module.exports = {
   KLIMA_EXTRAS,
   round100,
   roundEuro,
+  roundInvoiceCents,
+  formatEUR,
   normalizeBrand,
   isSigenergyBrand,
   brandHasStorage,
