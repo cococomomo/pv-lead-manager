@@ -421,11 +421,107 @@ function testStorageBlockChoice() {
   assert(altLine && altLine.price === 3600 && /9,04/.test(altLine.label), 'Alt-Block 10.0 ebenfalls 9,04 kWh und 3.600 €');
 }
 
+function plant(extra) {
+  return Object.assign({
+    brand: 'sigenergy',
+    moduleCount: 22,
+    speicher: 6,
+    dach: 'Ziegel',
+    optionen: [],
+  }, extra || {});
+}
+
+function optimiererLine(offer) {
+  return (offer.preis.inkludiert || []).find((i) => i.key === 'optimierer');
+}
+
+function testOptimizerQty() {
+  console.log('Optimierer Stückpreis × Stück');
+  const bare = catalog.computeOffer(plant());
+  const counted = catalog.computeOffer(plant({
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 22, price: 50, priceIsUnit: true }],
+  }));
+  const row = optimiererLine(counted);
+  assert(row && row.qty === 22, '22 Module → Optimierer-Stück 22');
+  assert(row && row.unitPrice === 50, 'Feldpreis ist der Stückpreis');
+  assert(row && row.price === 50 * 22, 'Zeile = Stückpreis × 22');
+  assert(counted.preis.brutto - bare.preis.brutto === 1100, 'Paket steigt um 1.100 €');
+  const bom = counted.quoteLines.find((l) => l.role === 'optimierer');
+  assert(bom && bom.qty === '22 Stück', 'Stückliste 22 Stück');
+  assert(bom && bom.name === 'Optimierer (1 pro Modul)', 'ein Optimierer-Produkt');
+
+  const manualQty = catalog.computeOffer(plant({
+    moduleCount: 30,
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 10, price: 50, priceIsUnit: true }],
+  }));
+  const kept = optimiererLine(manualQty);
+  assert(kept && kept.qty === 10 && kept.price === 500, 'Stück 10 bleibt, auch bei 30 Modulen');
+
+  const customUnit = catalog.computeOffer(plant({
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 22, price: 60, priceManual: true, priceIsUnit: true }],
+  }));
+  const custom = optimiererLine(customUnit);
+  assert(custom && custom.unitPrice === 60 && custom.price === 1320, 'von Hand gesetzter Stückpreis bleibt');
+
+  const none = catalog.computeOffer(plant({
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 0, price: 50, priceIsUnit: true }],
+  }));
+  assert(!optimiererLine(none), 'Stück 0 ist kein Optimierer im Angebot');
+  assert(none.preis.brutto === bare.preis.brutto, 'Stück 0 kostet nichts');
+
+  const oldLine = catalog.computeOffer(plant({
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 22, price: 1100, priceManual: true }],
+  }));
+  const old = optimiererLine(oldLine);
+  assert(old && old.price === 1100 && old.qty === 22, 'alter Zeilenpreis 1.100 € bleibt 1.100 €');
+  assert(oldLine.preis.brutto - bare.preis.brutto === 1100, 'alter Optimierer wird nicht doppelt gezählt');
+  const oldPlain = catalog.computeOffer(plant({
+    optionen: [{ key: 'optimierer', mode: 'fix', qty: 22, price: 1100 }],
+  }));
+  assert(optimiererLine(oldPlain).price === 1100, 'gespeicherter Zeilenpreis ohne Flag bleibt');
+
+  const pieces = catalog.computeOffer(plant({
+    optionen: [
+      { key: 'fi_schalter', mode: 'fix', qty: 3, price: 180 },
+      { key: 'wallbox', mode: 'fix', qty: 2, price: 1800 },
+      { key: 'fi_schalter', mode: 'optional', qty: 0, price: 180 },
+    ],
+  }));
+  const fi = (pieces.preis.inkludiert || []).find((i) => i.key === 'fi_schalter');
+  const wall = (pieces.preis.inkludiert || []).find((i) => i.key === 'wallbox');
+  assert(fi && fi.qty === 3 && fi.unitPrice === 180 && fi.price === 540, 'FI bleibt Stückpreis × Stück, Minimum 1 gilt nicht für 3');
+  assert(wall && wall.qty === 2 && wall.price === 3600, 'Wallbox bleibt Stückpreis × Stück');
+  const fiZero = catalog.computeOffer(plant({
+    optionen: [{ key: 'fi_schalter', mode: 'fix', qty: 0, price: 180 }],
+  }));
+  const fiMin = (fiZero.preis.inkludiert || []).find((i) => i.key === 'fi_schalter');
+  assert(fiMin && fiMin.qty === 1 && fiMin.price === 180, 'FI-Stück 0 bleibt bei Minimum 1');
+
+  const speech = normalizeOffer({}, '22 Module auf Ziegel, Optimierer');
+  const speechOpt = speech.requirements.optionenList.filter((o) => o.key === 'optimierer');
+  assert(speechOpt.length === 1 && speechOpt[0].qty === 22, 'ohne genannte Stückzahl: ein Optimierer pro Modul');
+  const named = normalizeOffer({}, '22 Module, 10 Optimierer');
+  const namedOpt = named.requirements.optionenList.filter((o) => o.key === 'optimierer');
+  assert(namedOpt.length === 1 && namedOpt[0].qty === 10, 'genannte Optimierer-Stückzahl');
+  const perModule = normalizeOffer({}, '18 Module und ein Optimierer pro Modul');
+  const perOpt = perModule.requirements.optionenList.find((o) => o.key === 'optimierer');
+  assert(perOpt && perOpt.qty === 18, 'ein Optimierer pro Modul folgt der Modulzahl');
+  const doubled = normalizeOffer({}, '22 Module, Optimierer und zusätzlich Optimizer');
+  assert(doubled.requirements.optionenList.filter((o) => /optimi/i.test(`${o.key} ${o.label}`)).length === 1, 'kein zweites Optimierer-Produkt');
+
+  const html = fs.readFileSync(path.join(__dirname, '../public/offer.html'), 'utf8');
+  const script = html.slice(html.indexOf('<script>\nconst $'));
+  assert(!script.includes('opt-name-wrap'), 'Optimierer-Stück sitzt nicht mehr im Namen');
+  assert(script.includes("qtyEl.min = optimizer ? '0' : '1'"), 'nur Optimierer darf Stück 0');
+  assert(script.includes("row.dataset.qtyManual === '1'"), 'von Hand gesetzte Stückzahl bleibt beim Modulwechsel');
+}
+
 async function main() {
   await testTruncatedDraft();
   await testClarificationStillDrafts();
   testInverterRemoval();
   testOptimizerLabel();
+  testOptimizerQty();
   testPdfPages();
   testStorageClimateSplit();
   testStorageBlockChoice();

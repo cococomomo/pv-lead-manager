@@ -1246,13 +1246,71 @@ function refreshOptionLine(row) {
   if (!line) return;
   const qtyEl = row.querySelector('.opt-qty');
   const priceEl = row.querySelector('.opt-price');
-  const qty = qtyEl ? Math.max(1, Math.round(Number(qtyEl.value) || 1)) : 1;
+  const allowZero = row.dataset.key === 'optimierer';
+  const raw = qtyEl ? Math.round(Number(qtyEl.value)) : 1;
+  const qty = allowZero
+    ? (Number.isFinite(raw) ? Math.max(0, raw) : 0)
+    : Math.max(1, Number.isFinite(raw) ? raw : 1);
   const unit = Number(priceEl && priceEl.value) || 0;
   line.textContent = qty > 1 ? `${qty} × ${unit.toLocaleString('de-AT')} € = ${(unit * qty).toLocaleString('de-AT')} €` : '';
 }
 
+function optimizerModuleQty() {
+  const el = $('f-modules');
+  return Math.max(0, Math.round(Number(el && el.value) || 0));
+}
+
+function optimizerCatalogUnit() {
+  return (CATALOG && CATALOG.optimiererUnitPrice) || 50;
+}
+
+function optimizerFlag(v) {
+  return v === true || v === 1 || v === '1';
+}
+
+function legacyOptimiererLineTotal(raw, qty, manualFlag, catalogUnit) {
+  if (!(qty > 1) || !(raw > 0)) return false;
+  const auto = catalogUnit * qty;
+  if (Math.abs(raw - auto) < 1) return true;
+  if (manualFlag && raw + 0.001 >= auto * 0.5) return true;
+  if (raw > catalogUnit
+    && Math.abs(raw / qty - Math.round(raw / qty)) < 0.001
+    && raw + 0.001 >= auto * 0.5) return true;
+  return false;
+}
+
+/** Gespeicherten Optimierer als Stückpreis + Stück anzeigen. Alte Zeilenpreise nicht noch einmal malnehmen. */
+function optimizerFieldsFromStored(o, moduleCount) {
+  const catalogUnit = optimizerCatalogUnit();
+  const mc = Math.max(0, Math.round(Number(moduleCount) || 0));
+  const qtyGiven = o && o.qty != null && o.qty !== '' && Number.isFinite(Number(o.qty));
+  const qty = qtyGiven ? Math.max(0, Math.round(Number(o.qty))) : mc;
+  const given = Number(o && o.price);
+  const hasPrice = !!(o && o.price != null && o.price !== '' && Number.isFinite(given) && given >= 0);
+  const manualFlag = optimizerFlag(o && o.priceManual);
+  const explicitUnit = optimizerFlag(o && o.priceIsUnit);
+  const qtyManual = !!(qtyGiven && qty !== mc);
+  let unit = catalogUnit;
+  let priceManual = false;
+  if (explicitUnit) {
+    unit = hasPrice ? given : catalogUnit;
+    priceManual = manualFlag && hasPrice && Math.abs(unit - catalogUnit) > 0.001;
+  } else if (!hasPrice) {
+    unit = catalogUnit;
+  } else if (legacyOptimiererLineTotal(given, qty, manualFlag, catalogUnit)) {
+    unit = qty > 0 ? Math.round((given / qty) * 100) / 100 : given;
+    priceManual = Math.abs(unit - catalogUnit) > 0.001;
+  } else if (Math.abs(given - catalogUnit) < 0.001) {
+    unit = catalogUnit;
+  } else if (manualFlag && qty <= 1) {
+    unit = given;
+    priceManual = Math.abs(given - catalogUnit) > 0.001;
+  }
+  return { qty, unit, priceManual, qtyManual };
+}
+
 // ── Optionen-Zeilen (Optional/Fix + editierbarer Preis + Hinweis + manuelle Posten) ───
-function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false, hint = '', qty = 1 }) {
+function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false, hint = '', qty = null }) {
   const row = document.createElement('div');
   row.className = 'optrow' + (manual ? ' manual' : '');
   if (key) row.dataset.key = key;
@@ -1267,22 +1325,12 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   sel.addEventListener('change', () => { sel.setAttribute('data-mode', sel.value); compute(); });
 
   let nameEl;
-  let qtyEl = null;
   if (manual) {
     nameEl = document.createElement('input');
     nameEl.className = 'opt-name'; nameEl.placeholder = 'Bezeichnung'; nameEl.value = label;
   } else {
     nameEl = document.createElement('span');
     nameEl.className = 'opt-name'; nameEl.textContent = label; nameEl.title = label;
-  }
-  if (key === 'optimierer') {
-    qtyEl = document.createElement('input');
-    qtyEl.className = 'opt-qty';
-    qtyEl.type = 'number';
-    qtyEl.min = '0';
-    qtyEl.step = '1';
-    qtyEl.title = 'Stück';
-    qtyEl.placeholder = 'Stk';
   }
 
   const pw = document.createElement('div'); pw.className = 'opt-price-wrap';
@@ -1292,17 +1340,24 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   const eur = document.createElement('span'); eur.className = 'eur'; eur.textContent = '€';
   pw.appendChild(priceEl); pw.appendChild(eur);
 
-  const countable = optionIsCountable(key);
+  const optimizer = key === 'optimierer';
+  const countable = optionIsCountable(key) || optimizer;
   const qtySlot = document.createElement('span');
   qtySlot.className = 'opt-qty-slot';
   if (countable) {
     const qtyEl = document.createElement('input');
     qtyEl.className = 'opt-qty';
     qtyEl.type = 'number';
-    qtyEl.min = '1';
+    qtyEl.min = optimizer ? '0' : '1';
     qtyEl.step = '1';
     qtyEl.title = 'Stück';
-    qtyEl.value = String(Math.max(1, Math.round(Number(qty) || 1)));
+    if (optimizer) {
+      const fallback = optimizerModuleQty();
+      const n = (qty == null || qty === '') ? fallback : Math.round(Number(qty));
+      qtyEl.value = String(Number.isFinite(n) ? Math.max(0, n) : fallback);
+    } else {
+      qtyEl.value = String(Math.max(1, Math.round(Number(qty) || 1)));
+    }
     qtySlot.appendChild(qtyEl);
   }
 
@@ -1322,15 +1377,7 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   lineEl.className = 'opt-line';
 
   row.appendChild(sel);
-  if (qtyEl) {
-    const wrap = document.createElement('div');
-    wrap.className = 'opt-name-wrap';
-    wrap.appendChild(nameEl);
-    wrap.appendChild(qtyEl);
-    row.appendChild(wrap);
-  } else {
-    row.appendChild(nameEl);
-  }
+  row.appendChild(nameEl);
   row.appendChild(qtySlot);
   row.appendChild(pw);
   row.appendChild(del);
@@ -1365,9 +1412,10 @@ function readOptionRows() {
     const item = { key, label, price, mode, hint: hint || null };
     if (key === 'optimierer') {
       const qtyEl = row.querySelector('.opt-qty');
-      const qty = qtyEl ? Math.max(0, Math.round(Number(qtyEl.value) || 0)) : null;
-      item.qty = qty;
+      const rawQty = qtyEl ? Number(qtyEl.value) : 0;
+      item.qty = Number.isFinite(rawQty) ? Math.max(0, Math.round(rawQty)) : 0;
       item.priceManual = row.dataset.priceManual === '1';
+      item.priceIsUnit = true;
       if (!item.priceManual) item.price = null;
     } else {
       const qtyEl = row.querySelector('.opt-qty');
@@ -1395,7 +1443,9 @@ function applyOptionsToRows(optionen) {
     const hintEl = row.querySelector('.opt-hint');
     if (hintEl) hintEl.value = '';
     const qtyEl = row.querySelector('.opt-qty');
-    if (qtyEl) qtyEl.value = '1';
+    if (qtyEl) {
+      qtyEl.value = row.dataset.key === 'optimierer' ? String(optimizerModuleQty()) : '1';
+    }
     refreshOptionLine(row);
   });
   (optionen || []).forEach((o) => {
@@ -1435,24 +1485,22 @@ function applyOptionsToRows(optionen) {
         const sel = row.querySelector('.opt-mode');
         sel.value = o.mode || 'optional'; sel.setAttribute('data-mode', sel.value);
         if (o.key === 'optimierer') {
-          const mc = Number($('f-modules').value) || 0;
-          const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
-          const qty = (o.qty != null && o.qty !== '' && Number.isFinite(Number(o.qty)))
-            ? Math.max(0, Math.round(Number(o.qty)))
-            : mc;
-          const auto = unit * qty;
-          const given = Number(o.price);
-          const manual = o.priceManual === true || o.priceManual === 1 || o.priceManual === '1'
-            || (o.price != null && o.price !== '' && Number.isFinite(given) && given !== auto);
-          row.dataset.qtyManual = (o.qty != null && o.qty !== '' && qty !== mc) ? '1' : '0';
-          row.dataset.priceManual = manual ? '1' : '0';
+          const fields = optimizerFieldsFromStored(o, Number($('f-modules').value) || 0);
+          row.dataset.qtyManual = fields.qtyManual ? '1' : '0';
+          row.dataset.priceManual = fields.priceManual ? '1' : '0';
           const qtyEl = row.querySelector('.opt-qty');
-          if (qtyEl) qtyEl.value = String(qty);
-          row.querySelector('.opt-price').value = manual ? given : auto;
+          if (qtyEl) qtyEl.value = String(fields.qty);
+          row.querySelector('.opt-price').value = String(fields.unit);
+          const nameEl = row.querySelector('.opt-name');
+          const catLabel = ((CATALOG.options || []).find((x) => x.key === 'optimierer') || {}).label || 'Optimierer (1 pro Modul)';
+          if (nameEl && nameEl.textContent !== undefined) {
+            nameEl.textContent = catLabel;
+            nameEl.title = catLabel;
+          }
         } else if (o.price != null) {
           row.querySelector('.opt-price').value = o.price;
         }
-        if (o.label && (o.key === 'notstrom' || o.key === 'speichererweiterung' || o.key === 'optimierer')) {
+        if (o.label && (o.key === 'notstrom' || o.key === 'speichererweiterung')) {
           const nameEl = row.querySelector('.opt-name');
           if (nameEl && nameEl.textContent !== undefined) {
             nameEl.textContent = o.label;
@@ -1462,7 +1510,7 @@ function applyOptionsToRows(optionen) {
         const hintEl = row.querySelector('.opt-hint');
         if (hintEl) hintEl.value = o.hint || '';
         const qtyEl = row.querySelector('.opt-qty');
-        if (qtyEl) qtyEl.value = String(Math.max(1, Math.round(Number(o.qty) || 1)));
+        if (qtyEl && o.key !== 'optimierer') qtyEl.value = String(Math.max(1, Math.round(Number(o.qty) || 1)));
         refreshOptionLine(row);
         return;
       }
@@ -1970,6 +2018,22 @@ function syncModuleDerivedUi() {
   syncOptimiererQty();
 }
 
+function wireOptionInputs() {
+  const box = $('opts');
+  if (!box || box.dataset.wired === '1') return;
+  box.dataset.wired = '1';
+  box.addEventListener('input', (e) => {
+    const row = e.target.closest ? e.target.closest('.optrow') : null;
+    const optimizer = !!(row && row.dataset.key === 'optimierer');
+    if (optimizer && e.target.classList.contains('opt-qty')) row.dataset.qtyManual = '1';
+    if (optimizer && e.target.classList.contains('opt-price')) row.dataset.priceManual = '1';
+    if (row && (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-qty') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint'))) {
+      refreshOptionLine(row);
+    }
+    if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint') || e.target.classList.contains('opt-qty')) compute();
+  });
+}
+
 function syncOptimiererQty() {
   const row = document.querySelector('#opts .optrow[data-key="optimierer"]');
   if (!row || row.dataset.qtyManual === '1') return;
@@ -1977,10 +2041,7 @@ function syncOptimiererQty() {
   if (!qtyEl) return;
   const mods = Math.max(0, Math.round(Number($('f-modules').value) || 0));
   qtyEl.value = String(mods);
-  if (row.dataset.priceManual === '1') return;
-  const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
-  const priceEl = row.querySelector('.opt-price');
-  if (priceEl) priceEl.value = String(unit * mods);
+  refreshOptionLine(row);
 }
 
 function positionChoices(query) {
@@ -3824,24 +3885,18 @@ async function parseCommand() {
       cfg.dachSegmente = [];
       cfg.speicher = null;
     }
-    // Optimierer: Preis 50 € × Module vorbelegen (editierbar)
     const mc = Number(cfg.moduleCount) || 0;
     cfg.optionen = (cfg.optionen || []).map((o) => {
-      if (o.key !== 'optimierer' && !/optimier/i.test(o.label || '')) return o;
-      const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
-      const qty = (o.qty != null && o.qty !== '' && Number.isFinite(Number(o.qty)))
-        ? Math.max(0, Math.round(Number(o.qty)))
-        : mc;
-      const auto = mc > 0 ? unit * qty : 0;
-      const given = Number(o.price);
-      const manual = o.price != null && o.price !== '' && Number.isFinite(given) && given > 0 && given !== auto;
+      if (o.key !== 'optimierer' && !/optimi[sz]?er/i.test(o.label || '')) return o;
+      const fields = optimizerFieldsFromStored(o, mc);
       return Object.assign({}, o, {
         key: 'optimierer',
-        label: 'Optimierer (1 pro Modul)',
+        label: ((CATALOG.options || []).find((x) => x.key === 'optimierer') || {}).label || 'Optimierer (1 pro Modul)',
         mode: o.mode === 'optional' ? 'optional' : 'fix',
-        qty,
-        price: manual ? given : auto,
-        priceManual: manual,
+        qty: fields.qty,
+        price: fields.unit,
+        priceManual: fields.priceManual,
+        priceIsUnit: true,
         hint: o.hint || 'Ein Optimierer pro Modul für optimale Leistung.',
       });
     });
@@ -4431,26 +4486,7 @@ async function init() {
     compute();
   });
   // Preis-/Hinweisänderungen in Optionen-Zeilen live übernehmen
-  $('opts').addEventListener('input', (e) => {
-    const row = e.target.closest ? e.target.closest('.optrow') : null;
-    const optimizer = !!(row && row.dataset.key === 'optimierer');
-    if (optimizer && e.target.classList.contains('opt-qty')) {
-      row.dataset.qtyManual = '1';
-      if (row.dataset.priceManual !== '1') {
-        const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
-        const q = Math.max(0, Math.round(Number(e.target.value) || 0));
-        const priceEl = row.querySelector('.opt-price');
-        if (priceEl) priceEl.value = String(unit * q);
-      }
-    }
-    if (optimizer && e.target.classList.contains('opt-price')) {
-      row.dataset.priceManual = '1';
-    }
-    if (!optimizer && row && (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-qty') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint'))) {
-      refreshOptionLine(row);
-    }
-    if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint') || e.target.classList.contains('opt-qty')) compute();
-  });
+  wireOptionInputs();
   $('btn-add-option').addEventListener('click', () => {
     $('opts').appendChild(createOptionRow({ label: '', price: '', mode: 'fix', manual: true }));
   });

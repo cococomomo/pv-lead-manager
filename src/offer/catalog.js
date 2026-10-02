@@ -246,7 +246,7 @@ const OPTIONS = {
   notstrom: { label: 'Notstrom / Gateway / Umschaltbox', price: 1500 },
   wallbox: { label: 'Wallbox 11 kW', price: 1800, countable: true },
   speichererweiterung: { label: 'Speichererweiterung (Sigenergy +6,0/+10,0 kWh · Fronius +3,2 kWh)', price: 2400 },
-  optimierer: { label: 'Optimierer (1 pro Modul)', price: 50, perModule: true },
+  optimierer: { label: 'Optimierer (1 pro Modul)', price: 50, perModule: true, countable: true },
   ueberspannungsschutz: { label: 'Überspannungsschutz', price: 400 },
   lasttrennschalter: { label: 'Lasttrennschalter', price: 150, countable: true },
   fi_schalter: { label: 'FI-Zusatzschutz', price: 180, countable: true },
@@ -1268,28 +1268,76 @@ function reconcileDachSegmente(rawSegs, moduleCountHint) {
   return out;
 }
 
-/** Optimierer: Menge (Standard Modulzahl) × 50 €, außer der Gesamtpreis ist von Hand gesetzt. */
+function flagOn(v) {
+  return v === true || v === 1 || v === '1';
+}
+
+/**
+ * Alter Optimierer-Preis ist der Zeilenpreis (Stückzahl × Stückpreis schon eingerechnet).
+ * Neue Speicherungen setzen priceIsUnit und meinen den Stückpreis.
+ */
+function isLegacyOptimiererLineTotal(raw, qty, manualFlag) {
+  if (!(qty > 1) || !(raw > 0)) return false;
+  const auto = OPTIMIERER_UNIT_PRICE * qty;
+  if (Math.abs(raw - auto) < 1) return true;
+  if (manualFlag && raw + 0.001 >= auto * 0.5) return true;
+  if (raw > OPTIMIERER_UNIT_PRICE
+    && Math.abs(raw / qty - Math.round(raw / qty)) < 0.001
+    && raw + 0.001 >= auto * 0.5) return true;
+  return false;
+}
+
+/** Optimierer: Stückpreis × Stück. Stück 0 ist erlaubt. Alt gespeicherte Zeilenpreise nicht noch einmal malnehmen. */
 function resolveOptimiererOption(o, moduleCount) {
   const modules = Math.max(0, Math.round(Number(moduleCount) || 0));
   const qtyGiven = o && o.qty != null && o.qty !== '' && Number.isFinite(Number(o.qty));
   const qty = qtyGiven ? Math.max(0, Math.round(Number(o.qty))) : modules;
-  const manualFlag = o && (o.priceManual === true || o.priceManual === 1 || o.priceManual === '1');
-  const manual = Number(o && o.price);
-  const hasPrice = o && o.price != null && o.price !== '' && Number.isFinite(manual) && manual >= 0;
-  const legacyManual = !manualFlag && !qtyGiven && hasPrice && manual > 0
-    && manual !== OPTIMIERER_UNIT_PRICE * modules;
-  const hasManual = (manualFlag && hasPrice) || legacyManual;
-  const price = hasManual ? manual : (OPTIMIERER_UNIT_PRICE * qty);
+  const manualFlag = flagOn(o && o.priceManual);
+  const explicitUnit = flagOn(o && o.priceIsUnit);
+  const raw = Number(o && o.price);
+  const hasPrice = !!(o && o.price != null && o.price !== '' && Number.isFinite(raw) && raw >= 0);
   const hint = String((o && (o.hint || o.note || o.beschreibung)) || '').trim()
     || 'Ein Optimierer pro Modul für optimale Leistung.';
+
+  let unitPrice = OPTIMIERER_UNIT_PRICE;
+  let lineTotal = OPTIMIERER_UNIT_PRICE * qty;
+  let priceManual = false;
+
+  if (explicitUnit) {
+    unitPrice = hasPrice ? raw : OPTIMIERER_UNIT_PRICE;
+    lineTotal = unitPrice * qty;
+    priceManual = manualFlag && hasPrice && Math.abs(unitPrice - OPTIMIERER_UNIT_PRICE) > 0.001;
+  } else if (!hasPrice) {
+    unitPrice = OPTIMIERER_UNIT_PRICE;
+    lineTotal = unitPrice * qty;
+  } else if (!qtyGiven && raw > 0 && raw !== OPTIMIERER_UNIT_PRICE * modules) {
+    lineTotal = raw;
+    unitPrice = qty > 0 ? Math.round((raw / qty) * 100) / 100 : raw;
+    priceManual = true;
+  } else if (isLegacyOptimiererLineTotal(raw, qty, manualFlag)) {
+    lineTotal = raw;
+    unitPrice = qty > 0 ? Math.round((raw / qty) * 100) / 100 : raw;
+    priceManual = manualFlag || Math.abs(unitPrice - OPTIMIERER_UNIT_PRICE) > 0.001;
+  } else if (Math.abs(raw - OPTIMIERER_UNIT_PRICE) < 0.001) {
+    unitPrice = OPTIMIERER_UNIT_PRICE;
+    lineTotal = unitPrice * qty;
+  } else if (manualFlag && qty <= 1) {
+    lineTotal = qty === 0 ? 0 : raw;
+    unitPrice = raw;
+    priceManual = true;
+  } else {
+    unitPrice = OPTIMIERER_UNIT_PRICE;
+    lineTotal = unitPrice * qty;
+  }
+
   return {
     key: 'optimierer',
     label: OPTIONS.optimierer.label,
-    price,
+    price: lineTotal,
     hint,
     qty,
-    unitPrice: hasManual && qty > 0 ? Math.round(manual / qty) : OPTIMIERER_UNIT_PRICE,
-    priceManual: !!hasManual,
+    unitPrice,
+    priceManual: !!priceManual,
   };
 }
 
@@ -1297,7 +1345,7 @@ function isOptimiererOption(o) {
   if (!o) return false;
   const key = String(o.key || '').toLowerCase();
   if (key === 'optimierer' || key === 'optimizer') return true;
-  return /optimier/i.test(String(o.label || ''));
+  return /optimi[sz]?er/i.test(String(o.label || ''));
 }
 
 // ── Wechselrichter-Katalog (Datenblatt-Parameter) ─────────────────────────
@@ -2213,14 +2261,17 @@ function computeOffer(config) {
             key: 'optimierer',
             label: resolved.label,
             price: resolved.price,
+            unitPrice: resolved.unitPrice,
             hint: resolved.hint,
             qty: resolved.qty,
           };
-          if (mode === 'fix') {
-            optionenSumme += entry.price;
-            inkludiert.push(entry);
-          } else {
-            optionaleKomponenten.push(entry);
+          if (resolved.qty > 0 || resolved.price > 0) {
+            if (mode === 'fix') {
+              optionenSumme += entry.price;
+              inkludiert.push(entry);
+            } else {
+              optionaleKomponenten.push(entry);
+            }
           }
           continue;
         }
@@ -2573,7 +2624,9 @@ function computeOffer(config) {
         section: 'Positionen',
         name: it.label || 'Position',
         desc: it.hint || (it.price == null ? 'Preis offen' : ''),
-        qty: `${OPTION_QTY_KEYS.includes(it.key) ? pieceQty(it) : 1} Stück`,
+        qty: `${it.key === 'optimierer'
+          ? Math.max(0, Math.round(Number(it.qty) || 0))
+          : (OPTION_QTY_KEYS.includes(it.key) ? pieceQty(it) : 1)} Stück`,
       });
     });
   }

@@ -56,7 +56,7 @@ Ausgabe: NUR valides JSON (kein Markdown), exakt dieses Schema (unbekannt = null
         "label": "optionaler Anzeigename oder null",
         "mode": "optional | fix",
         "price": "Stückpreis oder null – nicht der Gesamtpreis",
-        "qty": "Stückzahl oder null. Bei lasttrennschalter, fi_schalter, zaehlersteckleiste, zaehlerbrett, smartmeter, wallbox",
+        "qty": "Stückzahl oder null. Bei lasttrennschalter, fi_schalter, zaehlersteckleiste, zaehlerbrett, smartmeter, wallbox, optimierer",
         "hint": "Hinweistext der im Angebot bei dieser Komponente erscheinen soll",
         "upgradeFrom": "nur bei speicher_upgrade: Basis-kWh",
         "upgradeTo": "nur bei speicher_upgrade: Ziel-kWh"
@@ -153,10 +153,12 @@ Regeln:
   Speicher-kWh und Euro-Beträge niemals als Modulanzahl werten.
 - OPTIMIERER (Leistungsoptimierer, 1 pro Modul, 50 € brutto/Stück, ohne Marke – Server berechnet):
   Synonyme: "Optimierer", "Optimizer", "Leistungsoptimierer", "ein Optimierer pro Modul".
-  Bezeichnung immer "Optimierer (1 pro Modul)". Kein Huawei.
+  Bezeichnung immer "Optimierer (1 pro Modul)". Kein zweites Produkt, kein Huawei.
   → optionen.optimierer=true UND optionDetails key=optimierer, mode=fix (außer explizit "optional"),
-  price=null (Server: 50 × Modulanzahl), hint z. B. "Ein Optimierer pro Modul für optimale Leistung."
-  NICHT nur in offerNotes schreiben – immer als Preisposition.
+  price=null (Stückpreis 50 € setzt der Server, nicht den Zeilenpreis),
+  qty: die genannte Stückzahl, sonst null (dann ein Optimierer pro Modul).
+  hint z. B. "Ein Optimierer pro Modul für optimale Leistung."
+  NICHT nur in offerNotes schreiben – immer als eine Preisposition.
 - includePv: false wenn NUR Klima oder ein Einzelangebot (keine Anlage, aber eine genannte Position); true bei PV oder Kombi; null wenn unklar.
 - Klima-Erkennung: Formulierungen wie "zweimal 2,5 kW Innengerät und 4,1 kW Außengerät" → outdoorKw:4.1, indoor:[{kw:2.5,qty:2}], packageId lg-std2-multi-41.
 - Wenn Klima erwähnt aber Paket nicht eindeutig zuordenbar → packageId null UND clarifications mit konkreten Rückfragen UND answers-Buttons (z. B. die 4 Klimapakete).
@@ -626,6 +628,27 @@ function qtyPatterns(noun) {
   ];
 }
 
+function extractOptimiererQty(text) {
+  const t = String(text || '');
+  if (!/optimi[sz]?er/i.test(t)) return null;
+  const noun = 'optimi[sz]?er\\w*';
+  let found = null;
+  const lead = new RegExp(`${QTY_TOKEN}\\s*(?:stück|stk\\.?|x|×)?\\s*${noun}`, 'gi');
+  let m;
+  while ((m = lead.exec(t))) {
+    const after = t.slice(m.index + m[0].length, m.index + m[0].length + 24);
+    if (/^\s*pro\s+modul/i.test(after)) continue;
+    const q = parseQtyToken(m[1]);
+    if (q) found = q;
+  }
+  const trail = new RegExp(`${noun}\\s*(?:x|×|:)?\\s*${QTY_TOKEN}\\b`, 'gi');
+  while ((m = trail.exec(t))) {
+    const q = parseQtyToken(m[1]);
+    if (q) found = q;
+  }
+  return found;
+}
+
 function extractOptionQtys(text) {
   const found = {};
   const specs = [
@@ -712,10 +735,10 @@ function buildOptionenList(req, brand, sourceText) {
   if (!bool(opt.notstrom) && detectNotstromFromText(sourceText)) {
     mark('notstrom', detectOptionModeFromText(sourceText, 'notstrom'), null, null, null);
   }
-  if (!bool(opt.optimierer) && /optimier/i.test(String(sourceText || ''))) {
+  if (!bool(opt.optimierer) && /optimi[sz]?er/i.test(String(sourceText || ''))) {
     mark('optimierer', /optional/i.test(sourceText) ? 'optional' : 'fix',
       'Ein Optimierer pro Modul für optimale Leistung.',
-      'Optimierer (1 pro Modul)', null);
+      catalog.OPTIONS.optimierer.label, null);
   }
 
   // Text-Fallback: "optional Upgrade 6 auf 9" / "statt 6er optional 9 kWh"
@@ -741,11 +764,11 @@ function buildOptionenList(req, brand, sourceText) {
     let key = str(d.key).toLowerCase() || null;
     if (key && /gateway|umschalt|notstrom|backup|ersatzstrom/.test(key)) key = 'notstrom';
     if (key && /speicher.?upgrade|upgrade.?speicher/.test(key)) key = 'speicher_upgrade';
-    if (key && /optimier/.test(key)) key = 'optimierer';
+    if (key && /optimi[sz]?er/.test(key)) key = 'optimierer';
     const labelHint = str(d.label).toLowerCase();
     if (!key && /gateway|umschalt|notstrom|backup|ersatzstrom/.test(labelHint)) key = 'notstrom';
     if (!key && /upgrade|preisdifferenz/.test(labelHint) && /speicher/.test(labelHint)) key = 'speicher_upgrade';
-    if (!key && /optimier/.test(labelHint)) key = 'optimierer';
+    if (!key && /optimi[sz]?er/.test(labelHint)) key = 'optimierer';
     const entryHint = d.hint || d.note || d.beschreibung;
     const from = numOrNullLocal(d.upgradeFrom != null ? d.upgradeFrom : d.fromKwh);
     const to = numOrNullLocal(d.upgradeTo != null ? d.upgradeTo : d.toKwh);
@@ -767,7 +790,7 @@ function buildOptionenList(req, brand, sourceText) {
     const lab = str(c.label);
     if (/gateway|umschalt|notstrom|backup|ersatzstrom/i.test(lab)) key = 'notstrom';
     if (/upgrade|preisdifferenz/i.test(lab) && /speicher/i.test(lab)) key = 'speicher_upgrade';
-    if (/optimier/i.test(lab)) key = 'optimierer';
+    if (/optimi[sz]?er/i.test(lab)) key = 'optimierer';
     const mode = key === 'optimierer' && !c.mode ? 'fix' : c.mode;
     mark(key, mode, c.hint || c.note, lab, c.price, c.qty != null && c.qty !== '' ? { qty: catalog.pieceQty({ qty: c.qty }) } : null);
   }
@@ -775,6 +798,11 @@ function buildOptionenList(req, brand, sourceText) {
   for (const [key, qty] of Object.entries(extractOptionQtys(sourceText))) {
     if (byKey[key]) byKey[key].qty = qty;
     else mark(key, 'optional', null, null, null, { qty });
+  }
+  const namedOptimiererQty = extractOptimiererQty(sourceText);
+  if (namedOptimiererQty && byKey.optimierer) {
+    byKey.optimierer.qty = namedOptimiererQty;
+    byKey.optimierer.qtyFromText = true;
   }
 
   const b = catalog.normalizeBrand(brand);
@@ -793,7 +821,7 @@ function buildOptionenList(req, brand, sourceText) {
       // Preisdifferenz berechnet der Server – 0/null von der KI nicht durchreichen
       if (!(Number(o.price) > 0)) o.price = null;
     } else if (o.key === 'optimierer') {
-      label = label || catalog.OPTIONS.optimierer.label;
+      label = catalog.OPTIONS.optimierer.label;
       if (!(Number(o.price) > 0)) o.price = null;
       if (!o.hint) o.hint = 'Ein Optimierer pro Modul für optimale Leistung.';
     }
@@ -811,11 +839,55 @@ function buildOptionenList(req, brand, sourceText) {
       hint: o.hint || null,
       price: o.price,
       qty: o.qty != null ? o.qty : null,
+      ...(o.key === 'optimierer' && o.qtyFromText ? { qtyFromText: true } : {}),
       upgradeFrom: o.upgradeFrom != null ? o.upgradeFrom : null,
       upgradeTo: o.upgradeTo != null ? o.upgradeTo : null,
     };
   });
   return list;
+}
+
+function collapseOptimiererProducts(list) {
+  const out = [];
+  let kept = null;
+  for (const o of list || []) {
+    if (!o || (o.key !== 'optimierer' && !/optimi[sz]?er/i.test(String(o.label || '')))) {
+      out.push(o);
+      continue;
+    }
+    const row = Object.assign({}, o, {
+      key: 'optimierer',
+      label: catalog.OPTIONS.optimierer.label,
+    });
+    if (!kept) {
+      kept = row;
+      out.push(kept);
+      continue;
+    }
+    if (row.qtyFromText || (kept.qty == null && row.qty != null)) {
+      kept.qty = row.qty;
+      kept.qtyFromText = row.qtyFromText || kept.qtyFromText;
+    }
+    if (!kept.hint && row.hint) kept.hint = row.hint;
+    if (!(Number(kept.price) > 0) && Number(row.price) > 0) kept.price = row.price;
+    if (row.mode === 'optional') kept.mode = 'optional';
+  }
+  return out;
+}
+
+function fillOptimiererQty(list, moduleCount) {
+  const modules = Math.round(Number(moduleCount) || 0);
+  return (list || []).map((o) => {
+    if (!o || o.key !== 'optimierer') return o;
+    const fromText = !!o.qtyFromText;
+    const next = Object.assign({}, o, { label: catalog.OPTIONS.optimierer.label });
+    delete next.qtyFromText;
+    const named = fromText || (o.qty != null && o.qty !== '' && Number(o.qty) > 1);
+    if (named && o.qty != null && o.qty !== '') next.qty = Math.max(0, Math.round(Number(o.qty)));
+    else if (modules > 0) next.qty = modules;
+    else if (o.qty != null && o.qty !== '') next.qty = Math.max(0, Math.round(Number(o.qty)));
+    return next;
+  });
 }
 
 function normalizeOfferNotes(req) {
@@ -1325,6 +1397,11 @@ function normalizeOffer(raw, sourceText = '') {
       }
     }
   }
+
+  cleanedOptionenList = fillOptimiererQty(
+    collapseOptimiererProducts(cleanedOptionenList),
+    includePv ? moduleCount : 0,
+  );
 
   const missingModules = !!(includePv && moduleCount == null && numOrNull(req.kwp) == null && textKwp == null);
   let clarifications = filterPriceClarifications(clarificationsEarly, { missingModules, missingKlima });
