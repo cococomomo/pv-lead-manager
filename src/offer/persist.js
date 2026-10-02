@@ -906,6 +906,61 @@ function saveOfferPdfFile(versionId, pdfBuffer) {
   return rel;
 }
 
+function updateOfferVersionEmail(versionId, subject, body) {
+  const id = Number(versionId);
+  if (!Number.isFinite(id) || id < 1) return false;
+  const info = getDb().prepare(`
+    UPDATE offer_versions SET email_subject = ?, email_body = ? WHERE id = ?
+  `).run(String(subject || '').trim(), String(body || '').trim(), id);
+  return info.changes > 0;
+}
+
+function rowCloover(r) {
+  if (!r) return null;
+  return {
+    angebotsnummer: r.angebotsnummer || '',
+    bruttoCents: Number(r.brutto_cents) || 0,
+    projectId: r.project_id || '',
+    checkoutUrl: r.checkout_url || '',
+    createdAt: r.created_at || '',
+  };
+}
+
+function getClooverProject(angebotsnummer, bruttoCents) {
+  const number = String(angebotsnummer || '').trim();
+  const cents = Number(bruttoCents);
+  if (!number || !Number.isFinite(cents)) return null;
+  const row = getDb().prepare(`
+    SELECT * FROM cloover_projects WHERE angebotsnummer = ? AND brutto_cents = ?
+  `).get(number, cents);
+  return rowCloover(row);
+}
+
+function getLatestClooverProject(angebotsnummer) {
+  const number = String(angebotsnummer || '').trim();
+  if (!number) return null;
+  const row = getDb().prepare(`
+    SELECT * FROM cloover_projects WHERE angebotsnummer = ? ORDER BY id DESC LIMIT 1
+  `).get(number);
+  return rowCloover(row);
+}
+
+function saveClooverProject(input) {
+  const number = String(input && input.angebotsnummer || '').trim();
+  const cents = Number(input && input.bruttoCents);
+  const projectId = String(input && input.projectId || '').trim();
+  const checkoutUrl = String(input && input.checkoutUrl || '').trim();
+  if (!number || !Number.isFinite(cents) || !projectId || !checkoutUrl) return null;
+  getDb().prepare(`
+    INSERT INTO cloover_projects (angebotsnummer, brutto_cents, project_id, checkout_url)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(angebotsnummer, brutto_cents) DO UPDATE SET
+      project_id = excluded.project_id,
+      checkout_url = excluded.checkout_url
+  `).run(number, cents, projectId, checkoutUrl);
+  return getClooverProject(number, cents);
+}
+
 function getOfferPdfAbsPath(versionId) {
   const cur = getOfferVersion(versionId);
   if (!cur || !cur.pdfPath) return null;
@@ -959,6 +1014,10 @@ module.exports = {
   markLeadAngebotGesendetById,
   parseNameFromFilenameBase,
   saveOfferPdfFile,
+  updateOfferVersionEmail,
+  getClooverProject,
+  getLatestClooverProject,
+  saveClooverProject,
   getOfferPdfAbsPath,
   layoutPlanIdsByVariant,
   peekNextCustomerVersion,
