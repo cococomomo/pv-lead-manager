@@ -2,7 +2,6 @@
 
 const { chatCompletionJson, parseJsonFromLlm } = require('./ai-offer');
 const { resolveCustomerNames } = require('./names');
-const { selectDatasheetsForOffer } = require('./datasheets');
 
 const PHONE = '+43 676 707 55 25';
 const DEFAULT_EMAIL = 'vertrieb@noortec.at';
@@ -393,30 +392,15 @@ function buildIncludeBullets(offer) {
   return bullets;
 }
 
-function datasheetMailLines(offer) {
-  let sheets = [];
-  try {
-    sheets = selectDatasheetsForOffer(offer, {
-      baseUrl: process.env.APP_BASE_URL || 'https://pvl.lifeco.at',
-    });
-  } catch (_) {
-    return [];
-  }
-  if (!sheets.length) return [];
-  return ['Datenblätter:', ...sheets.map((s) => `- ${s.label}: ${s.url}`)];
-}
-
-function appendDatasheetLines(body, offer) {
-  const lines = datasheetMailLines(offer);
-  if (!lines.length) return body;
-  const text = String(body || '');
-  if (text.includes('/datenblaetter/') && !text.includes('/datenblaetter/open/')) return text;
-  const block = lines.join('\n');
-  const idx = text.search(/Mit freundlichen Gr[uü]ßen/i);
-  if (idx >= 0) {
-    return `${text.slice(0, idx).replace(/\s+$/g, '')}\n\n${block}\n\n${text.slice(idx)}`;
-  }
-  return `${text.replace(/\s+$/g, '')}\n\n${block}`;
+/** Angebots-Mail ohne Datenblatt-Namen, Links oder Abschnitt. Seite und PDF bleiben unverändert. */
+function stripDatasheetFromMailBody(text) {
+  const kept = String(text || '').split('\n').filter((line) => {
+    if (/datenbl[aä]tt/i.test(line)) return false;
+    if (/datenblaetter/i.test(line)) return false;
+    if (/\bdatasheets?\b/i.test(line)) return false;
+    return true;
+  });
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function buildDocumentList(kind) {
@@ -513,12 +497,10 @@ function buildEmailText({ customer, offer, extraText, salutationOverride }) {
   if (extraText && String(extraText).trim()) {
     body.push(String(extraText).trim(), '');
   }
-  const sheetLines = datasheetMailLines(offer);
-  if (sheetLines.length) body.push(...sheetLines, '');
 
   return {
     subject: buildSubject(offer),
-    body: applyEmailSignature(body.join('\n'), v),
+    body: stripDatasheetFromMailBody(applyEmailSignature(body.join('\n'), v)),
     salutationGender: sal.gender,
     needsClarification: sal.needsClarification,
     clarifications: sal.clarifications,
@@ -608,6 +590,7 @@ FORMULIERUNG Ansprechpartner:
 
 STIL:
 - Reiner Klartext (kein Markdown, keine HTML, keine Sternchen)
+- Keinen Datenblatt-Abschnitt, keine Datenblatt-Namen und keine Links darauf
 - Aufzählungen immer mit Bindestrich am Zeilenanfang: "- …"
 - Persönlich, höflich, formell – wie die Vorlage
 - vertrieb_name / vertrieb_email / vertrieb_telefon aus den Eingabedaten verwenden
@@ -657,7 +640,7 @@ function sanitizeEmailBody(body, offerKind) {
   t = t
     .replace(/^.*(?:sprachbefehl|diktat|voice\s*command).*$/gim, '')
     .replace(/^.*(?:module\s+auf\s+falzblech\s+und).*$/gim, '');
-  return t.replace(/\n{3,}/g, '\n\n').trim();
+  return stripDatasheetFromMailBody(t);
 }
 
 async function buildEmailTextAI(params) {
@@ -735,11 +718,10 @@ async function buildEmailTextAI(params) {
       body = sanitizeEmailBody(body, kind)
         .replace(/\[DATUM\]/gi, validUntil)
         .replace(/<gueltig_bis>/gi, validUntil);
-      body = appendDatasheetLines(body, offer);
-      body = applyEmailSignature(body, {
+      body = stripDatasheetFromMailBody(applyEmailSignature(body, {
         name: v.name || 'Cosimo Lippe, BSc.',
         phone: v.phone || PHONE,
-      });
+      }));
       subject = stripMailMarkdown(subject);
 
       const aiGender = String(j.salutationGender || '').toLowerCase();

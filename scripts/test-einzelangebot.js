@@ -107,6 +107,14 @@ function testComputeParts() {
   assert(!/schlüsselfertig/i.test(mail.subject + mail.body), 'keine schlüsselfertige kWp-Anlage');
   assert(!/Vollmacht/i.test(mail.body), 'keine Vollmacht');
   assert(!/Klimaanlagen an/i.test(mail.body), 'kein Klima-Hinweis wie bei PV');
+  assert(!/Datenblatt|datenblaetter|datasheet/i.test(mail.body), 'Mail ohne Datenblatt');
+  const withSheet = buildEmailText({
+    customer: { vorname: 'Anna', nachname: 'Berger' },
+    offer,
+    extraText: 'Datenblätter:\n- Sigenergy SigenStor BAT: https://pvl.lifeco.at/datenblaetter/sigenstor.pdf',
+  });
+  assert(!/Datenblatt|datenblaetter|datasheet/i.test(withSheet.body), 'eingefügter Datenblatt-Abschnitt fällt weg');
+  assert(/Mit freundlichen Gr/i.test(withSheet.body), 'Signatur bleibt');
   assert(pdfPageFlags({ hasLayout: true, consumptionEntered: true, serviceCount: 2, offerKind: 'einzel' }).yield === false, 'keine Ertragsseite');
   assert(pdfPageFlags({ hasLayout: false, consumptionEntered: false, serviceCount: 0 }).yield === true, 'PV-Ertragsseite bleibt der Standard');
 
