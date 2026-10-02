@@ -754,11 +754,11 @@
         <button type="button" class="btn secondary" id="btn-emailtext">E-Mail-Text neu erzeugen</button>
       </div>
       <textarea id="m-body" rows="8"></textarea>
-      <button type="button" class="mail-open-line" id="btn-eml">Diesen Text in Outlook öffnen</button>
+      <button type="button" class="mail-open-line" id="btn-eml">Diesen Text in der E-Mail öffnen</button>
       <div class="btn-row">
-        <button class="btn dark" id="btn-finish-outlook" title="PDF laden, Version als gesendet speichern und Outlook öffnen">Angebot fertigstellen</button>
+        <button class="btn dark" id="btn-finish-outlook" title="PDF laden, Version als gesendet speichern und das E-Mail-Programm öffnen">Angebot fertigstellen</button>
       </div>
-      <div class="hint">Das PDF hängst du in Outlook selbst an, weil der Browser die Datei nicht in den Entwurf legen kann.</div>
+      <div class="hint">Das PDF hängst du in der E-Mail selbst an, weil der Browser die Datei nicht in den Entwurf legen kann.</div>
     </div>
 
     <div class="panel">
@@ -3976,7 +3976,7 @@ function openMailSlot() {
   try { return window.open('about:blank', '_blank'); } catch (_) { return null; }
 }
 
-/** Kurz warten, damit Outlook den Link bekommt, dann den leeren Tab schließen. */
+/** Kurz warten, dann nur einen noch leeren Hilfs-Tab schließen. Ein vom System übernommenes Fenster bleibt. */
 function closeMailSlotSoon(slot) {
   return new Promise((resolve) => {
     window.setTimeout(() => {
@@ -3984,6 +3984,12 @@ function closeMailSlotSoon(slot) {
       let already = false;
       try { already = !!slot.closed; } catch (_) { already = true; }
       if (already) { resolve(true); return; }
+      let href = '';
+      let taken = false;
+      try { href = String(slot.location && slot.location.href || ''); }
+      catch (_) { taken = true; }
+      if (!taken && href && href !== 'about:blank' && href.indexOf('mailto:') !== 0) taken = true;
+      if (taken) { resolve(true); return; }
       try {
         slot.close();
       } catch (_) {
@@ -3996,7 +4002,7 @@ function closeMailSlotSoon(slot) {
 }
 
 function pointMailSlot(slot, url) {
-  if (!slot || slot.closed || !url) return false;
+  if (!slot || slot.closed || !url || String(url).indexOf('mailto:') !== 0) return false;
   try {
     slot.location.href = url;
     return true;
@@ -4005,7 +4011,7 @@ function pointMailSlot(slot, url) {
   }
 }
 
-/** Nur Betreff und Nachricht. Kein PDF, keine neue Nummer, keine Status-Frage. */
+/** Nur Betreff und Nachricht ans Standard-E-Mail-Programm. Kein PDF, keine neue Nummer, keine Status-Frage. */
 async function openOutlookDraft() {
   const email = $('c-email').value.trim();
   if (!email) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
@@ -4018,11 +4024,11 @@ async function openOutlookDraft() {
   const mailWin = openMailSlot();
   let opened = pointMailSlot(mailWin, buildClientMailto(email, subject, body));
   if (opened) opened = await closeMailSlotSoon(mailWin);
-  if (!opened) toast('Outlook wurde blockiert. Pop-up für diese Seite erlauben.', 'error');
-  else toast('Outlook geöffnet. Es wird kein PDF erzeugt.', 'ok');
+  if (!opened) toast('E-Mail-Programm wurde blockiert. Pop-up für diese Seite erlauben.', 'error');
+  else toast('E-Mail geöffnet. Es wird kein PDF erzeugt.', 'ok');
 }
 
-/** Fertigstellen: Text aus den Feldern, PDF als Versand, Outlook noch im Klick. */
+/** Fertigstellen: Text aus den Feldern, PDF als Versand, mailto noch im Klick. */
 async function finishOfferOpenOutlook() {
   const email = $('c-email').value.trim();
   if (!email) { toast('Bitte Kunden-E-Mail eingeben.', 'error'); return; }
@@ -4047,8 +4053,8 @@ async function finishOfferOpenOutlook() {
     const pdfRes = await downloadBlob('/api/offer/pdf', payload, 'angebot.pdf');
     markFinalizeDone(pdfRes.headers);
     if (mailClosed) pointed = await mailClosed;
-    if (pointed) toast('Angebot fertig. PDF wurde geladen – bitte in Outlook anhängen.', 'ok');
-    else toast('PDF geladen. Outlook wurde blockiert – Pop-up erlauben.', 'error');
+    if (pointed) toast('Angebot fertig. PDF wurde geladen – bitte in der E-Mail anhängen.', 'ok');
+    else toast('PDF geladen. E-Mail-Programm wurde blockiert – Pop-up erlauben.', 'error');
     await maybeAskOfferSentStatus(pdfRes.headers);
   } catch (e) {
     toast('Fehler: ' + e.message, 'error');

@@ -189,7 +189,7 @@ async function main() {
   const html = fs.readFileSync(path.join(root, 'public/offer.html'), 'utf8');
   assert.ok(html.includes('layout-editor.js?v=20261001-kartenfolge'));
   assert.ok(html.includes('>Angebot fertigstellen</button>'));
-  assert.ok(html.includes('>Diesen Text in Outlook öffnen</button>'));
+  assert.ok(html.includes('>Diesen Text in der E-Mail öffnen</button>'));
   assert.ok(html.includes('der Browser die Datei nicht in den Entwurf legen kann'));
   assert.ok(html.includes('id="layout-basemap-hint"'));
 

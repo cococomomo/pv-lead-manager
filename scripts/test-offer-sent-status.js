@@ -188,10 +188,15 @@ async function main() {
   assert.ok(finish.indexOf('openMailSlot') >= 0 && finish.indexOf('openMailSlot') < finish.indexOf('await'), 'Mailto-Fenster noch im Klick');
   assert.ok(finish.includes('payload.finalize = true'), 'Fertigstellen speichert den Versand');
   assert.ok(finish.includes('closeMailSlotSoon'), 'Fertigstellen schließt den leeren Tab');
-  assert.ok(finish.includes("toast('PDF geladen. Outlook wurde blockiert – Pop-up erlauben.', 'error')"), 'bestehender Popup-Hinweis bleibt');
+  assert.ok(finish.includes('buildClientMailto'), 'Fertigstellen übergibt mailto');
+  assert.ok(!/outlook\.office|outlook:|outlook\.live/i.test(finish), 'Fertigstellen erzwingt kein Outlook');
+  assert.ok(finish.includes("toast('PDF geladen. E-Mail-Programm wurde blockiert – Pop-up erlauben.', 'error')"), 'Popup-Hinweis bleibt');
   const textMail = sourceOf(html, 'openOutlookDraft');
   assert.ok(textMail.includes('closeMailSlotSoon'), 'Text-Knopf schließt den leeren Tab');
-  assert.ok(textMail.includes("toast('Outlook wurde blockiert. Pop-up für diese Seite erlauben.', 'error')"), 'bestehender Text-Popup-Hinweis bleibt');
+  assert.ok(textMail.includes('buildClientMailto'), 'Text-Knopf übergibt mailto');
+  assert.ok(!/outlook\.office|outlook:|outlook\.live/i.test(textMail), 'Text-Knopf erzwingt kein Outlook');
+  assert.ok(textMail.includes("toast('E-Mail-Programm wurde blockiert. Pop-up für diese Seite erlauben.', 'error')"), 'Text-Popup-Hinweis bleibt');
+  assert.ok(html.includes('>Diesen Text in der E-Mail öffnen</button>'));
   assert.ok(!sourceOf(html, 'downloadPdf').includes('closeMailSlotSoon'), 'PDF-Download öffnet kein Mailto');
   const closeSlot = sourceOf(html, 'closeMailSlotSoon');
   assert.ok(closeSlot.includes('setTimeout') && closeSlot.includes('slot.close()'), 'Tab schließt nach kurzer Wartezeit');
