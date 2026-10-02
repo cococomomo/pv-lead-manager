@@ -69,7 +69,7 @@
   .mail-open-line:disabled { opacity: 0.55; cursor: default; }
 
   .optlist { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
-  .optrow { display: grid; grid-template-columns: 96px 1fr 104px 20px; gap: 0.4rem 0.4rem; align-items: start; }
+  .optrow { display: grid; grid-template-columns: 96px 1fr 52px 104px 20px; gap: 0.4rem 0.4rem; align-items: start; }
   .optrow .opt-mode { padding: 0.32rem 0.3rem; font-size: 0.76rem; }
   .optrow .opt-name { font-size: 0.8rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .optrow input.opt-name { padding: 0.34rem 0.4rem; white-space: normal; }
@@ -81,16 +81,19 @@
   .optrow .opt-qty { width: 4.2rem; padding: 0.32rem 0.35rem; font-size: 0.8rem; text-align: right; flex-shrink: 0; }
   .optrow .opt-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; padding-top: 0.35rem; }
   .optrow .opt-mode[data-mode="off"] { color: var(--muted); }
+  .optrow .opt-qty { padding: 0.32rem 0.25rem; font-size: 0.8rem; text-align: right; width: 100%; }
+  .optrow .opt-line { grid-column: 2 / 5; font-size: 0.72rem; color: var(--muted); min-height: 0; }
+  .optrow .opt-line:empty { display: none; }
   .optrow .opt-hint {
-    grid-column: 2 / 4; font-size: 0.72rem; padding: 0.28rem 0.4rem; color: var(--text);
+    grid-column: 2 / 5; font-size: 0.72rem; padding: 0.28rem 0.4rem; color: var(--text);
     border: 1px dashed var(--border); border-radius: 6px; background: #fafbfc;
   }
   .optrow .opt-hint:focus { border-color: var(--accent); outline: none; }
   .repeater { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.35rem; }
   .dachrow { display: grid; grid-template-columns: 1fr 92px 20px; gap: 0.4rem; align-items: center; }
-  .serow { display: grid; grid-template-columns: 104px minmax(0, 1fr) 88px 20px; gap: 0.4rem; align-items: center; }
+  .serow { display: grid; grid-template-columns: 104px minmax(0, 1fr) 48px 88px 20px; gap: 0.4rem; align-items: center; }
   .dachrow select, .dachrow input, .serow input, .serow select { padding: 0.32rem 0.35rem; font-size: 0.8rem; }
-  .serow .se-price { text-align: right; }
+  .serow .se-price, .serow .se-qty { text-align: right; }
   .serow .price-wrap { display: flex; align-items: center; gap: 0.18rem; }
   .serow .price-wrap .eur { color: var(--muted); font-size: 0.78rem; }
   .rrow-del { cursor: pointer; color: var(--danger); text-align: center; font-size: 0.85rem; }
@@ -581,7 +584,7 @@
         <div>
           <label>Speicher (kWh)</label>
           <select id="f-speicher"></select>
-          <div class="hint" id="speicher-comp-hint" style="margin-top:0.25rem">Sigenergy: BAT 6.0 (6,02 kWh) und 10.0 (9,04 kWh) · Fronius Reserva: 6,5 kWh aus zwei Modulen.</div>
+          <div class="hint" id="speicher-comp-hint" style="margin-top:0.25rem">Sigenergy: BAT 6.0 (6,02 kWh) und SigenStor BAT 10.0 (9,04 kWh) · Fronius Reserva: 6,5 kWh aus zwei Modulen.</div>
         </div>
         <div>
           <label>Module (Anzahl)</label>
@@ -1146,7 +1149,7 @@ function refreshSpeicherRowCatalog() {
   });
 }
 
-function createSpeicherRow({ kwh = 0, price = 0, mode = 'fix' } = {}) {
+function createSpeicherRow({ kwh = 0, price = 0, mode = 'fix', qty = 1 } = {}) {
   const brand = currentBrandId();
   const row = document.createElement('div');
   row.className = 'serow';
@@ -1189,12 +1192,21 @@ function createSpeicherRow({ kwh = 0, price = 0, mode = 'fix' } = {}) {
   eur.textContent = '€';
   pw.append(priceEl, eur);
 
+  const qtyEl = document.createElement('input');
+  qtyEl.className = 'se-qty';
+  qtyEl.type = 'number';
+  qtyEl.step = '1';
+  qtyEl.min = '1';
+  qtyEl.title = 'Stück';
+  qtyEl.value = String(Math.max(1, Math.round(Number(qty) || 1)));
+  qtyEl.addEventListener('input', () => { updateSpeicherCompositionHint(); compute(); });
+
   const del = document.createElement('span');
   del.className = 'rrow-del';
   del.textContent = '✕';
   del.title = 'Speicherblock entfernen';
   del.addEventListener('click', () => { row.remove(); updateSpeicherCompositionHint(); compute(); });
-  row.append(modeSel, sizeSel, pw, del);
+  row.append(modeSel, sizeSel, qtyEl, pw, del);
   return row;
 }
 
@@ -1209,6 +1221,7 @@ function readSpeicherZusatz() {
       kwh: Number(size && size.value) || 0,
       price: Number(row.querySelector('.se-price').value) || 0,
       mode: modeSel && modeSel.value === 'optional' ? 'optional' : 'fix',
+      qty: Math.max(1, Math.round(Number(row.querySelector('.se-qty').value) || 1)),
     });
   });
   return list;
@@ -1221,8 +1234,25 @@ function applySpeicherZusatz(blocks) {
   updateSpeicherCompositionHint();
 }
 
+function optionIsCountable(key) {
+  if (!key) return false;
+  const o = ((CATALOG && CATALOG.options) || []).find((x) => x.key === key);
+  return !!(o && o.countable);
+}
+
+function refreshOptionLine(row) {
+  if (!row) return;
+  const line = row.querySelector('.opt-line');
+  if (!line) return;
+  const qtyEl = row.querySelector('.opt-qty');
+  const priceEl = row.querySelector('.opt-price');
+  const qty = qtyEl ? Math.max(1, Math.round(Number(qtyEl.value) || 1)) : 1;
+  const unit = Number(priceEl && priceEl.value) || 0;
+  line.textContent = qty > 1 ? `${qty} × ${unit.toLocaleString('de-AT')} € = ${(unit * qty).toLocaleString('de-AT')} €` : '';
+}
+
 // ── Optionen-Zeilen (Optional/Fix + editierbarer Preis + Hinweis + manuelle Posten) ───
-function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false, hint = '' }) {
+function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manual = false, hint = '', qty = 1 }) {
   const row = document.createElement('div');
   row.className = 'optrow' + (manual ? ' manual' : '');
   if (key) row.dataset.key = key;
@@ -1262,6 +1292,20 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   const eur = document.createElement('span'); eur.className = 'eur'; eur.textContent = '€';
   pw.appendChild(priceEl); pw.appendChild(eur);
 
+  const countable = optionIsCountable(key);
+  const qtySlot = document.createElement('span');
+  qtySlot.className = 'opt-qty-slot';
+  if (countable) {
+    const qtyEl = document.createElement('input');
+    qtyEl.className = 'opt-qty';
+    qtyEl.type = 'number';
+    qtyEl.min = '1';
+    qtyEl.step = '1';
+    qtyEl.title = 'Stück';
+    qtyEl.value = String(Math.max(1, Math.round(Number(qty) || 1)));
+    qtySlot.appendChild(qtyEl);
+  }
+
   const del = document.createElement('span');
   if (manual) {
     del.className = 'opt-del'; del.title = 'Position entfernen'; del.textContent = '✕';
@@ -1274,6 +1318,9 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   hintEl.value = hint || '';
   hintEl.addEventListener('input', compute);
 
+  const lineEl = document.createElement('div');
+  lineEl.className = 'opt-line';
+
   row.appendChild(sel);
   if (qtyEl) {
     const wrap = document.createElement('div');
@@ -1284,8 +1331,12 @@ function createOptionRow({ key = null, label = '', price = 0, mode = 'off', manu
   } else {
     row.appendChild(nameEl);
   }
-  row.appendChild(pw); row.appendChild(del);
+  row.appendChild(qtySlot);
+  row.appendChild(pw);
+  row.appendChild(del);
+  row.appendChild(lineEl);
   row.appendChild(hintEl);
+  refreshOptionLine(row);
   return row;
 }
 
@@ -1318,6 +1369,9 @@ function readOptionRows() {
       item.qty = qty;
       item.priceManual = row.dataset.priceManual === '1';
       if (!item.priceManual) item.price = null;
+    } else {
+      const qtyEl = row.querySelector('.opt-qty');
+      if (qtyEl) item.qty = Math.max(1, Math.round(Number(qtyEl.value) || 1));
     }
     if (key === 'speicher_upgrade') {
       item.upgradeFrom = Number(row.dataset.upgradeFrom) || null;
@@ -1340,6 +1394,9 @@ function applyOptionsToRows(optionen) {
     if (cat) row.querySelector('.opt-price').value = cat.price;
     const hintEl = row.querySelector('.opt-hint');
     if (hintEl) hintEl.value = '';
+    const qtyEl = row.querySelector('.opt-qty');
+    if (qtyEl) qtyEl.value = '1';
+    refreshOptionLine(row);
   });
   (optionen || []).forEach((o) => {
     if (o.key === 'speicher_upgrade') {
@@ -1404,6 +1461,9 @@ function applyOptionsToRows(optionen) {
         }
         const hintEl = row.querySelector('.opt-hint');
         if (hintEl) hintEl.value = o.hint || '';
+        const qtyEl = row.querySelector('.opt-qty');
+        if (qtyEl) qtyEl.value = String(Math.max(1, Math.round(Number(o.qty) || 1)));
+        refreshOptionLine(row);
         return;
       }
     }
@@ -1467,6 +1527,7 @@ function updateBrandDependentOptionDefaults() {
     if (modeWb && modeWb.value === 'off') {
       const price = brandOptPrice(brand, 'wallbox');
       if (price != null) rowWb.querySelector('.opt-price').value = price;
+      refreshOptionLine(rowWb);
     }
   }
   const rowUp = document.querySelector('#opts .optrow[data-key="speicher_upgrade"]');
@@ -1689,7 +1750,7 @@ function refreshSpeicherSelect() {
     if (t === 0 || !Number.isFinite(t)) return 'Kein Speicher';
     if (isSigenergyClient(brand)) {
       if (Math.abs(t - 6) < 0.2 || Math.abs(t - 6.02) < 0.03) return '6.0 · 6,02 kWh';
-      if (Math.abs(t - 10) < 0.2 || Math.abs(t - 9) < 0.25 || Math.abs(t - 9.04) < 0.03) return '10.0 · 9,04 kWh';
+      if (Math.abs(t - 10) < 0.2 || Math.abs(t - 9) < 0.25 || Math.abs(t - 9.04) < 0.03) return 'SigenStor BAT 10.0 · 9,04 kWh';
     }
     if (brand === 'fronius') {
       const map = [
@@ -1741,7 +1802,7 @@ function updateSpeicherCompositionHint() {
   const base = Number($('f-speicher').value) || 0;
   const allBlocks = readSpeicherZusatz();
   const blocks = allBlocks.filter((b) => b.mode !== 'optional');
-  const extra = blocks.reduce((s, b) => s + (Number(b.kwh) || 0), 0);
+  const extra = blocks.reduce((s, b) => s + (Number(b.kwh) || 0) * Math.max(1, Math.round(Number(b.qty) || 1)), 0);
   const total = Math.round((base + extra) * 10) / 10;
   const fmt = (n) => String(n).replace('.', ',');
   const optNote = optionalStorageNote(brand, allBlocks);
@@ -1752,8 +1813,9 @@ function updateSpeicherCompositionHint() {
     let mods = hit ? hit[1] : Math.round(base / 3.2);
     blocks.forEach((b) => {
       const k = Number(b.kwh) || 0;
-      if (Math.abs(k - 3.2) < 0.15) mods += 1;
-      else mods += Math.round(k / 3.2);
+      const q = Math.max(1, Math.round(Number(b.qty) || 1));
+      if (Math.abs(k - 3.2) < 0.15) mods += q;
+      else mods += Math.round(k / 3.2) * q;
     });
     const towers = Math.max(1, Math.ceil(mods / 5));
     const shown = mods === 2 ? '6,5' : fmt(Math.round((mods === 2 ? 6.5 : mods * 3.2) * 10) / 10);
@@ -1785,8 +1847,9 @@ function updateSpeicherCompositionHint() {
   else if (base > 0) add(base, 1);
   blocks.forEach((b) => {
     const k = Number(b.kwh) || 0;
-    if (Math.abs(k - 12) < 0.05) add(6, 2);
-    else if (k > 0) add(k, 1);
+    const q = Math.max(1, Math.round(Number(b.qty) || 1));
+    if (Math.abs(k - 12) < 0.05) add(6, 2 * q);
+    else if (k > 0) add(k, q);
   });
   const parts = Object.keys(counts).map(Number).sort((a, b) => b - a);
   const usable = Math.round(parts.reduce((s, k) => s + sigenergyUsableClient(k) * counts[String(k)], 0) * 100) / 100;
@@ -1796,7 +1859,7 @@ function updateSpeicherCompositionHint() {
     return q > 1 ? `${q}×${name}` : name;
   });
   if (!labels.length) {
-    el.textContent = 'Sigenergy: BAT 6.0 (6,02 kWh) oder 10.0 (9,04 kWh), kombinierbar über Zusatzblöcke.' + optNote;
+    el.textContent = 'Sigenergy: BAT 6.0 (6,02 kWh) oder SigenStor BAT 10.0 (9,04 kWh), kombinierbar über Zusatzblöcke.' + optNote;
     return;
   }
   el.textContent = `Sigenergy BAT ${labels.join('+')} (${fmt(usable)} kWh nutzbar).` + optNote;
@@ -3648,6 +3711,22 @@ async function downloadBlob(path, payload, filenameFallback) {
   return res;
 }
 
+function storageBlocksFromAi(blocks, brand) {
+  const exts = ((CATALOG && CATALOG.storageExtensions) || {})[brand] || [];
+  return (Array.isArray(blocks) ? blocks : []).map((b) => {
+    const kwh = Number(b && b.kwh) || 0;
+    const hit = exts.find((e) => Math.abs(e.kwh - kwh) < 0.15);
+    const qty = Math.max(1, Math.round(Number(b && b.qty) || 1));
+    return {
+      label: (b && b.label) || (hit && hit.label) || '',
+      kwh,
+      price: Number(b && b.price) > 0 ? Number(b.price) : (hit ? hit.price : 0),
+      qty,
+      mode: b && b.mode === 'optional' ? 'optional' : (b && b.mode === 'fix' ? 'fix' : undefined),
+    };
+  }).filter((b) => b.kwh > 0 || b.price > 0);
+}
+
 async function parseCommand() {
   const cmdRaw = $('command').value.trim();
   if (!cmdRaw) { toast('Bitte zuerst einen Text/Sprachbefehl eingeben.', 'error'); return; }
@@ -3775,7 +3854,9 @@ async function parseCommand() {
     } else {
       writeForm(cfg);
     }
-    if (cfg.includePv !== false && cfg.speicher) await applySpeicherTarget(cfg.speicher);
+    if (cfg.includePv !== false && cfg.speicher && !(cfg.speicherZusatz && cfg.speicherZusatz.length)) {
+      await applySpeicherTarget(cfg.speicher);
+    }
     saveActiveVariant();
     compute();
     genEmailText().catch(() => {});
@@ -4346,7 +4427,8 @@ async function init() {
   // Preis-/Hinweisänderungen in Optionen-Zeilen live übernehmen
   $('opts').addEventListener('input', (e) => {
     const row = e.target.closest ? e.target.closest('.optrow') : null;
-    if (e.target.classList.contains('opt-qty') && row) {
+    const optimizer = !!(row && row.dataset.key === 'optimierer');
+    if (optimizer && e.target.classList.contains('opt-qty')) {
       row.dataset.qtyManual = '1';
       if (row.dataset.priceManual !== '1') {
         const unit = (CATALOG && CATALOG.optimiererUnitPrice) || 50;
@@ -4355,8 +4437,11 @@ async function init() {
         if (priceEl) priceEl.value = String(unit * q);
       }
     }
-    if (e.target.classList.contains('opt-price') && row && row.dataset.key === 'optimierer') {
+    if (optimizer && e.target.classList.contains('opt-price')) {
       row.dataset.priceManual = '1';
+    }
+    if (!optimizer && row && (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-qty') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint'))) {
+      refreshOptionLine(row);
     }
     if (e.target.classList.contains('opt-price') || e.target.classList.contains('opt-name') || e.target.classList.contains('opt-hint') || e.target.classList.contains('opt-qty')) compute();
   });

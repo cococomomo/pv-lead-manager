@@ -55,7 +55,8 @@ Ausgabe: NUR valides JSON (kein Markdown), exakt dieses Schema (unbekannt = null
         "key": "notstrom | wallbox | speichererweiterung | speicher_upgrade | optimierer | … | null",
         "label": "optionaler Anzeigename oder null",
         "mode": "optional | fix",
-        "price": Zahl oder null,
+        "price": "Stückpreis oder null – nicht der Gesamtpreis",
+        "qty": "Stückzahl oder null. Bei lasttrennschalter, fi_schalter, zaehlersteckleiste, zaehlerbrett, smartmeter, wallbox",
         "hint": "Hinweistext der im Angebot bei dieser Komponente erscheinen soll",
         "upgradeFrom": "nur bei speicher_upgrade: Basis-kWh",
         "upgradeTo": "nur bei speicher_upgrade: Ziel-kWh"
@@ -63,6 +64,9 @@ Ausgabe: NUR valides JSON (kein Markdown), exakt dieses Schema (unbekannt = null
     ],
     "customOptions": [
       { "label": "Freie Position", "mode": "optional|fix", "price": Zahl oder null, "hint": "Hinweistext" }
+    ],
+    "speicherZusatz": [
+      { "kwh": "kWh eines zusätzlichen Speicherblocks", "qty": "Stückzahl gleicher Blöcke", "price": null }
     ],
     "offerNotes": ["Allgemeiner Hinweis fürs Angebot (ohne eigene Preisposition)"],
     "standardOptionen": true|false|null,
@@ -176,6 +180,10 @@ Regeln:
   Sigenergy-Erweiterung: +6.0 (6,02 kWh) = 2400 € oder +10.0 (9,04 kWh) = 3600 €. Nicht +6 für 3300 und nicht +9 für 3960. Kein 9-kWh- und kein 12-kWh-Paket.
   Fronius: immer +3,2 (1320). Gateway Sigenergy 1200, Wallbox Sigenergy 1500.
   WICHTIG: "6+9 kWh Speicher" / "15 kWh" / "Reserva 12,6" / "18 kWh" ist KEINE speichererweiterung – das ist speicher (Gesamt).
+- STÜCKZAHL: Lasttrennschalter, FI, Zählersteckleiste, Zählerbrett, Smart Meter und Wallbox können mehrere Stück sein.
+  "zwei FI", "3 Lasttrennschalter", "2 Wallboxen", "2 Smart Meter", "4 Zählersteckleisten", "zwei Zählerbretter"
+  → optionDetails.key passend, qty=diese Zahl, price=null (Stückpreis macht der Server).
+  "3 Speicherblöcke 6 kWh" / "2 Speicherblöcke 10 kWh" → speicherZusatz: [{kwh, qty}], nicht als eine zweite Gesamtgröße.
 - Weitere freie Hinweise ohne Preisposition → offerNotes[].
 - Unbekannte Extrawünsche als customOptions (mit hint) oder offerNotes – nichts erfinden, nur Übernehmen was gesagt wurde.
 - clarifications: leeres Array [], wenn der Preis feststeht.
@@ -583,6 +591,92 @@ function detectOptionModeFromText(text, key) {
   return 'optional';
 }
 
+const QTY_WORDS = {
+  ein: 1, eine: 1, einen: 1, einem: 1,
+  zwei: 2, drei: 3, vier: 4, fünf: 5, fuenf: 5,
+  sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10,
+};
+
+function parseQtyToken(raw) {
+  if (raw == null || raw === '') return null;
+  const key = String(raw).toLowerCase();
+  if (QTY_WORDS[key] != null) return QTY_WORDS[key];
+  const n = Number(key.replace(',', '.'));
+  if (!Number.isFinite(n) || n < 1 || n > 99) return null;
+  return Math.round(n);
+}
+
+const QTY_TOKEN = '(\\d+|ein(?:e[nm]?)?|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn)';
+
+function firstQty(text, patterns) {
+  const t = String(text || '');
+  for (const p of patterns) {
+    const m = t.match(p);
+    if (!m) continue;
+    const q = parseQtyToken(m[1]);
+    if (q) return q;
+  }
+  return null;
+}
+
+function qtyPatterns(noun) {
+  return [
+    new RegExp(`${QTY_TOKEN}\\s*(?:stück|stk\\.?|x|×)?\\s*${noun}`, 'i'),
+    new RegExp(`${noun}\\s*(?:x|×|:)?\\s*${QTY_TOKEN}\\b`, 'i'),
+  ];
+}
+
+function extractOptionQtys(text) {
+  const found = {};
+  const specs = [
+    ['lasttrennschalter', 'last\\s*-?\\s*trennschalter'],
+    ['fi_schalter', 'fi(?:\\s*-?\\s*(?:schalter|zusatzschutz))?\\b'],
+    ['zaehlersteckleiste', 'z[aä]hlersteckleiste[n]?'],
+    ['zaehlerbrett', 'z[aä]hler(?:brett(?:er)?|pl[aä]tze)'],
+    ['smartmeter', 'smart\\s*-?\\s*meter[n]?'],
+    ['wallbox', 'wallbox(?:en)?'],
+  ];
+  for (const [key, noun] of specs) {
+    const q = firstQty(text, qtyPatterns(noun));
+    if (q) found[key] = q;
+  }
+  return found;
+}
+
+function canonicalQtyKey(key, label) {
+  const s = `${key || ''} ${label || ''}`.toLowerCase();
+  if (/last\s*-?\s*trenn/.test(s)) return 'lasttrennschalter';
+  if (/\bfi\b|fi-schalter|zusatzschutz/.test(s)) return 'fi_schalter';
+  if (/z[aä]hlersteck/.test(s)) return 'zaehlersteckleiste';
+  if (/z[aä]hler(?:brett|platz)/.test(s)) return 'zaehlerbrett';
+  if (/smart\s*-?\s*meter/.test(s)) return 'smartmeter';
+  if (/wallbox/.test(s)) return 'wallbox';
+  return null;
+}
+
+function extractSpeicherBlocksFromText(text) {
+  const t = String(text || '');
+  const out = [];
+  const re = new RegExp(
+    `${QTY_TOKEN}\\s*speicherbl(?:ö|oe|o)cke?(?:\\s*(?:à|a|je|zu|mit))?\\s*(\\d+(?:[.,]\\d+)?)\\s*k\\s*wh`,
+    'gi'
+  );
+  let m;
+  while ((m = re.exec(t))) {
+    const qty = parseQtyToken(m[1]);
+    const kwh = Number(String(m[2]).replace(',', '.'));
+    if (qty && kwh > 0) out.push({ kwh, qty, price: null, label: null });
+  }
+  return out;
+}
+
+function stripSpeicherBlockPhrases(text) {
+  return String(text || '').replace(
+    new RegExp(`${QTY_TOKEN}\\s*speicherbl(?:ö|oe|o)cke?(?:\\s*(?:à|a|je|zu|mit))?\\s*\\d+(?:[.,]\\d+)?\\s*k\\s*wh`, 'gi'),
+    ' '
+  );
+}
+
 function buildOptionenList(req, brand, sourceText) {
   const str = (v) => (v == null ? '' : String(v).trim());
   const numOrNullLocal = (v) => {
@@ -608,6 +702,7 @@ function buildOptionenList(req, brand, sourceText) {
       price: price != null && Number.isFinite(Number(price)) ? Number(price) : (prev.price != null ? prev.price : null),
       upgradeFrom: (extra && extra.upgradeFrom != null) ? extra.upgradeFrom : (prev.upgradeFrom != null ? prev.upgradeFrom : null),
       upgradeTo: (extra && extra.upgradeTo != null) ? extra.upgradeTo : (prev.upgradeTo != null ? prev.upgradeTo : null),
+      qty: (extra && extra.qty != null) ? extra.qty : (prev.qty != null ? prev.qty : null),
     };
   };
 
@@ -654,8 +749,16 @@ function buildOptionenList(req, brand, sourceText) {
     const entryHint = d.hint || d.note || d.beschreibung;
     const from = numOrNullLocal(d.upgradeFrom != null ? d.upgradeFrom : d.fromKwh);
     const to = numOrNullLocal(d.upgradeTo != null ? d.upgradeTo : d.toKwh);
+    const canon = canonicalQtyKey(key, d.label);
+    if (canon) key = canon;
     const mode = key === 'optimierer' && !d.mode ? 'fix' : d.mode;
-    mark(key, mode, entryHint, d.label, d.price, key === 'speicher_upgrade' ? { upgradeFrom: from, upgradeTo: to } : null);
+    const extra = {};
+    if (key === 'speicher_upgrade') {
+      extra.upgradeFrom = from;
+      extra.upgradeTo = to;
+    }
+    if (d.qty != null && d.qty !== '') extra.qty = catalog.pieceQty({ qty: d.qty });
+    mark(key, mode, entryHint, d.label, d.price, extra);
   }
 
   for (const c of customs) {
@@ -666,7 +769,12 @@ function buildOptionenList(req, brand, sourceText) {
     if (/upgrade|preisdifferenz/i.test(lab) && /speicher/i.test(lab)) key = 'speicher_upgrade';
     if (/optimier/i.test(lab)) key = 'optimierer';
     const mode = key === 'optimierer' && !c.mode ? 'fix' : c.mode;
-    mark(key, mode, c.hint || c.note, lab, c.price);
+    mark(key, mode, c.hint || c.note, lab, c.price, c.qty != null && c.qty !== '' ? { qty: catalog.pieceQty({ qty: c.qty }) } : null);
+  }
+
+  for (const [key, qty] of Object.entries(extractOptionQtys(sourceText))) {
+    if (byKey[key]) byKey[key].qty = qty;
+    else mark(key, 'optional', null, null, null, { qty });
   }
 
   const b = catalog.normalizeBrand(brand);
@@ -689,12 +797,20 @@ function buildOptionenList(req, brand, sourceText) {
       if (!(Number(o.price) > 0)) o.price = null;
       if (!o.hint) o.hint = 'Ein Optimierer pro Modul für optimale Leistung.';
     }
+    if (o.key && catalog.OPTION_QTY_KEYS.includes(o.key)) {
+      const qty = o.qty != null ? catalog.pieceQty(o) : 1;
+      o.qty = qty;
+      const unit = catalog.brandOptionPrice(b, o.key);
+      if (!(Number(o.price) > 0)) o.price = null;
+      else if (qty > 1 && unit && Math.abs(Number(o.price) - unit * qty) < 1) o.price = unit;
+    }
     return {
       key: o.key,
       label,
       mode: o.key === 'optimierer' && o.mode !== 'optional' ? 'fix' : (o.mode || 'optional'),
       hint: o.hint || null,
       price: o.price,
+      qty: o.qty != null ? o.qty : null,
       upgradeFrom: o.upgradeFrom != null ? o.upgradeFrom : null,
       upgradeTo: o.upgradeTo != null ? o.upgradeTo : null,
     };
@@ -1096,10 +1212,33 @@ function normalizeOffer(raw, sourceText = '') {
   const fromInvText = extractInverterKwFromText(sourceText);
   if (fromInvText != null) inverterKw = fromInvText;
 
-  // Speicher: Kombinationen aus Text (6+9, 2×9, …) haben Vorrang vor KI-Einzelwert
+  // Speicher: Kombinationen aus Text (6+9, 2×9, …) haben Vorrang vor KI-Einzelwert.
+  // „3 Speicherblöcke 6 kWh“ ist eine Stückzahl am Zusatzblock, keine zweite Gesamtgröße.
   let speicherKwh = numOrNull(req.speicher);
-  const fromSpeicherText = extractSpeicherKwhFromText(sourceText);
+  const blockPhrases = extractSpeicherBlocksFromText(sourceText);
+  const speicherText = blockPhrases.length ? stripSpeicherBlockPhrases(sourceText) : sourceText;
+  const fromSpeicherText = extractSpeicherKwhFromText(speicherText);
   if (fromSpeicherText != null) speicherKwh = fromSpeicherText;
+
+  const rawBlocks = blockPhrases.length
+    ? blockPhrases
+    : (Array.isArray(req.speicherZusatz) ? req.speicherZusatz : []);
+  let speicherZusatz = rawBlocks.map((b) => {
+    if (!b) return null;
+    const kwh = numOrNull(b.kwh);
+    if (!(kwh > 0)) return null;
+    const qty = catalog.pieceQty(b);
+    const exts = catalog.STORAGE_EXTENSIONS[resolvedBrand] || [];
+    const hit = exts.find((e) => Math.abs(e.kwh - kwh) < 0.15);
+    const mode = b.mode === 'optional' ? 'optional' : (b.mode === 'fix' ? 'fix' : null);
+    return {
+      kwh,
+      qty,
+      price: Number(b.price) > 0 ? Number(b.price) : (hit ? hit.price : null),
+      label: str(b.label) || (hit && hit.label) || null,
+      ...(mode ? { mode } : {}),
+    };
+  }).filter(Boolean);
 
   // Haupt-Speichergröße nicht zusätzlich als speichererweiterung-Option führen
   let cleanedOptionenList = optionenList;
@@ -1115,8 +1254,8 @@ function normalizeOffer(raw, sourceText = '') {
   const fullAgain = wantsFullPlantAgain(sourceText);
   const noStoreText = /ohne\s+speicher|kein(?:en)?\s+speicher|nur\s+pv\b/i.test(String(sourceText || ''));
   const partsOnly = !fullAgain && !plantText && namedPartsSignal(sourceText, req) && !noStoreText;
-  let speicherZusatz = [];
   if (partsOnly) {
+    speicherZusatz = [];
     includePv = false;
     moduleCount = 0;
     dachSegmente = [];

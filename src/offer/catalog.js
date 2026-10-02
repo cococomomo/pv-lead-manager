@@ -184,7 +184,7 @@ const FRONIUS_TOWER_KWH = Object.freeze({
 // Sigenergy Neu und Alt: dieselben Blöcke 6.0 (6,02 kWh) und 10.0 (9,04 kWh).
 const SIGENERGY_EXTENSIONS = [
   { kwh: 6, price: 2400, label: '+6.0 (6,02 kWh) Speicherblock (SigenStor BAT)' },
-  { kwh: 10, price: 3600, label: '+10.0 (9,04 kWh) Speicherblock (SigenStor BAT)' },
+  { kwh: 10, price: 3600, label: '+10.0 (9,04 kWh) Speicherblock (SigenStor BAT 10.0)' },
 ];
 const STORAGE_EXTENSIONS = {
   sigenergy: SIGENERGY_EXTENSIONS,
@@ -244,20 +244,38 @@ const DACH_LABELS = [
 // editierbar (Default-Werte hier). mode (optional|fix) wird pro Angebot gesetzt.
 const OPTIONS = {
   notstrom: { label: 'Notstrom / Gateway / Umschaltbox', price: 1500 },
-  wallbox: { label: 'Wallbox 11 kW', price: 1800 },
+  wallbox: { label: 'Wallbox 11 kW', price: 1800, countable: true },
   speichererweiterung: { label: 'Speichererweiterung (Sigenergy +6,0/+10,0 kWh · Fronius +3,2 kWh)', price: 2400 },
   optimierer: { label: 'Optimierer (1 pro Modul)', price: 50, perModule: true },
   ueberspannungsschutz: { label: 'Überspannungsschutz', price: 400 },
-  lasttrennschalter: { label: 'Lasttrennschalter', price: 150 },
-  fi_schalter: { label: 'FI-Zusatzschutz', price: 180 },
-  zaehlersteckleiste: { label: 'Zählersteckleiste', price: 150 },
-  zaehlerbrett: { label: 'Zählerplatz / Zählerbrett', price: 200 },
+  lasttrennschalter: { label: 'Lasttrennschalter', price: 150, countable: true },
+  fi_schalter: { label: 'FI-Zusatzschutz', price: 180, countable: true },
+  zaehlersteckleiste: { label: 'Zählersteckleiste', price: 150, countable: true },
+  zaehlerbrett: { label: 'Zählerplatz / Zählerbrett', price: 200, countable: true },
   wireless_access_point: { label: 'Wireless Access Point', price: 80 },
   et08_schloss: { label: 'ET08 Schloss', price: 360 },
   waermepumpe_anschluss: { label: 'Anschluss für Wärmepumpe (vorbereitet)', price: 800 },
   ohmpilot: { label: 'Ohmpilot (bis 9 kW, 3-phasig)', price: 1800 },
-  smartmeter: { label: 'Smart Meter inkl. Montage (Nachrüstung)', price: 500 },
+  smartmeter: { label: 'Smart Meter inkl. Montage (Nachrüstung)', price: 500, countable: true },
 };
+
+/** Positionen mit Stückzahl. price ist der Stückpreis, die Zeile ist Stückpreis × qty. */
+const OPTION_QTY_KEYS = ['lasttrennschalter', 'fi_schalter', 'zaehlersteckleiste', 'zaehlerbrett', 'smartmeter', 'wallbox'];
+
+function pieceQty(o) {
+  if (!o || o.qty == null || o.qty === '') return 1;
+  const q = Math.round(Number(o.qty));
+  if (!Number.isFinite(q) || q < 1) return 1;
+  return q;
+}
+
+function storageBlockUnitPrice(brand, block) {
+  const p = Number(block && block.price);
+  if (Number.isFinite(p) && p > 0) return p;
+  const k = Number(block && block.kwh) || 0;
+  const hit = (STORAGE_EXTENSIONS[normalizeBrand(brand)] || []).find((e) => Math.abs(e.kwh - k) < 0.15);
+  return hit ? hit.price : 0;
+}
 
 /** Brutto-Preis pro Optimierer (wenn nicht manuell gesetzt). */
 const OPTIMIERER_UNIT_PRICE = 50;
@@ -1005,8 +1023,9 @@ function storageModuleBreakdown(brand, baseKwh, blocks) {
     let extra = 0;
     for (const b of blocks || []) {
       const k = Number(b.kwh) || 0;
-      if (Math.abs(k - FRONIUS_MODULE_KWH) < 0.15) extra += 1;
-      else extra += froniusModulesForKwh(k);
+      const q = pieceQty(b);
+      if (Math.abs(k - FRONIUS_MODULE_KWH) < 0.15) extra += q;
+      else extra += froniusModulesForKwh(k) * q;
     }
     const totalMods = baseMods + extra;
     if (totalMods <= 0) return [];
@@ -1035,8 +1054,9 @@ function storageModuleBreakdown(brand, baseKwh, blocks) {
   }
 
   for (const b of blocks || []) {
-    if (Math.abs(Number(b.kwh) - 12) < 0.05) add(6, 2);
-    else add(b.kwh, 1);
+    const q = pieceQty(b);
+    if (Math.abs(Number(b.kwh) - 12) < 0.05) add(6, 2 * q);
+    else add(b.kwh, q);
   }
 
   return [...counts.entries()]
@@ -2015,8 +2035,16 @@ function computeOffer(config) {
       for (const b of manualZusatz) {
         const resolved = resolveStorageBlock(brand, b);
         if (!resolved) continue;
-        if (b.mode === 'optional') optionalStorageBlocks.push(resolved);
-        else speicherBloecke.push({ kwh: resolved.kwh, price: resolved.price, label: resolved.label });
+        const block = {
+          kwh: resolved.kwh,
+          price: resolved.price,
+          qty: pieceQty(b),
+          label: resolved.label,
+          hint: resolved.hint,
+          usableKwh: resolved.usableKwh,
+        };
+        if (b.mode === 'optional') optionalStorageBlocks.push(block);
+        else speicherBloecke.push(block);
       }
     } else if (desiredSpeicher) {
       const plan = planStorage(brand, kwpPackage, desiredSpeicher);
@@ -2027,8 +2055,9 @@ function computeOffer(config) {
     }
     if (brandHasStorage(brand) && speicher !== 0) {
       for (const b of speicherBloecke) {
-        speicherZusatzKwh += b.kwh;
-        speicherZusatzPreis += b.price;
+        const q = pieceQty(b);
+        speicherZusatzKwh += (Number(b.kwh) || 0) * q;
+        speicherZusatzPreis += (Number(b.price) || 0) * q;
       }
       speicherGesamt = (speicher || 0) + speicherZusatzKwh;
     } else {
@@ -2120,18 +2149,27 @@ function computeOffer(config) {
     for (const b of manualZusatz) {
       const resolved = resolveStorageBlock(b.brand || brand, b);
       if (!resolved) continue;
-      if (b.mode === 'optional') optionalStorageBlocks.push(resolved);
+      const block = {
+        kwh: resolved.kwh,
+        price: resolved.price,
+        qty: pieceQty(b),
+        label: resolved.label,
+        hint: resolved.hint,
+        usableKwh: resolved.usableKwh,
+      };
+      if (b.mode === 'optional') optionalStorageBlocks.push(block);
       else {
-        speicherBloecke.push({ kwh: resolved.kwh, price: resolved.price, label: resolved.label });
-        speicherZusatzKwh += resolved.kwh;
-        speicherZusatzPreis += resolved.price;
+        speicherBloecke.push(block);
+        const q = pieceQty(b);
+        speicherZusatzKwh += (Number(resolved.kwh) || 0) * q;
+        speicherZusatzPreis += (Number(resolved.price) || 0) * q;
       }
     }
     if (speicherBloecke.length) {
       speicher = speicherBloecke[0].kwh;
       speicherGesamt = speicherZusatzKwh;
       if (isSigenergyBrand(brand)) {
-        speicherAusgewiesen = Math.round(speicherBloecke.reduce((s, b) => s + sigenergyUsableKwh(b.kwh), 0) * 100) / 100;
+        speicherAusgewiesen = Math.round(speicherBloecke.reduce((s, b) => s + sigenergyUsableKwh(b.kwh) * pieceQty(b), 0) * 100) / 100;
       } else {
         speicherAusgewiesen = Math.round(speicherZusatzKwh * 100) / 100;
       }
@@ -2214,18 +2252,26 @@ function computeOffer(config) {
         let label = String(o.label || (base && base.label) || 'Position').trim();
         if (key === 'notstrom') label = notstromLabelOption(brand);
         if (key === 'wallbox') label = wallboxLabelOption(brand);
-        let price = Number(o.price);
-        if (o.price == null || o.price === '' || !Number.isFinite(price)) {
-          if (key === 'wallbox' || key === 'notstrom') price = brandOptionPrice(brand, key);
-          else if (key === 'optimierer') price = OPTIMIERER_UNIT_PRICE * moduleCount;
-          else if (key === 'zusatzmodul') price = Math.round(EXTRA_MODULE_PRICE * (1 + MWST_RATE));
-          else if (base) price = base.perModule ? base.price * moduleCount : base.price;
-          else price = null;
+        let unit = Number(o.price);
+        if (o.price == null || o.price === '' || !Number.isFinite(unit)) {
+          if (key === 'wallbox' || key === 'notstrom') unit = brandOptionPrice(brand, key);
+          else if (key === 'optimierer') unit = OPTIMIERER_UNIT_PRICE * moduleCount;
+          else if (key === 'zusatzmodul') unit = Math.round(EXTRA_MODULE_PRICE * (1 + MWST_RATE));
+          else if (base) unit = base.perModule ? base.price * moduleCount : base.price;
+          else unit = null;
+        }
+        const countable = !!(key && OPTION_QTY_KEYS.includes(key));
+        const qty = countable ? pieceQty(o) : 1;
+        const price = unit == null ? null : unit * qty;
+        if (countable && qty > 1 && price != null && !/\(\d+\s*Stück\)/.test(label)) {
+          label = `${label} (${qty} Stück)`;
         }
         const mode = o.mode === 'fix' ? 'fix' : 'optional';
         const hint = String(o.hint || o.note || o.beschreibung || '').trim() || null;
         if (!label && price == null) continue;
-        const entry = { key, label, price, hint, priceMissing: price == null };
+        const entry = countable
+          ? { key, label, price, unitPrice: unit, qty, hint, priceMissing: price == null }
+          : { key, label, price, hint, priceMissing: price == null };
         if (mode === 'fix') {
           if (price != null) optionenSumme += price;
           inkludiert.push(entry);
@@ -2256,7 +2302,8 @@ function computeOffer(config) {
       optionaleKomponenten.push({
         key: 'speicherblock',
         label: block.label,
-        price: block.price,
+        price: block.price == null ? null : (Number(block.price) || 0) * pieceQty(block),
+        qty: pieceQty(block),
         hint: block.hint || null,
         kwh: block.kwh,
         usableKwh: block.usableKwh,
@@ -2268,7 +2315,8 @@ function computeOffer(config) {
       optionaleKomponenten.push({
         key: 'speicherblock',
         label: block.label,
-        price: block.price,
+        price: block.price == null ? null : (Number(block.price) || 0) * pieceQty(block),
+        qty: pieceQty(block),
         hint: block.hint || null,
         kwh: block.kwh,
         usableKwh: block.usableKwh,
@@ -2452,7 +2500,7 @@ function computeOffer(config) {
             section: 'Energiespeicher',
             name: b.label,
             desc: `Speichererweiterung +${formatNum(b.kwh)} kWh | 10 Jahre Garantie`,
-            qty: '1 Stück',
+            qty: `${pieceQty(b)} Stück`,
           });
         });
       }
@@ -2473,7 +2521,7 @@ function computeOffer(config) {
       const hintDesc = it.hint ? String(it.hint).trim() : '';
       let name = it.label;
       let desc = hintDesc;
-      let qty = '1 Stück';
+      let qty = `${OPTION_QTY_KEYS.includes(it.key) ? pieceQty(it) : 1} Stück`;
       let role = 'option';
       if (it.key === 'wallbox') name = wallboxLabelComponent(brand);
       else if (it.key === 'speichererweiterung') {
@@ -2515,7 +2563,7 @@ function computeOffer(config) {
         desc: isSigenergyBrand(brand)
           ? `Speicherblock ${formatDe(usable)} kWh | Katalogpreis`
           : `Speicherblock ${formatNum(b.kwh)} kWh | Katalogpreis`,
-        qty: '1 Stück',
+        qty: `${pieceQty(b)} Stück`,
       });
     });
     inkludiert.forEach((it, idx) => {
@@ -2525,7 +2573,7 @@ function computeOffer(config) {
         section: 'Positionen',
         name: it.label || 'Position',
         desc: it.hint || (it.price == null ? 'Preis offen' : ''),
-        qty: '1 Stück',
+        qty: `${OPTION_QTY_KEYS.includes(it.key) ? pieceQty(it) : 1} Stück`,
       });
     });
   }
@@ -2763,6 +2811,8 @@ module.exports = {
   DACH_LABELS,
   INVERTER_CATALOG,
   OPTIONS,
+  OPTION_QTY_KEYS,
+  pieceQty,
   MODULE_TYPES,
   EXTRA_MODULE_PRICE,
   KLIMA_CATALOG,

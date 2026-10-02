@@ -326,6 +326,7 @@ function mountOfferRoutes(app, deps) {
         key: k, label: catalog.OPTIONS[k].label, price: catalog.OPTIONS[k].price,
         alwaysIncluded: !!catalog.OPTIONS[k].alwaysIncluded,
         perModule: !!catalog.OPTIONS[k].perModule,
+        countable: !!catalog.OPTIONS[k].countable,
       })),
       optionPricesByBrand: {
         sigenergy: { notstrom: catalog.brandOptionPrice('sigenergy', 'notstrom'), wallbox: catalog.brandOptionPrice('sigenergy', 'wallbox') },
